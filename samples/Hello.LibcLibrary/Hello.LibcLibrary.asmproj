@@ -1,0 +1,11 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A shared library that calls into glibc (AsmRuntime=Libc): libhellolibc.so gets
+    DT_NEEDED libc.so.6 and imports strlen through its PLT. This is the shape of a native
+    library loaded by .NET or Python (Hello.Net loads it).
+  -->
+  <PropertyGroup>
+    <AsmRuntime>Libc</AsmRuntime>
+    <AsmLibraryName>hellolibc</AsmLibraryName>
+  </PropertyGroup>
+</Project>

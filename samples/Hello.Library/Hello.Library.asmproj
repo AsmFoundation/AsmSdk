@@ -1,0 +1,9 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A freestanding shared library: no libc, nothing in DT_NEEDED. OutputType defaults to
+    Library (a shared object), exactly as in a .csproj. Builds bin/<Configuration>/libhello.so.
+  -->
+  <PropertyGroup>
+    <AsmLibraryName>hello</AsmLibraryName>
+  </PropertyGroup>
+</Project>

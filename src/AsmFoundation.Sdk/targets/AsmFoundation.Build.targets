@@ -1,0 +1,290 @@
+<Project>
+  <!--
+    AsmFoundation.Build.targets - imported by Sdk.targets AFTER Microsoft.NET.Sdk's targets, so
+    the targets defined here replace the managed ones of the same name (MSBuild keeps the last
+    definition of a target).
+
+    Pipeline (all of it runs inside the standard Build, as CoreCompile):
+      _AsmResolveToolchain  -> locate nasm / lld / llvm-ar (bundled or system) and check them
+      AsmPrepare            -> object paths, include and define arguments, link inputs
+      AsmAssemble           -> one nasm run per source, skipped when the object is up to date
+      AsmLink               -> shared library, static library or executable from the objects
+
+    Path convention: every path handed to a tool is computed once, as item metadata or a
+    property named *ToolPath / *Argument(s), with forward slashes. A backslash right before a
+    closing quote ("C:\dir\") escapes the quote under Windows command-line rules and silently
+    merges two arguments; forward slashes are accepted by NASM and lld on every OS.
+  -->
+
+  <!-- ===================================================================================== -->
+  <!-- Items                                                                                  -->
+  <!-- ===================================================================================== -->
+  <ItemGroup Condition="'$(EnableDefaultAsmItems)' == 'true'">
+    <!-- DefaultItemExcludes keeps bin/ and obj/ out, as for a .csproj. -->
+    <AsmSource Include="**/*.asm" Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)" />
+    <AsmInclude Include="**/*.inc" Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The project's own include/ folder and the project folder are searched first, so a
+         local file shadows one of the same name from a package or a referenced project. -->
+    <AsmIncludeDirectory Include="$(MSBuildProjectDirectory)/include/" Condition="Exists('$(MSBuildProjectDirectory)/include')" />
+    <AsmIncludeDirectory Include="$(MSBuildProjectDirectory)/" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <!-- Objects and generated files live under obj/<Configuration>/asm/. -->
+    <AsmIntermediateDirectory Condition="'$(AsmIntermediateDirectory)' == ''">$(IntermediateOutputPath)asm/</AsmIntermediateDirectory>
+    <AsmStaticLibraryPath Condition="'$(AsmStaticLibraryPath)' == '' and '$(AsmOutputKind)' == 'StaticLibrary'">$(TargetPath)</AsmStaticLibraryPath>
+    <AsmStaticLibraryPath Condition="'$(AsmStaticLibraryPath)' == '' and '$(AsmProduceStaticLibrary)' == 'true'">$(TargetDir)lib$(AsmLibraryName).a</AsmStaticLibraryPath>
+    <AsmSharedLibraryPath Condition="'$(AsmOutputKind)' == 'SharedLibrary'">$(TargetPath)</AsmSharedLibraryPath>
+    <!-- glibc's dynamic loader, recorded as PT_INTERP in Libc executables. -->
+    <AsmDynamicLinker Condition="'$(AsmDynamicLinker)' == ''">/lib64/ld-linux-x86-64.so.2</AsmDynamicLinker>
+    <!-- Libc executables start in the SDK's crt1.o unless the project names its own entry. -->
+    <_AsmUsesCrt Condition="'$(AsmRuntime)' == 'Libc' and '$(AsmOutputKind)' == 'Executable' and '$(AsmEntryPoint)' == ''">true</_AsmUsesCrt>
+    <_AsmUsesLibcStub Condition="'$(AsmRuntime)' == 'Libc' and ('$(AsmOutputKind)' == 'SharedLibrary' or '$(AsmOutputKind)' == 'Executable')">true</_AsmUsesLibcStub>
+  </PropertyGroup>
+
+  <!-- ===================================================================================== -->
+  <!-- Toolchain resolution                                                                   -->
+  <!-- ===================================================================================== -->
+
+  <!--
+    _AsmResolveToolchain: sets _AsmNasm, _AsmLinker and _AsmArchiver to complete command
+    prefixes and fails early, with the fix, when a tool is missing.
+    Errors: ASM0001 (bundled toolchain not restored), ASM0002 (unknown AsmToolchain value).
+  -->
+  <Target Name="_AsmResolveToolchain">
+    <PropertyGroup Condition="'$(AsmToolchain)' == 'Bundled'">
+      <!-- NuGetPackageRoot comes from obj/*.nuget.g.props, written by restore. -->
+      <AsmToolchainDirectory Condition="'$(AsmToolchainDirectory)' == ''">$([MSBuild]::NormalizeDirectory('$(NuGetPackageRoot)', '$(AsmToolchainPackageId.ToLowerInvariant())', '$(AsmToolchainVersion)', 'tools'))</AsmToolchainDirectory>
+      <_AsmNasmPath>$(AsmToolchainDirectory)nasm$(_AsmExe)</_AsmNasmPath>
+      <_AsmLldPath>$(AsmToolchainDirectory)lld$(_AsmExe)</_AsmLldPath>
+      <_AsmArPath>$(AsmToolchainDirectory)llvm-ar$(_AsmExe)</_AsmArPath>
+      <_AsmNasm>&quot;$(_AsmNasmPath.Replace('\','/'))&quot;</_AsmNasm>
+      <!-- lld is one binary for every linker flavor; -flavor gnu selects ld.lld (ELF). -->
+      <_AsmLinker>&quot;$(_AsmLldPath.Replace('\','/'))&quot; -flavor gnu</_AsmLinker>
+      <_AsmArchiver>&quot;$(_AsmArPath.Replace('\','/'))&quot;</_AsmArchiver>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(AsmToolchain)' == 'System'">
+      <_AsmNasm>$([MSBuild]::ValueOrDefault('$(AsmNasmCommand)', 'nasm'))</_AsmNasm>
+      <_AsmLinker>$([MSBuild]::ValueOrDefault('$(AsmLinkerCommand)', 'ld'))</_AsmLinker>
+      <_AsmArchiver>$([MSBuild]::ValueOrDefault('$(AsmArchiverCommand)', 'ar'))</_AsmArchiver>
+    </PropertyGroup>
+
+    <Error Code="ASM0002" Condition="'$(AsmToolchain)' != 'Bundled' and '$(AsmToolchain)' != 'System'"
+           Text="AsmToolchain must be 'Bundled' or 'System', not '$(AsmToolchain)'." />
+    <Error Code="ASM0001" Condition="'$(AsmToolchain)' == 'Bundled' and (!Exists('$(_AsmNasmPath)') or !Exists('$(_AsmLldPath)') or !Exists('$(_AsmArPath)'))"
+           Text="The bundled toolchain was not found in '$(AsmToolchainDirectory)'. Run 'dotnet restore' (it downloads $(AsmToolchainPackageId) $(AsmToolchainVersion)), or set AsmToolchain=System to use nasm, ld and ar from PATH." />
+
+    <!--
+      NuGet does not keep the Unix execute bit when it extracts a package, so the tools come
+      out as plain files on Linux and macOS. Restoring the bit on every build costs one
+      process start and is idempotent.
+    -->
+    <Exec Condition="'$(AsmToolchain)' == 'Bundled' and !$([MSBuild]::IsOSPlatform('Windows'))"
+          Command="chmod +x $(_AsmNasm) &quot;$(_AsmLldPath)&quot; $(_AsmArchiver)" StandardOutputImportance="low" />
+  </Target>
+
+  <!-- ===================================================================================== -->
+  <!-- Preparation                                                                            -->
+  <!-- ===================================================================================== -->
+
+  <!--
+    AsmPrepare: computes everything the assemble and link steps need, so those two targets can
+    be pure "inputs -> outputs" steps that MSBuild skips when nothing changed.
+  -->
+  <Target Name="AsmPrepare" DependsOnTargets="_AsmResolveToolchain;_AsmResolveProjectReferences">
+    <ItemGroup>
+      <!-- Each source's object keeps the source's subfolder, so a/x.asm and b/x.asm do not
+           collide. -->
+      <AsmSource>
+        <ObjectFile>$(AsmIntermediateDirectory)obj/%(RecursiveDir)%(Filename).o</ObjectFile>
+      </AsmSource>
+      <AsmSource>
+        <ObjectToolPath>$([System.IO.Path]::GetFullPath('%(ObjectFile)').Replace('\','/'))</ObjectToolPath>
+        <SourceToolPath>$([System.String]::Copy('%(FullPath)').Replace('\','/'))</SourceToolPath>
+      </AsmSource>
+      <_AsmObject Include="@(AsmSource->'%(ObjectToolPath)')" />
+
+      <!-- Local include directories first, then those that packages and referenced projects
+           contributed (they carry AsmOrigin), each group in the order added. -->
+      <_AsmIncludeDirectoryOrdered Include="@(AsmIncludeDirectory)" Condition="'%(AsmIncludeDirectory.AsmOrigin)' == ''" />
+      <_AsmIncludeDirectoryOrdered Include="@(AsmIncludeDirectory)" Condition="'%(AsmIncludeDirectory.AsmOrigin)' != ''" />
+      <_AsmIncludeDirectoryOrdered>
+        <!-- NASM uses -I as a plain prefix, so the trailing separator is required. -->
+        <ToolPath>$([MSBuild]::EnsureTrailingSlash('%(FullPath)').Replace('\','/'))</ToolPath>
+      </_AsmIncludeDirectoryOrdered>
+
+      <!-- Dependencies of every object: all include files in the include path. Coarse but
+           never wrong: editing any .inc reassembles every source that could include it. -->
+      <_AsmDependency Include="@(AsmInclude->'%(FullPath)')" />
+      <_AsmDependency Include="%(_AsmIncludeDirectoryOrdered.FullPath)**/*.inc" Condition="'%(_AsmIncludeDirectoryOrdered.AsmOrigin)' != ''" />
+
+      <_AsmDefine Include="$(AsmDefineConstants)" />
+      <_AsmDefine Include="@(AsmDefine)" />
+
+      <!-- Link inputs: static libraries and shared objects from AsmLinkLibrary items,
+           packages and referenced projects, in the order given. -->
+      <_AsmLinkInput Include="@(AsmLinkLibrary->'%(FullPath)')" />
+      <_AsmLinkInput>
+        <ToolPath>$([System.String]::Copy('%(FullPath)').Replace('\','/'))</ToolPath>
+      </_AsmLinkInput>
+    </ItemGroup>
+
+    <PropertyGroup>
+      <_AsmIncludeArguments>@(_AsmIncludeDirectoryOrdered->'-I&quot;%(ToolPath)&quot;', ' ')</_AsmIncludeArguments>
+      <_AsmDefineArguments>@(_AsmDefine->'-D%(Identity)', ' ')</_AsmDefineArguments>
+      <_AsmDebugArguments Condition="'$(AsmDebugInfo)' == 'true'">-g -F dwarf</_AsmDebugArguments>
+      <!--
+        Every warning except two that flag ordinary relocations: reloc-rel-dword fires on any
+        RIP-relative reference to another section (lea rsi, [rel msg] from .text to .rodata,
+        a call to an extern), and reloc-abs-qword on a dq of a label (a jump table), which a
+        shared object resolves with R_X86_64_RELATIVE. Both are how position-independent ELF
+        code is written. TreatWarningsAsErrors works as in a .csproj.
+      -->
+      <_AsmWarningArguments>-w+all -w-reloc-rel-dword -w-reloc-abs-qword</_AsmWarningArguments>
+      <_AsmWarningArguments Condition="'$(TreatWarningsAsErrors)' == 'true'">$(_AsmWarningArguments) -w+error</_AsmWarningArguments>
+      <!-- The SDK's own stubs: the same warnings, always as errors (they are ours to keep clean). -->
+      <_AsmSdkSourceWarningArguments>-w+all -w-reloc-rel-dword -w-reloc-abs-qword -w+error</_AsmSdkSourceWarningArguments>
+      <_AsmObjectArguments>@(_AsmObject->'&quot;%(Identity)&quot;', ' ')</_AsmObjectArguments>
+      <_AsmLinkInputArguments>@(_AsmLinkInput->'&quot;%(ToolPath)&quot;', ' ')</_AsmLinkInputArguments>
+      <_AsmTargetPathArgument>&quot;$(TargetPath.Replace('\','/'))&quot;</_AsmTargetPathArgument>
+      <_AsmStubToolDirectory>$([System.IO.Path]::GetFullPath('$(AsmIntermediateDirectory)stubs/').Replace('\','/'))</_AsmStubToolDirectory>
+      <_AsmCrtArgument Condition="'$(_AsmUsesCrt)' == 'true'">&quot;$(_AsmStubToolDirectory)crt1.o&quot;</_AsmCrtArgument>
+      <!-- Libc: the stub comes last, after the libraries that need it; no-as-needed keeps
+           DT_NEEDED even when only a linked library, not the objects, calls into libc. -->
+      <_AsmLibcArguments Condition="'$(_AsmUsesLibcStub)' == 'true'">--no-as-needed &quot;$(_AsmStubToolDirectory)libc.so.6&quot;</_AsmLibcArguments>
+    </PropertyGroup>
+  </Target>
+
+  <!-- ===================================================================================== -->
+  <!-- Assemble                                                                               -->
+  <!-- ===================================================================================== -->
+
+  <!--
+    AsmAssemble: one NASM run per source (target batching on AsmSource). Each batch is skipped
+    when its object is newer than the source, every include file and the project file.
+  -->
+  <Target Name="AsmAssemble"
+          DependsOnTargets="AsmPrepare"
+          Inputs="@(AsmSource);@(_AsmDependency);$(MSBuildProjectFullPath)"
+          Outputs="%(AsmSource.ObjectFile)">
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('%(AsmSource.ObjectToolPath)'))" />
+    <Exec Command="$(_AsmNasm) -f $(AsmFormat) $(_AsmDebugArguments) $(_AsmWarningArguments) $(AsmFlags) $(_AsmIncludeArguments) $(_AsmDefineArguments) -o &quot;%(AsmSource.ObjectToolPath)&quot; &quot;%(AsmSource.SourceToolPath)&quot;"
+          WorkingDirectory="$(MSBuildProjectDirectory)" />
+    <ItemGroup>
+      <FileWrites Include="%(AsmSource.ObjectFile)" />
+    </ItemGroup>
+  </Target>
+
+  <!-- ===================================================================================== -->
+  <!-- Libc runtime support: the stub libc.so.6 and the hosted _start                         -->
+  <!-- ===================================================================================== -->
+
+  <!--
+    _AsmBuildLibcStub: builds obj/.../asm/stubs/libc.so.6 from the SDK's stubs/libc.asm (once,
+    then up to date). The stub defines the libc symbols as empty functions and carries SONAME
+    libc.so.6. Linking against it records DT_NEEDED libc.so.6 and lets the linker create the
+    PLT/GOT entries; at run time the real glibc supplies every symbol (unversioned references
+    bind to glibc's default symbol versions).
+    Symbols missing from the stub's list are added with AsmLibcSymbol items.
+  -->
+  <Target Name="_AsmBuildLibcStub"
+          Condition="'$(_AsmUsesLibcStub)' == 'true'"
+          DependsOnTargets="AsmPrepare"
+          Inputs="$(AsmFoundationSdkDirectory)stubs/libc.asm;$(MSBuildProjectFullPath)"
+          Outputs="$(AsmIntermediateDirectory)stubs/libc.so.6">
+    <PropertyGroup>
+      <_AsmExtraLibcSymbols>@(AsmLibcSymbol, ',')</_AsmExtraLibcSymbols>
+      <_AsmExtraLibcArgument Condition="'$(_AsmExtraLibcSymbols)' != ''">-dEXTRA_LIBC_SYMBOLS=$(_AsmExtraLibcSymbols)</_AsmExtraLibcArgument>
+    </PropertyGroup>
+    <MakeDir Directories="$(AsmIntermediateDirectory)stubs" />
+    <Exec Command="$(_AsmNasm) -f elf64 $(_AsmSdkSourceWarningArguments) $(_AsmExtraLibcArgument) -o &quot;$(_AsmStubToolDirectory)libc.o&quot; &quot;$(AsmFoundationSdkDirectory.Replace('\','/'))stubs/libc.asm&quot;" />
+    <Exec Command="$(_AsmLinker) -shared -soname libc.so.6 -o &quot;$(_AsmStubToolDirectory)libc.so.6&quot; &quot;$(_AsmStubToolDirectory)libc.o&quot;" />
+    <ItemGroup>
+      <FileWrites Include="$(AsmIntermediateDirectory)stubs/libc.o;$(AsmIntermediateDirectory)stubs/libc.so.6" />
+    </ItemGroup>
+  </Target>
+
+  <!--
+    _AsmBuildCrt: assembles the SDK's stubs/crt1.asm, the _start of a Libc executable. It calls
+    __libc_start_main(main, ...) exactly like glibc's crt1.o, so the program's entry is an
+    ordinary int main(int argc, char **argv). Skipped when AsmEntryPoint names another symbol:
+    the program then provides its own entry.
+  -->
+  <Target Name="_AsmBuildCrt"
+          Condition="'$(_AsmUsesCrt)' == 'true'"
+          DependsOnTargets="AsmPrepare"
+          Inputs="$(AsmFoundationSdkDirectory)stubs/crt1.asm"
+          Outputs="$(AsmIntermediateDirectory)stubs/crt1.o">
+    <MakeDir Directories="$(AsmIntermediateDirectory)stubs" />
+    <Exec Command="$(_AsmNasm) -f elf64 $(_AsmSdkSourceWarningArguments) -o &quot;$(_AsmStubToolDirectory)crt1.o&quot; &quot;$(AsmFoundationSdkDirectory.Replace('\','/'))stubs/crt1.asm&quot;" />
+    <ItemGroup>
+      <FileWrites Include="$(AsmIntermediateDirectory)stubs/crt1.o" />
+    </ItemGroup>
+  </Target>
+
+  <!-- ===================================================================================== -->
+  <!-- Link                                                                                   -->
+  <!-- ===================================================================================== -->
+
+  <!--
+    AsmLink: produces the project's output(s) from the objects. Skipped when every output is
+    newer than every object, link input and the project file.
+
+    Shared library: the code must be position-independent (NASM: "default rel", calls through
+    "wrt ..plt"); -z now + relro make the GOT read-only once loaded; the sha1 build id is
+    derived from the content, so identical inputs give identical outputs.
+    Executable: Freestanding links -static with the entry _start (or AsmEntryPoint); Libc
+    links a PIE with glibc's dynamic loader and the SDK's crt1.o in front.
+    Static library: llvm-ar "rcsD" = replace, create, write the symbol index the linker needs,
+    deterministic (zero timestamps and ids). The archive is deleted first because "r" would
+    keep members of objects that no longer exist.
+  -->
+  <Target Name="AsmLink"
+          Condition="'$(AsmOutputKind)' != 'Objects'"
+          DependsOnTargets="AsmAssemble;_AsmBuildLibcStub;_AsmBuildCrt"
+          Inputs="@(_AsmObject);@(_AsmLinkInput);$(MSBuildProjectFullPath)"
+          Outputs="$(TargetPath);$(AsmStaticLibraryPath)">
+    <PropertyGroup>
+      <_AsmCommonLinkArguments>-z noexecstack --build-id=sha1 $(AsmLinkFlags)</_AsmCommonLinkArguments>
+      <_AsmEntryArgument>-e $([MSBuild]::ValueOrDefault('$(AsmEntryPoint)', '_start'))</_AsmEntryArgument>
+    </PropertyGroup>
+
+    <MakeDir Directories="$(TargetDir)" />
+
+    <Exec Condition="'$(AsmOutputKind)' == 'SharedLibrary'"
+          Command="$(_AsmLinker) -shared -soname $(TargetFileName) -z relro -z now --hash-style=gnu -o $(_AsmTargetPathArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmLibcArguments) $(_AsmCommonLinkArguments)" />
+
+    <Exec Condition="'$(AsmOutputKind)' == 'Executable' and '$(AsmRuntime)' != 'Libc'"
+          Command="$(_AsmLinker) -static $(_AsmEntryArgument) -o $(_AsmTargetPathArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmCommonLinkArguments)" />
+
+    <Exec Condition="'$(AsmOutputKind)' == 'Executable' and '$(AsmRuntime)' == 'Libc'"
+          Command="$(_AsmLinker) -pie --dynamic-linker $(AsmDynamicLinker) -z relro -z now --hash-style=gnu $(_AsmEntryArgument) -o $(_AsmTargetPathArgument) $(_AsmCrtArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmLibcArguments) $(_AsmCommonLinkArguments)" />
+
+    <Delete Condition="'$(AsmStaticLibraryPath)' != ''" Files="$(AsmStaticLibraryPath)" />
+    <Exec Condition="'$(AsmStaticLibraryPath)' != ''"
+          Command="$(_AsmArchiver) rcsD &quot;$(AsmStaticLibraryPath.Replace('\','/'))&quot; $(_AsmObjectArguments)" />
+
+    <ItemGroup>
+      <FileWrites Include="$(TargetPath)" />
+      <FileWrites Include="$(AsmStaticLibraryPath)" Condition="'$(AsmStaticLibraryPath)' != ''" />
+    </ItemGroup>
+  </Target>
+
+  <!-- ===================================================================================== -->
+  <!-- Replacing the managed build steps                                                      -->
+  <!-- ===================================================================================== -->
+
+  <!-- The managed compiler step becomes assemble + link. -->
+  <Target Name="CoreCompile" DependsOnTargets="AsmAssemble;AsmLink" />
+
+  <!-- An unknown project extension gets no language targets, and the common targets call
+       this one unconditionally; there are no resources to name. -->
+  <Target Name="CreateManifestResourceNames" />
+
+  <!-- Outputs are written straight to the output folder by AsmLink; there is no managed
+       assembly in obj/ to copy. -->
+  <Target Name="CopyFilesToOutputDirectory" />
+</Project>

@@ -1,0 +1,10 @@
+<Solution>
+  <!-- .asmproj needs an explicit project type: the generic MSBuild ("Common Project System")
+       type, which Visual Studio and Rider load like any SDK-style project. -->
+  <Project Path="Hello.Library/Hello.Library.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+  <Project Path="Hello.Static/Hello.Static.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+  <Project Path="Hello.App/Hello.App.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+  <Project Path="Hello.Libc/Hello.Libc.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+  <Project Path="Hello.LibcLibrary/Hello.LibcLibrary.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+  <Project Path="Hello.Net/Hello.Net.csproj" />
+</Solution>

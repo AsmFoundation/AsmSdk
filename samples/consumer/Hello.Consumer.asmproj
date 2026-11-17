@@ -1,0 +1,15 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    Consumes Hello.Static as a NuGet package, by version, the way an asm library is meant to
+    be shared: the package's build/Hello.Static.props adds its include/ folder and its
+    native/linux-x64/libhellostatic.a to this project. Kept out of Samples.slnx because the
+    package must be packed (tests/run.py does it) before this project can restore.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AsmLibraryName>hello-consumer</AsmLibraryName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Hello.Static" Version="1.0.0" />
+  </ItemGroup>
+</Project>

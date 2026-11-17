@@ -1,0 +1,116 @@
+<Project>
+  <!--
+    AsmFoundation.Properties.targets - imported by Sdk.targets BEFORE Microsoft.NET.Sdk's targets.
+
+    Everything here must be decided before the managed SDK computes its own defaults from the
+    same properties: OutputType, TargetName and TargetFileName are read by
+    Microsoft.Common.CurrentVersion.targets with "only if empty" conditions, so values set here
+    win, and values set after that import would be too late.
+  -->
+
+  <!-- ===================================================================================== -->
+  <!-- Output kind                                                                            -->
+  <!-- ===================================================================================== -->
+  <PropertyGroup>
+    <!--
+      AsmOutputKind: what the project produces. Set it directly, or use the csproj-style
+      OutputType, which maps as follows:
+        Exe / WinExe   -> Executable     (an ELF executable, no extension)
+        Library        -> SharedLibrary  (lib<name>.so; the default, as for a .csproj)
+        StaticLibrary  -> StaticLibrary  (lib<name>.a)
+        Objects        -> Objects        (object files only, no link step)
+    -->
+    <AsmOutputKind Condition="'$(AsmOutputKind)' == '' and ('$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe')">Executable</AsmOutputKind>
+    <AsmOutputKind Condition="'$(AsmOutputKind)' == '' and '$(OutputType)' == 'StaticLibrary'">StaticLibrary</AsmOutputKind>
+    <AsmOutputKind Condition="'$(AsmOutputKind)' == '' and '$(OutputType)' == 'Objects'">Objects</AsmOutputKind>
+    <AsmOutputKind Condition="'$(AsmOutputKind)' == ''">SharedLibrary</AsmOutputKind>
+
+    <!--
+      Footgun avoided: the managed SDK must never see an executable. OutputType=Exe makes it
+      generate an apphost and a runtimeconfig.json for a managed entry point that does not
+      exist. The native kind is already captured in AsmOutputKind above.
+    -->
+    <OutputType>Library</OutputType>
+
+    <!-- Also archive the objects into lib<name>.a next to a shared library, for consumers
+         that link statically (GrpcAsm ships both). -->
+    <AsmProduceStaticLibrary Condition="'$(AsmProduceStaticLibrary)' == ''">false</AsmProduceStaticLibrary>
+
+    <!-- Base name of the output: lib<AsmLibraryName>.so / .a, or the executable's name. -->
+    <AsmLibraryName Condition="'$(AsmLibraryName)' == ''">$([MSBuild]::ValueOrDefault('$(AssemblyName)', '$(MSBuildProjectName)'))</AsmLibraryName>
+
+    <!-- Linux file names: libfoo.so, libfoo.a, foo. TargetFileName is set explicitly because
+         an empty TargetExt would otherwise be filled with ".dll" by the common targets. -->
+    <TargetName Condition="'$(TargetName)' == '' and ('$(AsmOutputKind)' == 'SharedLibrary' or '$(AsmOutputKind)' == 'StaticLibrary')">lib$(AsmLibraryName)</TargetName>
+    <TargetName Condition="'$(TargetName)' == ''">$(AsmLibraryName)</TargetName>
+    <TargetFileName Condition="'$(TargetFileName)' == '' and '$(AsmOutputKind)' == 'SharedLibrary'">$(TargetName).so</TargetFileName>
+    <TargetFileName Condition="'$(TargetFileName)' == '' and '$(AsmOutputKind)' == 'StaticLibrary'">$(TargetName).a</TargetFileName>
+    <TargetFileName Condition="'$(TargetFileName)' == ''">$(TargetName)</TargetFileName>
+
+    <!-- The machine the code runs on. Only linux-x64 (ELF64, System V ABI) exists today;
+         the property exists so that package layouts already carry the RID. -->
+    <AsmTargetRid Condition="'$(AsmTargetRid)' == ''">linux-x64</AsmTargetRid>
+    <AsmFormat Condition="'$(AsmFormat)' == ''">elf64</AsmFormat>
+
+    <!--
+      AsmRuntime: what the code links against.
+        Freestanding - nothing; the code makes its own system calls (the default: it needs no
+                       sysroot and links on any build machine).
+        Libc         - glibc, dynamically. The SDK links a generated stub that carries the
+                       SONAME libc.so.6, so the output gets DT_NEEDED libc.so.6 and resolves
+                       against the real glibc at run time, without a Linux sysroot at build
+                       time. An Executable then starts through the SDK's _start, which calls
+                       __libc_start_main(main) the way glibc's crt1.o does.
+    -->
+    <AsmRuntime Condition="'$(AsmRuntime)' == ''">Freestanding</AsmRuntime>
+
+    <!-- Debug information (DWARF in the objects) in Debug builds, none in Release. -->
+    <AsmDebugInfo Condition="'$(AsmDebugInfo)' == '' and '$(Configuration)' == 'Debug'">true</AsmDebugInfo>
+    <AsmDebugInfo Condition="'$(AsmDebugInfo)' == ''">false</AsmDebugInfo>
+
+    <!-- Preprocessor symbols for every source: DEBUG in Debug builds, like a .csproj. -->
+    <AsmDefineConstants Condition="'$(AsmDefineConstants)' == '' and '$(Configuration)' == 'Debug'">DEBUG</AsmDefineConstants>
+
+    <!-- Default items: every *.asm is a source and every *.inc a dependency, as in a .csproj
+         every *.cs is compiled. Set EnableDefaultAsmItems=false to list them yourself. -->
+    <EnableDefaultAsmItems Condition="'$(EnableDefaultAsmItems)' == ''">true</EnableDefaultAsmItems>
+  </PropertyGroup>
+
+  <!-- ===================================================================================== -->
+  <!-- Toolchain                                                                              -->
+  <!-- ===================================================================================== -->
+  <PropertyGroup>
+    <!--
+      AsmToolchain:
+        Bundled - NASM, ld.lld and llvm-ar from the AsmFoundation.Toolchain.<host> package,
+                  downloaded by restore (the default; nothing to install).
+        System  - nasm, ld and ar from PATH (GNU binutils syntax). Needed only for links that
+                  require a real Linux sysroot, such as a static glibc executable.
+    -->
+    <AsmToolchain Condition="'$(AsmToolchain)' == ''">Bundled</AsmToolchain>
+
+    <!-- The toolchain package version this SDK release was tested with (generated into the
+         package at pack time; see AsmFoundation.Sdk.Version.props). -->
+    <AsmToolchainVersion Condition="'$(AsmToolchainVersion)' == ''">$(AsmFoundationDefaultToolchainVersion)</AsmToolchainVersion>
+
+    <!--
+      The build machine's RID picks the toolchain package. NETCoreSdkRuntimeIdentifier is the
+      .NET SDK's own RID; distribution-built SDKs report it with a distro prefix
+      ("ubuntu.24.04-x64"), so it is normalized to the portable form here.
+    -->
+    <_AsmSdkRid>$(NETCoreSdkRuntimeIdentifier)</_AsmSdkRid>
+    <_AsmSdkArch Condition="'$(_AsmSdkRid)' != ''">$(_AsmSdkRid.Substring($([MSBuild]::Add($(_AsmSdkRid.LastIndexOf('-')), 1))))</_AsmSdkArch>
+    <AsmHostRid Condition="'$(AsmHostRid)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">win-$(_AsmSdkArch)</AsmHostRid>
+    <AsmHostRid Condition="'$(AsmHostRid)' == '' and $([MSBuild]::IsOSPlatform('OSX'))">osx-$(_AsmSdkArch)</AsmHostRid>
+    <AsmHostRid Condition="'$(AsmHostRid)' == ''">linux-$(_AsmSdkArch)</AsmHostRid>
+
+    <AsmToolchainPackageId>AsmFoundation.Toolchain.$(AsmHostRid)</AsmToolchainPackageId>
+    <_AsmExe Condition="$([MSBuild]::IsOSPlatform('Windows'))">.exe</_AsmExe>
+  </PropertyGroup>
+
+  <!-- Restore downloads the toolchain for this build machine. PackageDownload (not
+       PackageReference) because the tools are not a dependency of the project's output. -->
+  <ItemGroup Condition="'$(AsmToolchain)' == 'Bundled' and '$(AsmToolchainDirectory)' == '' and '$(AsmToolchainVersion)' != ''">
+    <PackageDownload Include="$(AsmToolchainPackageId)" Version="[$(AsmToolchainVersion)]" />
+  </ItemGroup>
+</Project>

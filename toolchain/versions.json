@@ -1,0 +1,34 @@
+{
+  "packageVersion": "0.1.0",
+  "nasm": {
+    "version": "3.02",
+    "sources": {
+      "url": "https://www.nasm.us/pub/nasm/releasebuilds/3.02/nasm-3.02.tar.xz",
+      "sha256": "87336eba53b4acfe917424ab5d500d2b0054d9f5148d35c2273ccf2cfb712f0d"
+    },
+    "win-x64": {
+      "url": "https://www.nasm.us/pub/nasm/releasebuilds/3.02/win64/nasm-3.02-win64.zip",
+      "sha256": "161d0bfaff53c2f9e9f3e69fd0672323ebabafd1268976a5cec11be92a19aee7"
+    }
+  },
+  "llvm": {
+    "version": "23.1.5",
+    "tools": ["lld", "llvm-ar", "llvm-readobj"],
+    "license": {
+      "url": "https://raw.githubusercontent.com/llvm/llvm-project/llvmorg-23.1.5/llvm/LICENSE.TXT",
+      "sha256": "8d85c1057d742e597985c7d4e6320b015a9139385cff4cbae06ffc0ebe89afee"
+    },
+    "win-x64": {
+      "url": "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.5/clang%2Bllvm-23.1.5-x86_64-pc-windows-msvc.tar.xz",
+      "sha256": "62fdada7f6fa2b73856486dfbbdba3d2c1882991621615bcb55c60207611c6d4"
+    },
+    "linux-x64": {
+      "url": "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.5/LLVM-23.1.5-Linux-X64.tar.xz",
+      "sha256": "f72edb0b36580ece7f52e23858f00c18fad4e87395ea7ad05d7e55c39f8fc78a"
+    },
+    "osx-arm64": {
+      "url": "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.5/LLVM-23.1.5-macOS-ARM64.tar.xz",
+      "sha256": "aba592b4a15e8f90c634c5367b51ec8418b8bcd2829865db331a17dc9418dcff"
+    }
+  }
+}

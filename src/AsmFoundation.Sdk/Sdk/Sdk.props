@@ -1,0 +1,68 @@
+<Project>
+  <!--
+    AsmFoundation.Sdk - Sdk.props.
+
+    Imported at the top of every project that says <Project Sdk="AsmFoundation.Sdk">, before
+    the project's own properties. It turns an .asmproj into a project that behaves like a
+    .csproj for everything MSBuild and NuGet already do well (restore, PackageReference,
+    ProjectReference, Version, dotnet pack), and switches off everything that assumes a managed
+    assembly. The assembling and linking themselves live in Sdk.targets, which runs after the
+    project body so that the project's settings are visible there.
+
+    Why ride on Microsoft.NET.Sdk instead of starting from Microsoft.Common.props: restore,
+    pack and the solution-level build orchestration are implemented there, and Microsoft's own
+    NoTargets SDK shows the pattern is stable across SDK versions. The cost is a handful of
+    managed-build switches that must be turned off below, each one documented.
+  -->
+
+  <PropertyGroup>
+    <!-- Lets packages and Directory.Build.* files detect an asm project. -->
+    <UsingAsmFoundationSdk>true</UsingAsmFoundationSdk>
+    <!-- Root of this SDK package (the folder that holds Sdk/, targets/ and stubs/). -->
+    <AsmFoundationSdkDirectory>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..'))</AsmFoundationSdkDirectory>
+
+    <!--
+      NuGet needs a target framework to restore a project. netstandard2.0 is the neutral
+      choice: every .NET project may reference it, so a .csproj can hold a ProjectReference to
+      an .asmproj, and a package built from an .asmproj lists its dependencies in a group any
+      consumer accepts. Nothing managed is ever compiled for it.
+    -->
+    <TargetFramework Condition="'$(TargetFramework)' == '' and '$(TargetFrameworks)' == ''">netstandard2.0</TargetFramework>
+
+    <!-- Item globs of the managed SDK (Compile, EmbeddedResource, None) are not wanted:
+         the asm items (AsmSource, AsmInclude) are declared by Sdk.targets instead. -->
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <!-- No NETStandard.Library reference, no reference assemblies, no assembly info. -->
+    <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
+    <AutomaticallyUseReferenceAssemblyPackages>false</AutomaticallyUseReferenceAssemblyPackages>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <GenerateRuntimeConfigurationFiles>false</GenerateRuntimeConfigurationFiles>
+    <UseAppHost>false</UseAppHost>
+    <!-- No PDB: NASM writes DWARF into the object files instead (Debug configuration). -->
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+
+    <!-- The managed build output does not exist; the native outputs are copied by the
+         targets in this SDK, and packed by its own pack step. -->
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <CopyBuildOutputToOutputDirectory>false</CopyBuildOutputToOutputDirectory>
+    <CopyOutputSymbolsToOutputDirectory>false</CopyOutputSymbolsToOutputDirectory>
+    <SkipCopyBuildProduct>true</SkipCopyBuildProduct>
+
+    <!-- Native outputs land in bin/<Configuration>/ without a framework folder: the
+         framework above is only there for NuGet and means nothing to the output. -->
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+
+    <!--
+      NU5128: "the package has a dependency group for netstandard2.0 but no lib/ folder".
+      True by design for a native package: its payload is include/, lib/linux-x64/ and
+      runtimes/, which NuGet's framework check does not know about.
+    -->
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+  </PropertyGroup>
+
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+</Project>

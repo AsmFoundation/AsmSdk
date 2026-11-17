@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Packs AsmFoundation.Toolchain.<ToolchainRid> from artifacts/toolchain/<rid>/tools/, which
+    toolchain/fetch.py stages. One package per build machine OS/architecture:
+        dotnet pack toolchain/AsmFoundation.Toolchain.csproj -p:ToolchainRid=win-x64
+    Every package produces the same output (Linux x86-64 ELF); the RID only says where the
+    tools themselves run. The SDK downloads the matching one with a PackageDownload.
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <ToolchainRid Condition="'$(ToolchainRid)' == ''">$(NETCoreSdkRuntimeIdentifier)</ToolchainRid>
+    <PackageId>AsmFoundation.Toolchain.$(ToolchainRid)</PackageId>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <!-- CS2008: nothing to compile (the package is files only). -->
+    <NoWarn>$(NoWarn);NU5128;NU5100;CS2008</NoWarn>
+    <!-- A build tool, not a dependency: never flows to consumers of a project that has it. -->
+    <DevelopmentDependency>true</DevelopmentDependency>
+    <PackageTags>assembly;nasm;lld;llvm;toolchain;asmproj</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <_ToolchainVersionsJson>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)versions.json'))</_ToolchainVersionsJson>
+    <!-- The toolchain's own version (versions.json "packageVersion"), not the SDK's. -->
+    <Version>$([System.Text.RegularExpressions.Regex]::Match($(_ToolchainVersionsJson), '"packageVersion"\s*:\s*"([^"]+)"').Result('$1'))</Version>
+    <_NasmVersion>$([System.Text.RegularExpressions.Regex]::Match($(_ToolchainVersionsJson), '"nasm"\s*:\s*\{\s*"version"\s*:\s*"([^"]+)"').Result('$1'))</_NasmVersion>
+    <_LlvmVersion>$([System.Text.RegularExpressions.Regex]::Match($(_ToolchainVersionsJson), '"llvm"\s*:\s*\{\s*"version"\s*:\s*"([^"]+)"').Result('$1'))</_LlvmVersion>
+    <Description>The assembler and linker AsmFoundation.Sdk runs on $(ToolchainRid) build machines: NASM $(_NasmVersion), plus ld.lld, llvm-ar and llvm-readobj from LLVM $(_LlvmVersion). Output is Linux x86-64 ELF. Downloaded automatically by AsmFoundation.Sdk; not meant to be referenced directly.</Description>
+    <!-- Three licenses apply (NASM BSD-2-Clause, LLVM Apache-2.0 WITH LLVM-exception, the
+         packaging Apache-2.0); an SPDX expression states them exactly. -->
+    <PackageLicenseExpression>BSD-2-Clause AND Apache-2.0 WITH LLVM-exception AND Apache-2.0</PackageLicenseExpression>
+    <_ToolsDirectory>$(MSBuildThisFileDirectory)../artifacts/toolchain/$(ToolchainRid)/tools/</_ToolsDirectory>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(_ToolsDirectory)**" Pack="true" PackagePath="tools/" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <!-- Fail with the fix instead of packing an empty toolchain. -->
+  <Target Name="CheckStagedTools" BeforeTargets="_GetPackageFiles;GenerateNuspec">
+    <Error Condition="!Exists('$(_ToolsDirectory)VERSIONS.txt')"
+           Text="No staged toolchain in $(_ToolsDirectory). Run: python toolchain/fetch.py --rid $(ToolchainRid)" />
+  </Target>
+</Project>

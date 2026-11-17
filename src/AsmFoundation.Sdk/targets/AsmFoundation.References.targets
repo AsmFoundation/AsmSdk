@@ -1,0 +1,93 @@
+<Project>
+  <!--
+    AsmFoundation.References.targets - how .asmproj projects reference each other, and how a
+    .csproj references an .asmproj. Imported after Microsoft.NET.Sdk's targets.
+
+    asmproj -> asmproj (ProjectReference): the referencing project gets the referenced
+      project's public include directories and links its static library (or its shared
+      library, or its objects) - see GetAsmLinkInputs.
+    csproj -> asmproj (ProjectReference): the asmproj is built first and its shared library is
+      copied next to the managed output, ready for P/Invoke - see GetCopyToOutputDirectoryItems.
+      No assembly reference is added (see GetTargetPathWithTargetPlatformMoniker).
+  -->
+
+  <PropertyGroup>
+    <!-- The folders a referencing project, or a package consumer, adds to its include path:
+         include/ when the project has one, the project folder otherwise. -->
+    <_AsmHasPublicIncludeFolder Condition="Exists('$(MSBuildProjectDirectory)/include')">true</_AsmHasPublicIncludeFolder>
+  </PropertyGroup>
+  <ItemGroup Condition="'@(AsmPublicIncludeDirectory)' == ''">
+    <AsmPublicIncludeDirectory Include="$(MSBuildProjectDirectory)/include/" Condition="'$(_AsmHasPublicIncludeFolder)' == 'true'" />
+    <AsmPublicIncludeDirectory Include="$(MSBuildProjectDirectory)/" Condition="'$(_AsmHasPublicIncludeFolder)' != 'true'" />
+  </ItemGroup>
+
+  <!--
+    GetTargetPathWithTargetPlatformMoniker: returns nothing. The common targets return this
+    item from Build and GetTargetPath, and a referencing .csproj would hand it to the assembly
+    resolver as a reference; a .so or .a is not an assembly and would raise MSB3246.
+  -->
+  <Target Name="GetTargetPathWithTargetPlatformMoniker" Returns="@(TargetPathWithTargetPlatformMoniker)" />
+
+  <!--
+    GetAsmLinkInputs: what a referencing asmproj needs from this one, as items with
+    AsmItemType metadata:
+      IncludeDirectory - each public include directory;
+      LinkInput        - the static library if one is produced (preferred: no run-time
+                         dependency), else the shared library, else the object files.
+    Called by _AsmResolveProjectReferences after ResolveProjectReferences has built us.
+  -->
+  <Target Name="GetAsmLinkInputs" DependsOnTargets="AsmPrepare" Returns="@(_AsmExportedLinkInput)">
+    <ItemGroup>
+      <_AsmExportedLinkInput Include="@(AsmPublicIncludeDirectory->'%(FullPath)')" AsmItemType="IncludeDirectory" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" />
+      <_AsmExportedLinkInput Include="$(AsmStaticLibraryPath)" Condition="'$(AsmStaticLibraryPath)' != ''" AsmItemType="LinkInput" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" />
+      <_AsmExportedLinkInput Include="$(AsmSharedLibraryPath)" Condition="'$(AsmStaticLibraryPath)' == '' and '$(AsmSharedLibraryPath)' != ''" AsmItemType="LinkInput" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" />
+      <_AsmExportedLinkInput Include="@(AsmSource->'%(ObjectFile)')" Condition="'$(AsmOutputKind)' == 'Objects'" AsmItemType="LinkInput" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" />
+    </ItemGroup>
+  </Target>
+
+  <!--
+    _AsmResolveProjectReferences: collects GetAsmLinkInputs from every referenced .asmproj and
+    adds them to this project's AsmIncludeDirectory and AsmLinkLibrary items. ProjectReference
+    items to anything else (for example a .csproj holding a generator) are left alone.
+  -->
+  <Target Name="_AsmResolveProjectReferences" DependsOnTargets="ResolveProjectReferences">
+    <ItemGroup>
+      <_AsmReferencedProject Include="@(_MSBuildProjectReferenceExistent)" Condition="'%(Extension)' == '.asmproj'" />
+    </ItemGroup>
+    <MSBuild Projects="@(_AsmReferencedProject)"
+             Targets="GetAsmLinkInputs"
+             BuildInParallel="$(BuildInParallel)"
+             Properties="%(_AsmReferencedProject.SetConfiguration);%(_AsmReferencedProject.SetPlatform);%(_AsmReferencedProject.SetTargetFramework)"
+             Condition="'@(_AsmReferencedProject)' != ''">
+      <Output TaskParameter="TargetOutputs" ItemName="_AsmReferencedOutput" />
+    </MSBuild>
+    <ItemGroup>
+      <AsmIncludeDirectory Include="@(_AsmReferencedOutput)" Condition="'%(_AsmReferencedOutput.AsmItemType)' == 'IncludeDirectory'" />
+      <AsmLinkLibrary Include="@(_AsmReferencedOutput)" Condition="'%(_AsmReferencedOutput.AsmItemType)' == 'LinkInput'" />
+    </ItemGroup>
+  </Target>
+
+  <!--
+    GetCopyToOutputDirectoryItems: the shared library, for a referencing .csproj to copy next to
+    its own output (so [DllImport("libfoo")] finds it). Replaces the common target, which would
+    look for managed content this project never has.
+  -->
+  <Target Name="GetCopyToOutputDirectoryItems" Returns="@(_AsmCopyToOutputItem)">
+    <ItemGroup>
+      <_AsmCopyToOutputItem Include="$(AsmSharedLibraryPath)" Condition="'$(AsmSharedLibraryPath)' != ''">
+        <TargetPath>$(TargetFileName)</TargetPath>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </_AsmCopyToOutputItem>
+    </ItemGroup>
+  </Target>
+
+  <!-- The same for dotnet publish of a referencing project. -->
+  <Target Name="GetCopyToPublishDirectoryItems" Returns="@(_AsmCopyToPublishItem)">
+    <ItemGroup>
+      <_AsmCopyToPublishItem Include="$(AsmSharedLibraryPath)" Condition="'$(AsmSharedLibraryPath)' != ''">
+        <TargetPath>$(TargetFileName)</TargetPath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </_AsmCopyToPublishItem>
+    </ItemGroup>
+  </Target>
+</Project>

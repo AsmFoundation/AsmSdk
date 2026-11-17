@@ -1,0 +1,24 @@
+<Project>
+  <!--
+    Shared settings for every project in this repository: the SDK package, the toolchain
+    packages and the test projects. Samples have their own Directory.Build.props (they consume
+    the SDK the way a user would, so they must not inherit these).
+  -->
+  <PropertyGroup>
+    <!-- Version of AsmFoundation.Sdk. The toolchain packages carry their own version, in
+         toolchain/versions.json, so that a new SDK release does not re-download ~100 MB of
+         unchanged tools. -->
+    <Version>0.1.0</Version>
+    <Authors>Eli Belash</Authors>
+    <Company>AsmFoundation</Company>
+    <Copyright>Copyright 2026 Eli Belash</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/AsmFoundation/AsmSdk</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/AsmFoundation/AsmSdk</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReleaseNotes>https://github.com/AsmFoundation/AsmSdk/blob/main/CHANGELOG.md</PackageReleaseNotes>
+    <!-- Packages go to one folder that the samples and tests use as a local feed. -->
+    <PackageOutputPath>$(MSBuildThisFileDirectory)artifacts/packages/</PackageOutputPath>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,68 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Packs AsmFoundation.Sdk, the MSBuild SDK behind <Project Sdk="AsmFoundation.Sdk">.
+    Nothing is compiled: the package is MSBuild files (Sdk/, targets/) and assembly stubs
+    (stubs/), plus a generated props file that records the toolchain version this SDK release
+    was tested with.
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <PackageId>AsmFoundation.Sdk</PackageId>
+    <!-- MSBuildSdk: NuGet's SDK resolver will load it for <Project Sdk="..."> and global.json
+         "msbuild-sdks"; it is never added as a dependency of anything. -->
+    <PackageType>MSBuildSdk</PackageType>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <!-- CS2008: nothing to compile (the package is MSBuild files and stubs). -->
+    <NoWarn>$(NoWarn);NU5128;CS2008</NoWarn>
+    <Description>MSBuild SDK for x86-64 assembly projects (.asmproj): NASM sources built into Linux shared libraries, static libraries and executables with dotnet build, consumed through PackageReference and ProjectReference, and packed with dotnet pack. Ships with a bundled NASM + LLVM toolchain, so no assembler or linker needs to be installed.</Description>
+    <PackageTags>assembly;nasm;asm;asmproj;msbuild;sdk;native;elf;x86-64;linux</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!--
+      The toolchain package version comes from toolchain/versions.json, the single source of
+      truth that the fetch script uses too. Read with a regular expression because MSBuild has
+      no JSON reader; the file's format is under this repository's control.
+    -->
+    <_ToolchainVersionsJson>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)../../toolchain/versions.json'))</_ToolchainVersionsJson>
+    <AsmToolchainPackageVersion>$([System.Text.RegularExpressions.Regex]::Match($(_ToolchainVersionsJson), '"packageVersion"\s*:\s*"([^"]+)"').Result('$1'))</AsmToolchainPackageVersion>
+    <_VersionPropsPath>$(IntermediateOutputPath)AsmFoundation.Sdk.Version.props</_VersionPropsPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="Sdk/Sdk.props;Sdk/Sdk.targets" Pack="true" PackagePath="Sdk/" />
+    <None Include="targets/*.targets" Pack="true" PackagePath="targets/" />
+    <None Include="stubs/*.asm" Pack="true" PackagePath="stubs/" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="../../LICENSE" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <!--
+    WriteVersionProps: generates Sdk/AsmFoundation.Sdk.Version.props for the package. Sdk.targets
+    imports it, so a project that names no AsmToolchainVersion gets the toolchain this SDK was
+    released and tested with.
+    Error SDK0001: versions.json has no packageVersion.
+  -->
+  <Target Name="WriteVersionProps" BeforeTargets="_GetPackageFiles;GenerateNuspec">
+    <Error Code="SDK0001" Condition="'$(AsmToolchainPackageVersion)' == ''" Text="toolchain/versions.json has no &quot;packageVersion&quot;." />
+    <PropertyGroup>
+      <_VersionProps><![CDATA[<Project>
+  <!-- Generated when AsmFoundation.Sdk $(PackageVersion) was packed. -->
+  <PropertyGroup>
+    <AsmFoundationSdkVersion>$(PackageVersion)</AsmFoundationSdkVersion>
+    <AsmFoundationDefaultToolchainVersion>$(AsmToolchainPackageVersion)</AsmFoundationDefaultToolchainVersion>
+  </PropertyGroup>
+</Project>
+]]></_VersionProps>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(_VersionPropsPath)" Lines="$(_VersionProps)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <None Include="$(_VersionPropsPath)" Pack="true" PackagePath="Sdk/AsmFoundation.Sdk.Version.props" />
+      <FileWrites Include="$(_VersionPropsPath)" />
+    </ItemGroup>
+  </Target>
+</Project>

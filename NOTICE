@@ -1,0 +1,8 @@
+AsmSdk (AsmFoundation.Sdk)
+Copyright 2026 Eli Belash
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The AsmFoundation.Toolchain packages built from this repository redistribute
+NASM (BSD-2-Clause) and LLVM tools (Apache-2.0 WITH LLVM-exception); see
+THIRD_PARTY_NOTICES.md.

@@ -1,0 +1,19 @@
+<Project>
+  <!--
+    AsmFoundation.Sdk - Sdk.targets.
+
+    Imported at the bottom of every .asmproj, after the project's own properties and items.
+    Order matters:
+      1. Properties.targets decides the output kind, file names and toolchain BEFORE the
+         managed SDK fills in its defaults for the same properties.
+      2. Microsoft.NET.Sdk's targets (restore, pack, references, Build orchestration).
+      3. Build / References / Pack targets of this SDK, which replace managed targets of the
+         same name (MSBuild keeps the last definition).
+  -->
+  <Import Project="$(AsmFoundationSdkDirectory)Sdk/AsmFoundation.Sdk.Version.props" Condition="Exists('$(AsmFoundationSdkDirectory)Sdk/AsmFoundation.Sdk.Version.props')" />
+  <Import Project="$(AsmFoundationSdkDirectory)targets/AsmFoundation.Properties.targets" />
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+  <Import Project="$(AsmFoundationSdkDirectory)targets/AsmFoundation.Build.targets" />
+  <Import Project="$(AsmFoundationSdkDirectory)targets/AsmFoundation.References.targets" />
+  <Import Project="$(AsmFoundationSdkDirectory)targets/AsmFoundation.Pack.targets" />
+</Project>
