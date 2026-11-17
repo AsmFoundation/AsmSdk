@@ -155,6 +155,7 @@ def stage_nasm(rid: str, pins: dict, cache: Path, tools: Path) -> None:
         shutil.copy2(source / "nasm", tools / "nasm")
         shutil.copy2(source / "LICENSE", tools / "LICENSE.nasm.txt")
     make_executable(tools / "nasm")
+    strip_symbols(rid, tools / "nasm")
 
 
 def stage_llvm(rid: str, pins: dict, cache: Path, tools: Path) -> None:
@@ -203,8 +204,30 @@ def stage_llvm(rid: str, pins: dict, cache: Path, tools: Path) -> None:
         target = tools / name
         target.write_bytes(found[source])
         make_executable(target)
+        strip_symbols(rid, target)
     license_file = download(pins["license"]["url"], pins["license"]["sha256"], cache)
     shutil.copy2(license_file, tools / "LICENSE.llvm.txt")
+
+
+def strip_symbols(rid: str, path: Path) -> None:
+    """Remove symbol tables and debug information from a Linux executable, when possible.
+
+    The official LLVM Linux binaries keep their symbol tables (19 MB of lld's 203 MB) and the
+    static NASM build keeps its DWARF; neither is needed to run the tool. Only linux-x64 is
+    stripped, and only on Linux with binutils' strip available: a Mach-O binary must not be
+    stripped here, because stripping invalidates its code signature and Apple silicon refuses
+    to run an unsigned binary; Windows PE files carry no symbols (they live in PDBs).
+
+    Args:
+        rid: RID being staged.
+        path: Executable to strip in place.
+
+    Raises:
+        subprocess.CalledProcessError: If strip fails on a file it should handle.
+    """
+    if rid != "linux-x64" or sys.platform != "linux" or shutil.which("strip") is None:
+        return
+    subprocess.run(["strip", "--strip-all", str(path)], check=True)
 
 
 def main() -> int:

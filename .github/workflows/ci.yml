@@ -1,13 +1,16 @@
-# CI - builds the bundled toolchain on each build-machine OS, then packs AsmFoundation.Sdk and
-# runs tests/run.py on Windows, Linux and macOS.
+# CI - on each build-machine OS: stage that OS's bundled toolchain, pack AsmFoundation.Sdk and
+# its toolchain package, and run tests/run.py.
 #
-#   toolchain  one job per RID: toolchain/fetch.py stages NASM + LLVM tools. NASM is built from
-#              source on Linux (static) and macOS (native arm64), which is why each RID needs its
-#              own OS. The staged folder (~100 MB) is cached by the hash of the pins and the
-#              script, so the 0.9-2 GB LLVM archives are only downloaded when a pin changes.
-#   test       every OS builds the samples with ITS OWN toolchain package and checks the ELF
-#              outputs with the bundled llvm-readobj; Ubuntu also runs the executables and the
-#              .NET sample that P/Invokes the shared libraries.
+# One job per OS, independent of the others: a slow runner of one OS (hosted macOS runners can
+# queue for many minutes) does not hold up the results of the other two. Each job:
+#   1. toolchain/fetch.py stages NASM + LLVM tools for its RID. NASM is built from source on
+#      Linux (static) and macOS (native arm64), which is why each RID needs its own OS. The
+#      staged folder is cached by the hash of the pins and the script, so the 0.9-2 GB LLVM
+#      archives are only downloaded when a pin changes.
+#   2. tests/run.py packs the SDK and that toolchain, builds the samples with them and checks
+#      the ELF outputs with the bundled llvm-readobj; on Ubuntu it also runs the executables
+#      and the .NET sample that P/Invokes the shared libraries.
+#   3. The staged toolchain is kept as an artifact: release.yml packs all three from it.
 #
 # Also called by release.yml, so a release is tested exactly like a push.
 name: CI
@@ -27,18 +30,22 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  toolchain:
-    name: Toolchain ${{ matrix.rid }}
+  build:
+    name: ${{ matrix.rid }}
     strategy:
       fail-fast: false
       matrix:
         include:
+          # Only Linux can run the Linux outputs; the others build and inspect them.
           - rid: win-x64
             os: windows-2025
+            run: none
           - rid: linux-x64
             os: ubuntu-24.04
+            run: native
           - rid: osx-arm64
             os: macos-15
+            run: none
     runs-on: ${{ matrix.os }}
     steps:
       - name: Check out
@@ -50,6 +57,11 @@ jobs:
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
+
+      - name: .NET SDK
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: "10.0.x"
 
       # The staged tools are a pure function of the pins and the script.
       - name: Cache the staged toolchain
@@ -69,70 +81,14 @@ jobs:
           ls -l artifacts/toolchain/${{ matrix.rid }}/tools
           cat artifacts/toolchain/${{ matrix.rid }}/tools/VERSIONS.txt
 
-      - name: Keep the staged tools for the test jobs
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: toolchain-${{ matrix.rid }}
-          path: artifacts/toolchain/${{ matrix.rid }}
-          if-no-files-found: error
-          retention-days: 7
-
-  test:
-    name: Test on ${{ matrix.os }}
-    needs: toolchain
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Only Linux can run the Linux outputs; the others build and inspect them.
-          - os: ubuntu-24.04
-            run: native
-          - os: windows-2025
-            run: none
-          - os: macos-15
-            run: none
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Check out
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: .NET SDK
-        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
-        with:
-          dotnet-version: "10.0.x"
-
-      - name: Python
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: "3.12"
-
-      # Every RID's tools: the test packs all three toolchain packages, as a release does.
-      - name: Fetch the staged toolchains
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          pattern: toolchain-*
-          path: artifacts/staged
-
-      # download-artifact puts each artifact in a folder named after it; the packing project
-      # expects artifacts/toolchain/<rid>/tools.
-      - name: Arrange the toolchains by RID
-        shell: bash
-        run: |
-          mkdir -p artifacts/toolchain
-          for d in artifacts/staged/toolchain-*; do mv "$d" "artifacts/toolchain/${d##*/toolchain-}"; done
-          ls artifacts/toolchain/*/tools/VERSIONS.txt
-
       - name: Pack the SDK, build the samples, check every output
         shell: bash
         run: python tests/run.py --run ${{ matrix.run }} --dotnet-run ${{ matrix.run }}
 
-      - name: Keep the packages
-        if: matrix.os == 'ubuntu-24.04'
+      - name: Keep the staged toolchain for the release
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: packages
-          path: artifacts/packages/AsmFoundation.*.nupkg
+          name: toolchain-${{ matrix.rid }}
+          path: artifacts/toolchain/${{ matrix.rid }}
           if-no-files-found: error
           retention-days: 7
