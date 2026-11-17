@@ -213,7 +213,9 @@ def main() -> int:
 
     # 5. Incremental builds.
     result = dotnet(["build", "samples/Samples.slnx", "-c", "Release", "-v:n"], env)
-    tool_runs = len(re.findall(r'(nasm|lld|llvm-ar)(\.exe)?"', result.stdout))
+    # Count tool invocations only (assemble, link, archive): on Linux and macOS the SDK also
+    # runs "chmod +x" on the same tool paths before each build, which is not a tool run.
+    tool_runs = len(re.findall(r'(nasm(\.exe)?" -f|lld(\.exe)?" -flavor|llvm-ar(\.exe)?" rcs)', result.stdout))
     check("a rebuild without changes runs no tool", result.returncode == 0 and tool_runs == 0, f"{tool_runs} tool runs")
     (SAMPLES / "Hello.Static/include/hello_static.inc").touch()
     result = dotnet(["build", "samples/Samples.slnx", "-c", "Release", "-v:n"], env)
