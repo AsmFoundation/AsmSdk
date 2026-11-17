@@ -17,7 +17,7 @@
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <!-- CS2008: nothing to compile (the package is MSBuild files and stubs). -->
     <NoWarn>$(NoWarn);NU5128;CS2008</NoWarn>
-    <Description>MSBuild SDK for x86-64 assembly projects (.asmproj): NASM sources built into Linux shared libraries, static libraries and executables with dotnet build, consumed through PackageReference and ProjectReference, and packed with dotnet pack. Ships with a bundled NASM + LLVM toolchain, so no assembler or linker needs to be installed.</Description>
+    <Description>Enterprise-grade project, dependency and build management for x86-64 assembly, on MSBuild and NuGet. The SDK behind .asmproj projects: NASM sources built into Linux shared libraries, static libraries and executables with dotnet build, consumed through PackageReference and ProjectReference, and packed with dotnet pack. Ships with a bundled NASM + LLVM toolchain, so no assembler or linker needs to be installed.</Description>
     <PackageTags>assembly;nasm;asm;asmproj;msbuild;sdk;native;elf;x86-64;linux</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>

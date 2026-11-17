@@ -1,7 +1,10 @@
 # AsmFoundation.Sdk
 
-An MSBuild SDK for x86-64 assembly. An `.asmproj` sits in a solution next to
-`.csproj` projects and builds with `dotnet build`:
+**Enterprise-grade project, dependency and build management for x86-64
+assembly, on MSBuild and NuGet.**
+
+An `.asmproj` sits in a solution next to `.csproj` projects and builds with
+`dotnet build`:
 
 - NASM sources become a Linux **shared library** (`.so`), **static library**
   (`.a`) or **executable**.
