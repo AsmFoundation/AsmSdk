@@ -30,7 +30,9 @@
     -->
     <_ToolchainVersionsJson>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)../../toolchain/versions.json'))</_ToolchainVersionsJson>
     <AsmToolchainPackageVersion>$([System.Text.RegularExpressions.Regex]::Match($(_ToolchainVersionsJson), '"packageVersion"\s*:\s*"([^"]+)"').Result('$1'))</AsmToolchainPackageVersion>
-    <_VersionPropsPath>$(IntermediateOutputPath)AsmFoundation.Sdk.Version.props</_VersionPropsPath>
+    <!-- BaseIntermediateOutputPath (obj/), not IntermediateOutputPath: the latter is only defined
+         by the common targets, after this project body, and would be empty here. -->
+    <_VersionPropsPath>$(BaseIntermediateOutputPath)AsmFoundation.Sdk.Version.props</_VersionPropsPath>
   </PropertyGroup>
 
   <ItemGroup>

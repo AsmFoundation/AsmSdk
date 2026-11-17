@@ -1,7 +1,0 @@
-<Project>
-  <!-- Generated when AsmFoundation.Sdk 0.1.0 was packed. -->
-  <PropertyGroup>
-    <AsmFoundationSdkVersion>0.1.0</AsmFoundationSdkVersion>
-    <AsmFoundationDefaultToolchainVersion>0.1.0</AsmFoundationDefaultToolchainVersion>
-  </PropertyGroup>
-</Project>
