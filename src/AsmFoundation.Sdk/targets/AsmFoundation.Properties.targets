@@ -32,8 +32,9 @@
     -->
     <OutputType>Library</OutputType>
 
-    <!-- Also archive the objects into lib<name>.a next to a shared library, for consumers
-         that link statically (GrpcAsm ships both). -->
+    <!-- Also archive the objects into lib<name>.a next to a shared library, for a library
+         that ships both: programs that load it (P/Invoke, dlopen) take the .so, and
+         assembly consumers that link statically take the .a. -->
     <AsmProduceStaticLibrary Condition="'$(AsmProduceStaticLibrary)' == ''">false</AsmProduceStaticLibrary>
 
     <!-- Base name of the output: lib<AsmLibraryName>.so / .a, or the executable's name. -->
