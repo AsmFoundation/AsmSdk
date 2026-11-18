@@ -3,32 +3,130 @@
     AsmFoundation.Properties.targets - imported by Sdk.targets BEFORE Microsoft.NET.Sdk's targets.
 
     Everything here must be decided before the managed SDK computes its own defaults from the
-    same properties: OutputType, TargetName and TargetFileName are read by
-    Microsoft.Common.CurrentVersion.targets with "only if empty" conditions, so values set here
-    win, and values set after that import would be too late.
+    same properties: TargetFramework, OutputType, TargetName and TargetFileName are read by
+    Microsoft.NET.Sdk.targets and Microsoft.Common.CurrentVersion.targets with "only if empty"
+    conditions, so values set here win, and values set after that import would be too late.
+
+    An .asmproj is configured with the properties a .csproj uses. AsmSdk adds names of its own
+    only where .NET has no counterpart (the toolchain, packing, AsmProduceStaticLibrary):
+      TargetFramework(s)  freestanding | libc: what the code links against (see below)
+      OutputType          Exe | Library | StaticLibrary | Objects
+      AssemblyName        base name of the output: lib<name>.so, lib<name>.a or <name>
+      DefineConstants     NASM -D symbols; DEBUG or RELEASE, and FREESTANDING or LIBC, added
+      DebugSymbols        DWARF in the objects and the output; DebugType=none turns it off
+      StartupObject       the executable's entry symbol
+      LinkerArg items, ExportsFile
+                          extra linker arguments and the version script (NativeAOT's names)
+
+    One pattern recurs below, "capture, then hide": the SDK copies the project's value into an
+    internal _Asm* property, then gives the managed SDK the value that keeps it out of the way.
+    Left alone, the managed SDK would act on these properties: OutputType=Exe builds an apphost,
+    DebugType=portable promises a PDB that nothing writes, and its implicit defines would hand
+    NASM -DNETSTANDARD2_0. Footgun: a target of your own that reads OutputType, DebugType or
+    DebugSymbols after this file sees the hidden values, not yours.
   -->
 
   <!-- ===================================================================================== -->
-  <!-- Output kind                                                                            -->
+  <!-- Target framework: freestanding or libc                                                 -->
   <!-- ===================================================================================== -->
   <PropertyGroup>
     <!--
-      AsmOutputKind: what the project produces. Set it directly, or use the csproj-style
-      OutputType, which maps as follows:
+      TargetFramework names what the code is built to run on, the way net10.0 names .NET 10:
+        freestanding - the code makes its own system calls and links no C library: a static
+                       executable entered at _start, or a shared library with no DT_NEEDED.
+                       It runs on any x86-64 Linux kernel. The default.
+        libc         - the code links the C library: a position-independent executable that
+                       the SDK's crt1 enters at main, or a shared library with DT_NEEDED
+                       libc.so.6. It needs glibc 2.34 or later where it runs.
+      TargetFrameworks="freestanding;libc" builds the project once per name, into
+      bin/<Configuration>/<name>/, exactly like a multi-targeted .csproj.
+
+      Why the default is set here and not in Sdk.props: a TargetFramework set before the
+      project body would turn the project's own TargetFrameworks into a single-target build,
+      because Microsoft.NET.Sdk multi-targets only when TargetFramework is empty (it decides
+      IsCrossTargetingBuild in its Sdk.targets, which is imported after this file).
+    -->
+    <TargetFramework Condition="'$(TargetFramework)' == '' and '$(TargetFrameworks)' == ''">freestanding</TargetFramework>
+  </PropertyGroup>
+
+  <!--
+    The language targets of the outer build of a multi-targeted .asmproj. Microsoft.NET.Sdk's
+    Sdk.targets picks LanguageTargets by project extension: a .csproj gets
+    Microsoft.CSharp.targets, which switches to its cross-targeting variant in the outer build
+    (TargetFrameworks set, TargetFramework empty). Any other extension falls back to
+    Microsoft.Common.targets, even in the outer build, which then runs the single-target common
+    targets and fails: "Non-CrossTargeting GetTargetFrameworks target should not be used in
+    cross targeting (outer) build", plus MSB3644 for .NETFramework v4.0 (measured with SDK
+    11.0.100). The outer build of an .asmproj therefore gets MSBuild's own cross-targeting
+    targets, the ones the C# variant imports. Inner builds keep the fallback. Set here because
+    Microsoft.NET.Sdk reads LanguageTargets only when it is still empty.
+  -->
+  <PropertyGroup Condition="'$(LanguageTargets)' == '' and '$(TargetFrameworks)' != '' and '$(TargetFramework)' == ''">
+    <LanguageTargets>$(MSBuildToolsPath)\Microsoft.Common.CrossTargeting.targets</LanguageTargets>
+  </PropertyGroup>
+
+  <!--
+    Each name is an alias for a real NuGet framework. Restore, pack and project references
+    compare the real frameworks, and two rules decided the mapping (measured with .NET SDK
+    11.0.100):
+      - The names must map to DIFFERENT frameworks. With one framework behind both, pack
+        fails with NU5051 and a .csproj that references the project fails with NU1201.
+      - NuGet's compatibility must say what the linker can do: a libc program can link
+        freestanding code, but freestanding code cannot link libc code. netstandard1.0 sits
+        below netstandard2.0, so freestanding maps to netstandard1.0 and libc to
+        netstandard2.0. Then a libc project may reference a freestanding one; a freestanding
+        project that references a libc-only one fails at restore with NU1201; and a .NET
+        project gets the libc build of a project that targets both (its nearest framework).
+    Every .NET implementation accepts both frameworks, so any .csproj can reference any
+    .asmproj. Microsoft.NET.Sdk honors a TargetFrameworkIdentifier and TargetFrameworkVersion
+    that are already set, so it never tries to parse the alias itself.
+    MSBuild compares strings without case, so "Libc" selects libc too.
+  -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'freestanding'">
+    <_AsmRuntime>Freestanding</_AsmRuntime>
+    <TargetFrameworkIdentifier>.NETStandard</TargetFrameworkIdentifier>
+    <TargetFrameworkVersion>v1.0</TargetFrameworkVersion>
+    <!-- The folder name NuGet gives that framework: build/<it>/ and lib/<it>/ in a package. -->
+    <_AsmNuGetFramework>netstandard1.0</_AsmNuGetFramework>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(TargetFramework)' == 'libc'">
+    <_AsmRuntime>Libc</_AsmRuntime>
+    <TargetFrameworkIdentifier>.NETStandard</TargetFrameworkIdentifier>
+    <TargetFrameworkVersion>v2.0</TargetFrameworkVersion>
+    <_AsmNuGetFramework>netstandard2.0</_AsmNuGetFramework>
+  </PropertyGroup>
+  <PropertyGroup>
+    <!-- The alias as package folders spell it (native/linux-x64/<it>/), lower case like the
+         bin/ and obj/ folders that Microsoft.NET.Sdk names after TargetFramework. -->
+    <_AsmTargetFrameworkName>$(TargetFramework.ToLowerInvariant())</_AsmTargetFrameworkName>
+    <!-- Microsoft.NET.Sdk warns that netstandard1.x is not recommended (TargetFrameworkIsNotRecommended).
+         Nothing managed is built for it: it only stands for freestanding in NuGet's eyes. -->
+    <CheckNotRecommendedTargetFramework Condition="'$(CheckNotRecommendedTargetFramework)' == ''">false</CheckNotRecommendedTargetFramework>
+  </PropertyGroup>
+
+  <!-- ===================================================================================== -->
+  <!-- Output kind and file names                                                             -->
+  <!-- ===================================================================================== -->
+  <PropertyGroup>
+    <!--
+      _AsmOutputKind: what the project produces, from OutputType (internal: projects set
+      OutputType, as in a .csproj).
         Exe / WinExe   -> Executable     (an ELF executable, no extension)
         Library        -> SharedLibrary  (lib<name>.so; the default, as for a .csproj)
         StaticLibrary  -> StaticLibrary  (lib<name>.a)
         Objects        -> Objects        (object files only, no link step)
+      Any other value builds a shared library, as Library does.
     -->
-    <AsmOutputKind Condition="'$(AsmOutputKind)' == '' and ('$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe')">Executable</AsmOutputKind>
-    <AsmOutputKind Condition="'$(AsmOutputKind)' == '' and '$(OutputType)' == 'StaticLibrary'">StaticLibrary</AsmOutputKind>
-    <AsmOutputKind Condition="'$(AsmOutputKind)' == '' and '$(OutputType)' == 'Objects'">Objects</AsmOutputKind>
-    <AsmOutputKind Condition="'$(AsmOutputKind)' == ''">SharedLibrary</AsmOutputKind>
+    <_AsmOutputKind Condition="'$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe'">Executable</_AsmOutputKind>
+    <_AsmOutputKind Condition="'$(OutputType)' == 'StaticLibrary'">StaticLibrary</_AsmOutputKind>
+    <_AsmOutputKind Condition="'$(OutputType)' == 'Objects'">Objects</_AsmOutputKind>
+    <_AsmOutputKind Condition="'$(_AsmOutputKind)' == ''">SharedLibrary</_AsmOutputKind>
 
     <!--
-      Footgun avoided: the managed SDK must never see an executable. OutputType=Exe makes it
+      Hidden from the managed SDK: it must never see an executable. OutputType=Exe makes it
       generate an apphost and a runtimeconfig.json for a managed entry point that does not
-      exist. The native kind is already captured in AsmOutputKind above.
+      exist, and StaticLibrary and Objects are not managed output types at all. The kind is
+      already captured in _AsmOutputKind above.
     -->
     <OutputType>Library</OutputType>
 
@@ -37,15 +135,17 @@
          assembly consumers that link statically take the .a. -->
     <AsmProduceStaticLibrary Condition="'$(AsmProduceStaticLibrary)' == ''">false</AsmProduceStaticLibrary>
 
-    <!-- Base name of the output: lib<AsmLibraryName>.so / .a, or the executable's name. -->
-    <AsmLibraryName Condition="'$(AsmLibraryName)' == ''">$([MSBuild]::ValueOrDefault('$(AssemblyName)', '$(MSBuildProjectName)'))</AsmLibraryName>
-
-    <!-- Linux file names: libfoo.so, libfoo.a, foo. TargetFileName is set explicitly because
-         an empty TargetExt would otherwise be filled with ".dll" by the common targets. -->
-    <TargetName Condition="'$(TargetName)' == '' and ('$(AsmOutputKind)' == 'SharedLibrary' or '$(AsmOutputKind)' == 'StaticLibrary')">lib$(AsmLibraryName)</TargetName>
-    <TargetName Condition="'$(TargetName)' == ''">$(AsmLibraryName)</TargetName>
-    <TargetFileName Condition="'$(TargetFileName)' == '' and '$(AsmOutputKind)' == 'SharedLibrary'">$(TargetName).so</TargetFileName>
-    <TargetFileName Condition="'$(TargetFileName)' == '' and '$(AsmOutputKind)' == 'StaticLibrary'">$(TargetName).a</TargetFileName>
+    <!--
+      Linux file names: libfoo.so, libfoo.a and foo, from AssemblyName, the way a .csproj
+      names foo.dll after it. Microsoft.NET.Sdk.props has already defaulted AssemblyName to
+      the project name. Libraries get the lib prefix because that is what both "-lfoo" and
+      .NET's [DllImport("foo")] look for on Linux. TargetFileName is set explicitly because
+      an empty TargetExt would otherwise be filled with ".dll" by the common targets.
+    -->
+    <TargetName Condition="'$(TargetName)' == '' and ('$(_AsmOutputKind)' == 'SharedLibrary' or '$(_AsmOutputKind)' == 'StaticLibrary')">lib$(AssemblyName)</TargetName>
+    <TargetName Condition="'$(TargetName)' == ''">$(AssemblyName)</TargetName>
+    <TargetFileName Condition="'$(TargetFileName)' == '' and '$(_AsmOutputKind)' == 'SharedLibrary'">$(TargetName).so</TargetFileName>
+    <TargetFileName Condition="'$(TargetFileName)' == '' and '$(_AsmOutputKind)' == 'StaticLibrary'">$(TargetName).a</TargetFileName>
     <TargetFileName Condition="'$(TargetFileName)' == ''">$(TargetName)</TargetFileName>
 
     <!-- The machine the code runs on. Only linux-x64 (ELF64, System V ABI) exists today;
@@ -53,28 +153,64 @@
     <AsmTargetRid Condition="'$(AsmTargetRid)' == ''">linux-x64</AsmTargetRid>
     <AsmFormat Condition="'$(AsmFormat)' == ''">elf64</AsmFormat>
 
-    <!--
-      AsmRuntime: what the code links against.
-        Freestanding - nothing; the code makes its own system calls (the default: it needs no
-                       sysroot and links on any build machine).
-        Libc         - glibc, dynamically. The SDK links a generated stub that carries the
-                       SONAME libc.so.6, so the output gets DT_NEEDED libc.so.6 and resolves
-                       against the real glibc at run time, without a Linux sysroot at build
-                       time. An Executable then starts through the SDK's _start, which calls
-                       __libc_start_main(main) the way glibc's crt1.o does.
-    -->
-    <AsmRuntime Condition="'$(AsmRuntime)' == ''">Freestanding</AsmRuntime>
-
-    <!-- Debug information (DWARF in the objects) in Debug builds, none in Release. -->
-    <AsmDebugInfo Condition="'$(AsmDebugInfo)' == '' and '$(Configuration)' == 'Debug'">true</AsmDebugInfo>
-    <AsmDebugInfo Condition="'$(AsmDebugInfo)' == ''">false</AsmDebugInfo>
-
-    <!-- Preprocessor symbols for every source: DEBUG in Debug builds, like a .csproj. -->
-    <AsmDefineConstants Condition="'$(AsmDefineConstants)' == '' and '$(Configuration)' == 'Debug'">DEBUG</AsmDefineConstants>
-
     <!-- Default items: every *.asm is a source and every *.inc a dependency, as in a .csproj
          every *.cs is compiled. Set EnableDefaultAsmItems=false to list them yourself. -->
     <EnableDefaultAsmItems Condition="'$(EnableDefaultAsmItems)' == ''">true</EnableDefaultAsmItems>
+  </PropertyGroup>
+
+  <!-- ===================================================================================== -->
+  <!-- Preprocessor symbols: DefineConstants                                                  -->
+  <!-- ===================================================================================== -->
+
+  <!--
+    The configuration symbol, composed exactly as Microsoft.NET.Sdk.CSharp.targets composes
+    C#'s: the configuration name in upper case (DEBUG, RELEASE), with "-", "." and " " made
+    "_", appended AFTER the project body. So <DefineConstants>FOO</DefineConstants> keeps
+    DEBUG, and DisableImplicitConfigurationDefines=true drops it, as in a .csproj. C#'s TRACE
+    is not added: it means nothing to assembly code.
+  -->
+  <PropertyGroup Condition="'$(DisableImplicitConfigurationDefines)' != 'true'">
+    <ImplicitConfigurationDefine>$(Configuration.ToUpperInvariant())</ImplicitConfigurationDefine>
+    <ImplicitConfigurationDefine>$(ImplicitConfigurationDefine.Replace('-', '_'))</ImplicitConfigurationDefine>
+    <ImplicitConfigurationDefine>$(ImplicitConfigurationDefine.Replace('.', '_'))</ImplicitConfigurationDefine>
+    <ImplicitConfigurationDefine>$(ImplicitConfigurationDefine.Replace(' ', '_'))</ImplicitConfigurationDefine>
+    <DefineConstants>$(DefineConstants);$(ImplicitConfigurationDefine)</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!--
+      The target framework symbol, FREESTANDING or LIBC, the counterpart of the NET10_0 or
+      NETSTANDARD2_0 that a .csproj gets: one source can serve both frameworks with
+      %ifdef LIBC. DisableImplicitFrameworkDefines=true turns it off, as in .NET.
+    -->
+    <_AsmImplicitFrameworkDefine Condition="'$(DisableImplicitFrameworkDefines)' != 'true' and '$(_AsmRuntime)' != ''">$(TargetFramework.ToUpperInvariant())</_AsmImplicitFrameworkDefine>
+    <DefineConstants Condition="'$(_AsmImplicitFrameworkDefine)' != ''">$(DefineConstants);$(_AsmImplicitFrameworkDefine)</DefineConstants>
+
+    <!-- Hidden from the managed SDK: its AddImplicitDefineConstants target would append
+         NETSTANDARD;NETSTANDARD2_0;... to DefineConstants during the build, and NASM would
+         receive every one of them as -D. -->
+    <DisableImplicitFrameworkDefines>true</DisableImplicitFrameworkDefines>
+  </PropertyGroup>
+
+  <!-- ===================================================================================== -->
+  <!-- Debug information: DebugSymbols and DebugType                                          -->
+  <!-- ===================================================================================== -->
+  <PropertyGroup>
+    <!--
+      DWARF (-g -F dwarf) in the objects and the linked output when DebugSymbols is true and
+      DebugType is not none. Microsoft.NET.Sdk.props sets DebugSymbols=true for Debug, so
+      Debug builds carry DWARF and Release builds do not, unless the project says otherwise.
+      Unlike .NET, whose Release builds still write a PDB, Release output stays free of debug
+      information by default: the sections only cost size, and a shipped binary rarely wants
+      them.
+    -->
+    <_AsmDebugSymbols Condition="'$(DebugSymbols)' == 'true' and '$(DebugType)' != 'none'">true</_AsmDebugSymbols>
+    <_AsmDebugSymbols Condition="'$(_AsmDebugSymbols)' == ''">false</_AsmDebugSymbols>
+
+    <!-- Hidden from the managed SDK: with debug symbols on, it expects a PDB next to the
+         output and would try to copy or publish one that nothing writes. -->
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
 
   <!-- ===================================================================================== -->
@@ -114,4 +250,85 @@
   <ItemGroup Condition="'$(AsmToolchain)' == 'Bundled' and '$(AsmToolchainDirectory)' == '' and '$(AsmToolchainVersion)' != ''">
     <PackageDownload Include="$(AsmToolchainPackageId)" Version="[$(AsmToolchainVersion)]" />
   </ItemGroup>
+
+  <!-- ===================================================================================== -->
+  <!-- Project checks                                                                         -->
+  <!-- ===================================================================================== -->
+
+  <!--
+    _AsmCheckProject: fails early, with the fix, on a target framework AsmSdk does not know and
+    on settings that AsmFoundation.Sdk 0.1.0 had and 0.2.0 replaced with the .NET properties
+    above. There is no compatibility layer: a removed setting would otherwise be ignored
+    without a word, and the project would build something else (a forgotten AsmRuntime=Libc
+    surfaces only as "undefined symbol: printf" at link time).
+
+    Runs before restore takes the project's package references (CollectPackageReferences runs
+    once per target framework during restore) and before the build's configuration check, so
+    the error comes first in both "dotnet restore" and "dotnet build". In the outer build of a
+    multi-targeted project TargetFramework is empty: the inner builds check each name.
+
+    Errors:
+      ASM0003  TargetFramework is neither freestanding nor libc.
+      ASM0100  AsmLibraryName      -> AssemblyName
+      ASM0101  AsmRuntime          -> TargetFramework
+      ASM0102  AsmDefineConstants  -> DefineConstants
+      ASM0103  AsmDefine items     -> DefineConstants
+      ASM0104  AsmDebugInfo        -> DebugSymbols / DebugType
+      ASM0105  AsmEntryPoint       -> StartupObject
+      ASM0106  AsmLinkFlags        -> LinkerArg items and ExportsFile
+      ASM0107  AsmOutputKind       -> OutputType
+      ASM0108  the summary that stops the build after any of ASM0100 to ASM0107
+
+    The removed-setting errors use ContinueOnError="ErrorAndContinue" so that one build lists
+    every setting to change, instead of one per attempt (an Error task otherwise ends the
+    target at the first failure). ErrorAndContinue would also let the build go on to assemble
+    and link with the wrong settings, so ASM0108, a plain Error, stops it right after them.
+  -->
+  <Target Name="_AsmCheckProject"
+          BeforeTargets="_CheckForInvalidConfigurationAndPlatform;Restore;CollectPackageReferences">
+    <Error Code="ASM0003"
+           Condition="'$(TargetFramework)' != '' and '$(_AsmRuntime)' == ''"
+           Text="TargetFramework '$(TargetFramework)' is not an AsmSdk target framework. Use freestanding (the code makes its own system calls; the default) or libc (the code links glibc), or TargetFrameworks=freestanding;libc to build both." />
+
+    <PropertyGroup>
+      <!-- Any removed setting at all: their values concatenated are empty only when none is set. -->
+      <_AsmUsesRemovedSettings Condition="'$(AsmLibraryName)$(AsmRuntime)$(AsmDefineConstants)@(AsmDefine)$(AsmDebugInfo)$(AsmEntryPoint)$(AsmLinkFlags)$(AsmOutputKind)' != ''">true</_AsmUsesRemovedSettings>
+    </PropertyGroup>
+
+    <Error Code="ASM0100"
+           ContinueOnError="ErrorAndContinue"
+           Condition="'$(AsmLibraryName)' != ''"
+           Text="AsmLibraryName was removed in AsmFoundation.Sdk 0.2.0. Use &lt;AssemblyName&gt;$(AsmLibraryName)&lt;/AssemblyName&gt;: libraries are still named lib&lt;AssemblyName&gt;.so and .a." />
+    <Error Code="ASM0101"
+           ContinueOnError="ErrorAndContinue"
+           Condition="'$(AsmRuntime)' != ''"
+           Text="AsmRuntime was removed in AsmFoundation.Sdk 0.2.0. Use &lt;TargetFramework&gt;$(AsmRuntime.ToLowerInvariant())&lt;/TargetFramework&gt; (freestanding or libc), or &lt;TargetFrameworks&gt;freestanding;libc&lt;/TargetFrameworks&gt; to build both." />
+    <Error Code="ASM0102"
+           ContinueOnError="ErrorAndContinue"
+           Condition="'$(AsmDefineConstants)' != ''"
+           Text="AsmDefineConstants was removed in AsmFoundation.Sdk 0.2.0. Use &lt;DefineConstants&gt;%24(DefineConstants);$(AsmDefineConstants)&lt;/DefineConstants&gt;. DEBUG or RELEASE, and FREESTANDING or LIBC, are added for you." />
+    <Error Code="ASM0103"
+           ContinueOnError="ErrorAndContinue"
+           Condition="'@(AsmDefine)' != ''"
+           Text="AsmDefine items were removed in AsmFoundation.Sdk 0.2.0. Add the symbols to DefineConstants instead: &lt;DefineConstants&gt;%24(DefineConstants);@(AsmDefine)&lt;/DefineConstants&gt;." />
+    <Error Code="ASM0104"
+           ContinueOnError="ErrorAndContinue"
+           Condition="'$(AsmDebugInfo)' != ''"
+           Text="AsmDebugInfo was removed in AsmFoundation.Sdk 0.2.0. Use &lt;DebugSymbols&gt;$(AsmDebugInfo)&lt;/DebugSymbols&gt;. Debug builds have it on already, and &lt;DebugType&gt;none&lt;/DebugType&gt; turns it off." />
+    <Error Code="ASM0105"
+           ContinueOnError="ErrorAndContinue"
+           Condition="'$(AsmEntryPoint)' != ''"
+           Text="AsmEntryPoint was removed in AsmFoundation.Sdk 0.2.0. Use &lt;StartupObject&gt;$(AsmEntryPoint)&lt;/StartupObject&gt;." />
+    <Error Code="ASM0106"
+           ContinueOnError="ErrorAndContinue"
+           Condition="'$(AsmLinkFlags)' != ''"
+           Text="AsmLinkFlags was removed in AsmFoundation.Sdk 0.2.0. Pass each linker argument as a LinkerArg item (&lt;LinkerArg Include=&quot;-z defs&quot; /&gt;), and a version script as &lt;ExportsFile&gt;file.map&lt;/ExportsFile&gt;. AsmLinkFlags was: $(AsmLinkFlags)" />
+    <Error Code="ASM0107"
+           ContinueOnError="ErrorAndContinue"
+           Condition="'$(AsmOutputKind)' != ''"
+           Text="AsmOutputKind was removed in AsmFoundation.Sdk 0.2.0. Use OutputType: Exe, Library (a shared library, the default), StaticLibrary or Objects." />
+    <Error Code="ASM0108"
+           Condition="'$(_AsmUsesRemovedSettings)' == 'true'"
+           Text="This project uses settings that AsmFoundation.Sdk 0.2.0 replaced with the .NET properties of the same purpose; the errors above name each replacement. The 0.2.0 entry of https://github.com/AsmFoundation/AsmSdk/blob/main/CHANGELOG.md lists them all." />
+  </Target>
 </Project>

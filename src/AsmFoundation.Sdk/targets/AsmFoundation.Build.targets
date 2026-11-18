@@ -25,6 +25,44 @@
     <AsmInclude Include="**/*.inc" Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)" />
   </ItemGroup>
 
+  <!--
+    Every other file of the project folder is a None item, as in a .csproj: IDEs show a project
+    as its items, so without this a linker script, a C header or a README next to the sources
+    would be invisible. Set EnableDefaultNoneItems=false (.NET's own switch) to list them
+    yourself.
+
+    Why not Microsoft.NET.Sdk's own None glob (EnableDefaultItems stays false in Sdk.props):
+    it removes "**/*$(DefaultLanguageSourceExtension)" from None right after including
+    "**/*", and an .asmproj has no language extension, so that Remove is "**/*" and takes
+    every file away again. The asm items are taken out of None below, so each file is one
+    item: a .asm file is an AsmSource, never also a None.
+  -->
+  <ItemGroup Condition="'$(EnableDefaultNoneItems)' != 'false'">
+    <None Include="**/*" Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)" />
+    <None Remove="@(AsmSource);@(AsmInclude)" />
+  </ItemGroup>
+
+  <!--
+    IDE integration.
+
+    AvailableItemName: the item types an IDE shows besides its built-in ones (Compile, None,
+    Content, ...). Rider's MSBuild host and Visual Studio's project system both read it; an
+    item type missing from it is not shown at all, which is how an .asmproj looked empty in
+    Rider before 0.2.0. It also offers AsmSource and AsmInclude as build actions.
+
+    UpToDateCheckInput / UpToDateCheckBuilt: the fast up-to-date checks of Visual Studio and
+    Rider decide whether to call MSBuild at all from these items. Without them an IDE would
+    not know that editing a .asm file (or the linker's version script) makes the outputs stale,
+    and would skip the build. Visible="false": they name files that are already items.
+  -->
+  <ItemGroup>
+    <AvailableItemName Include="AsmSource" />
+    <AvailableItemName Include="AsmInclude" />
+    <UpToDateCheckInput Include="@(AsmSource);@(AsmInclude)" Visible="false" />
+    <UpToDateCheckInput Include="$(ExportsFile)" Condition="'$(ExportsFile)' != ''" Visible="false" />
+    <UpToDateCheckBuilt Include="$(TargetPath)" Condition="'$(_AsmOutputKind)' != 'Objects'" Visible="false" />
+  </ItemGroup>
+
   <ItemGroup>
     <!-- The project's own include/ folder and the project folder are searched first, so a
          local file shadows one of the same name from a package or a referenced project. -->
@@ -35,14 +73,15 @@
   <PropertyGroup>
     <!-- Objects and generated files live under obj/<Configuration>/asm/. -->
     <AsmIntermediateDirectory Condition="'$(AsmIntermediateDirectory)' == ''">$(IntermediateOutputPath)asm/</AsmIntermediateDirectory>
-    <AsmStaticLibraryPath Condition="'$(AsmStaticLibraryPath)' == '' and '$(AsmOutputKind)' == 'StaticLibrary'">$(TargetPath)</AsmStaticLibraryPath>
-    <AsmStaticLibraryPath Condition="'$(AsmStaticLibraryPath)' == '' and '$(AsmProduceStaticLibrary)' == 'true'">$(TargetDir)lib$(AsmLibraryName).a</AsmStaticLibraryPath>
-    <AsmSharedLibraryPath Condition="'$(AsmOutputKind)' == 'SharedLibrary'">$(TargetPath)</AsmSharedLibraryPath>
-    <!-- glibc's dynamic loader, recorded as PT_INTERP in Libc executables. -->
+    <AsmStaticLibraryPath Condition="'$(AsmStaticLibraryPath)' == '' and '$(_AsmOutputKind)' == 'StaticLibrary'">$(TargetPath)</AsmStaticLibraryPath>
+    <AsmStaticLibraryPath Condition="'$(AsmStaticLibraryPath)' == '' and '$(AsmProduceStaticLibrary)' == 'true'">$(TargetDir)lib$(AssemblyName).a</AsmStaticLibraryPath>
+    <AsmSharedLibraryPath Condition="'$(_AsmOutputKind)' == 'SharedLibrary'">$(TargetPath)</AsmSharedLibraryPath>
+    <!-- glibc's dynamic loader, recorded as PT_INTERP in libc executables. -->
     <AsmDynamicLinker Condition="'$(AsmDynamicLinker)' == ''">/lib64/ld-linux-x86-64.so.2</AsmDynamicLinker>
-    <!-- Libc executables start in the SDK's crt1.o unless the project names its own entry. -->
-    <_AsmUsesCrt Condition="'$(AsmRuntime)' == 'Libc' and '$(AsmOutputKind)' == 'Executable' and '$(AsmEntryPoint)' == ''">true</_AsmUsesCrt>
-    <_AsmUsesLibcStub Condition="'$(AsmRuntime)' == 'Libc' and ('$(AsmOutputKind)' == 'SharedLibrary' or '$(AsmOutputKind)' == 'Executable')">true</_AsmUsesLibcStub>
+    <!-- libc executables start in the SDK's crt1.o unless the project names its own entry
+         symbol with StartupObject. -->
+    <_AsmUsesCrt Condition="'$(_AsmRuntime)' == 'Libc' and '$(_AsmOutputKind)' == 'Executable' and '$(StartupObject)' == ''">true</_AsmUsesCrt>
+    <_AsmUsesLibcStub Condition="'$(_AsmRuntime)' == 'Libc' and ('$(_AsmOutputKind)' == 'SharedLibrary' or '$(_AsmOutputKind)' == 'Executable')">true</_AsmUsesLibcStub>
   </PropertyGroup>
 
   <!-- ===================================================================================== -->
@@ -121,8 +160,10 @@
       <_AsmDependency Include="@(AsmInclude->'%(FullPath)')" />
       <_AsmDependency Include="%(_AsmIncludeDirectoryOrdered.FullPath)**/*.inc" Condition="'%(_AsmIncludeDirectoryOrdered.AsmOrigin)' != ''" />
 
-      <_AsmDefine Include="$(AsmDefineConstants)" />
-      <_AsmDefine Include="@(AsmDefine)" />
+      <!-- One -D per DefineConstants entry (NAME or NAME=VALUE). Properties.targets has
+           already appended DEBUG or RELEASE and FREESTANDING or LIBC; an item Include splits
+           on ";" and drops the empty entries that a leading or doubled ";" leaves. -->
+      <_AsmDefine Include="$(DefineConstants)" />
 
       <!-- Link inputs: static libraries and shared objects from AsmLinkLibrary items,
            packages and referenced projects, in the order given. -->
@@ -135,7 +176,9 @@
     <PropertyGroup>
       <_AsmIncludeArguments>@(_AsmIncludeDirectoryOrdered->'-I&quot;%(ToolPath)&quot;', ' ')</_AsmIncludeArguments>
       <_AsmDefineArguments>@(_AsmDefine->'-D%(Identity)', ' ')</_AsmDefineArguments>
-      <_AsmDebugArguments Condition="'$(AsmDebugInfo)' == 'true'">-g -F dwarf</_AsmDebugArguments>
+      <!-- DWARF when the project's DebugSymbols/DebugType ask for it (captured as
+           _AsmDebugSymbols by Properties.targets, before they were hidden). -->
+      <_AsmDebugArguments Condition="'$(_AsmDebugSymbols)' == 'true'">-g -F dwarf</_AsmDebugArguments>
       <!--
         Every warning except two that NASM raises on relocations it cannot judge:
 
@@ -146,7 +189,7 @@
           such a pointer works depends on the output and on the section, which NASM cannot see:
           - In a Freestanding executable (-static, not position-independent), the address is
             fixed at link time, and the pointer works in any section.
-          - In a shared library or a Libc executable (a PIE), the address is known only at
+          - In a shared library or a libc executable (a PIE), the address is known only at
             load time. In a writable section, the linker emits an R_X86_64_RELATIVE dynamic
             relocation, and the loader applies it when the program starts. That covers .data,
             and also ".data.rel.ro" when it is declared "write". There, -z relro makes the
@@ -173,9 +216,32 @@
       <_AsmTargetPathArgument>&quot;$(TargetPath.Replace('\','/'))&quot;</_AsmTargetPathArgument>
       <_AsmStubToolDirectory>$([System.IO.Path]::GetFullPath('$(AsmIntermediateDirectory)stubs/').Replace('\','/'))</_AsmStubToolDirectory>
       <_AsmCrtArgument Condition="'$(_AsmUsesCrt)' == 'true'">&quot;$(_AsmStubToolDirectory)crt1.o&quot;</_AsmCrtArgument>
-      <!-- Libc: the stub comes last, after the libraries that need it; no-as-needed keeps
+      <!-- libc: the stub comes last, after the libraries that need it; no-as-needed keeps
            DT_NEEDED even when only a linked library, not the objects, calls into libc. -->
       <_AsmLibcArguments Condition="'$(_AsmUsesLibcStub)' == 'true'">--no-as-needed &quot;$(_AsmStubToolDirectory)libc.so.6&quot;</_AsmLibcArguments>
+
+      <!--
+        ExportsFile: the linker version script, under NativeAOT's name for the same file (the
+        list of symbols to export, which NativeAOT hands to the linker as a version script on
+        Linux). A relative path is taken from the project folder. Only the symbols it lists as
+        global stay in the dynamic symbol table, versioned by its version node. The full path
+        is also an input of AsmLink, so editing the script relinks.
+      -->
+      <_AsmExportsFilePath Condition="'$(ExportsFile)' != ''">$([System.IO.Path]::GetFullPath($([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(ExportsFile)'))))</_AsmExportsFilePath>
+      <_AsmExportsFileArgument Condition="'$(_AsmExportsFilePath)' != ''">--version-script=&quot;$(_AsmExportsFilePath.Replace('\','/'))&quot;</_AsmExportsFileArgument>
+      <!-- An executable puts no symbol in its dynamic symbol table unless asked: NativeAOT
+           pairs the exports file with the export-dynamic option for that reason, and so does
+           the SDK, so that the script decides what a dlopen'ed plugin can call back. -->
+      <_AsmExportsFileArgument Condition="'$(_AsmExportsFilePath)' != '' and '$(_AsmOutputKind)' == 'Executable'">$(_AsmExportsFileArgument) --export-dynamic</_AsmExportsFileArgument>
+
+      <!--
+        LinkerArg items: extra linker arguments, under NativeAOT's item name, appended to every
+        link line in item order. One item may hold several words ("-z defs"): the items are
+        joined with spaces and not quoted, so a path with spaces must carry its own quotes.
+        Footgun for NativeAOT users: NativeAOT hands LinkerArg to clang, so its items are
+        written "-Wl,..."; the SDK runs ld.lld directly, so write the linker's own syntax.
+      -->
+      <_AsmLinkerArgArguments>@(LinkerArg, ' ')</_AsmLinkerArgArguments>
     </PropertyGroup>
   </Target>
 
@@ -229,10 +295,10 @@
   </Target>
 
   <!--
-    _AsmBuildCrt: assembles the SDK's stubs/crt1.asm, the _start of a Libc executable. It calls
+    _AsmBuildCrt: assembles the SDK's stubs/crt1.asm, the _start of a libc executable. It calls
     __libc_start_main(main, ...) exactly like glibc's crt1.o, so the program's entry is an
-    ordinary int main(int argc, char **argv). Skipped when AsmEntryPoint names another symbol:
-    the program then provides its own entry.
+    ordinary int main(int argc, char **argv). Skipped when StartupObject names another symbol:
+    the program then provides its own entry, and must do what crt1 does.
   -->
   <Target Name="_AsmBuildCrt"
           Condition="'$(_AsmUsesCrt)' == 'true'"
@@ -257,31 +323,35 @@
     Shared library: the code must be position-independent (NASM: "default rel", calls through
     "wrt ..plt"); -z now + relro make the GOT read-only once loaded; the sha1 build id is
     derived from the content, so identical inputs give identical outputs.
-    Executable: Freestanding links -static with the entry _start (or AsmEntryPoint); Libc
+    Executable: freestanding links -static with the entry _start (or StartupObject); libc
     links a PIE with glibc's dynamic loader and the SDK's crt1.o in front.
     Static library: llvm-ar "rcsD" = replace, create, write the symbol index the linker needs,
     deterministic (zero timestamps and ids). The archive is deleted first because "r" would
     keep members of objects that no longer exist.
+    Every link line ends with the ExportsFile version script and the LinkerArg items, so a
+    project's own arguments come last and can override the SDK's defaults.
   -->
   <Target Name="AsmLink"
-          Condition="'$(AsmOutputKind)' != 'Objects'"
+          Condition="'$(_AsmOutputKind)' != 'Objects'"
           DependsOnTargets="AsmAssemble;_AsmBuildLibcStub;_AsmBuildCrt"
-          Inputs="@(_AsmObject);@(_AsmLinkInput);$(MSBuildProjectFullPath)"
+          Inputs="@(_AsmObject);@(_AsmLinkInput);$(_AsmExportsFilePath);$(MSBuildProjectFullPath)"
           Outputs="$(TargetPath);$(AsmStaticLibraryPath)">
     <PropertyGroup>
-      <_AsmCommonLinkArguments>-z noexecstack --build-id=sha1 $(AsmLinkFlags)</_AsmCommonLinkArguments>
-      <_AsmEntryArgument>-e $([MSBuild]::ValueOrDefault('$(AsmEntryPoint)', '_start'))</_AsmEntryArgument>
+      <_AsmCommonLinkArguments>-z noexecstack --build-id=sha1 $(_AsmExportsFileArgument) $(_AsmLinkerArgArguments)</_AsmCommonLinkArguments>
+      <!-- StartupObject is .NET's "where the program starts"; for assembly code that is the
+           entry symbol. Empty means _start: the program's own, or crt1's for libc. -->
+      <_AsmEntryArgument>-e $([MSBuild]::ValueOrDefault('$(StartupObject)', '_start'))</_AsmEntryArgument>
     </PropertyGroup>
 
     <MakeDir Directories="$(TargetDir)" />
 
-    <Exec Condition="'$(AsmOutputKind)' == 'SharedLibrary'"
+    <Exec Condition="'$(_AsmOutputKind)' == 'SharedLibrary'"
           Command="$(_AsmLinker) -shared -soname $(TargetFileName) -z relro -z now --hash-style=gnu -o $(_AsmTargetPathArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmLibcArguments) $(_AsmCommonLinkArguments)" />
 
-    <Exec Condition="'$(AsmOutputKind)' == 'Executable' and '$(AsmRuntime)' != 'Libc'"
+    <Exec Condition="'$(_AsmOutputKind)' == 'Executable' and '$(_AsmRuntime)' != 'Libc'"
           Command="$(_AsmLinker) -static $(_AsmEntryArgument) -o $(_AsmTargetPathArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmCommonLinkArguments)" />
 
-    <Exec Condition="'$(AsmOutputKind)' == 'Executable' and '$(AsmRuntime)' == 'Libc'"
+    <Exec Condition="'$(_AsmOutputKind)' == 'Executable' and '$(_AsmRuntime)' == 'Libc'"
           Command="$(_AsmLinker) -pie --dynamic-linker $(AsmDynamicLinker) -z relro -z now --hash-style=gnu $(_AsmEntryArgument) -o $(_AsmTargetPathArgument) $(_AsmCrtArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmLibcArguments) $(_AsmCommonLinkArguments)" />
 
     <Delete Condition="'$(AsmStaticLibraryPath)' != ''" Files="$(AsmStaticLibraryPath)" />
@@ -298,8 +368,20 @@
   <!-- Replacing the managed build steps                                                      -->
   <!-- ===================================================================================== -->
 
-  <!-- The managed compiler step becomes assemble + link. -->
-  <Target Name="CoreCompile" DependsOnTargets="AsmAssemble;AsmLink" />
+  <!--
+    The managed compiler step becomes assemble + link, except in a design-time build.
+
+    IDEs run design-time builds whenever a project loads or changes, to learn its references
+    and items: Rider calls Compile and CoreCompile with DesignTimeBuild=true and
+    SkipCompilerExecution=true, and Visual Studio sets the same two properties. A design-time
+    build must not run the real tools: it would assemble and link on every load (slow), race
+    the real build for the same obj/ files, and fail where a referenced project has not been
+    built yet (Rider showed lld's "cannot open libgrpcasm.a" as a project warning). Csc honors
+    SkipCompilerExecution the same way.
+  -->
+  <Target Name="CoreCompile"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipCompilerExecution)' != 'true'"
+          DependsOnTargets="AsmAssemble;AsmLink" />
 
   <!-- An unknown project extension gets no language targets, and the common targets call
        this one unconditionally; there are no resources to name. -->

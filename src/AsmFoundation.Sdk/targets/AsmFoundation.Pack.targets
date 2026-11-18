@@ -3,16 +3,36 @@
     AsmFoundation.Pack.targets - "dotnet pack" for an .asmproj. Imported after
     Microsoft.NET.Sdk's targets.
 
-    Package layout (NuGet ignores the folders it does not know, and treats lib/ as managed
-    assemblies, so the static library deliberately lives under native/ instead):
-      include/**                               public include files (.inc, .h)
+    Package layout. <tfm> is the target framework (freestanding or libc) and <nuget-tfm> the
+    NuGet framework behind it (netstandard1.0 or netstandard2.0; see
+    AsmFoundation.Properties.targets). NuGet ignores the folders it does not know, and treats
+    lib/ as managed assemblies, so the static libraries live under native/ instead:
+      include/**                               public include files (.inc, .h), shared by
+                                               every target framework
       src/**                                   sources, when AsmPackSources=true
-      native/linux-x64/lib<name>.a             static library
-      runtimes/linux-x64/native/lib<name>.so   shared library (.NET consumers get it copied and
-                                               found by [DllImport] automatically)
-      build/<id>.props, buildTransitive/<id>.props
-                                               generated: wire the above into a consuming
-                                               .asmproj (AsmIncludeDirectory, AsmLinkLibrary)
+      lib/<nuget-tfm>/_._                      empty marker, one per target framework (below)
+      build/<nuget-tfm>/<id>.props, buildTransitive/<nuget-tfm>/<id>.props
+                                               generated per target framework: wire that
+                                               framework's library and the include files into
+                                               a consuming .asmproj
+      native/linux-x64/<tfm>/lib<name>.a       static library
+      runtimes/linux-x64/native/lib<name>.so   shared library, for a single target framework
+                                               (.NET consumers get it copied and found by
+                                               [DllImport] automatically)
+      runtimes/linux-x64/nativeassets/<nuget-tfm>/lib<name>.so
+                                               shared library of each target framework, when
+                                               the project multi-targets (the names collide
+                                               otherwise); NuGet gives a .NET consumer the
+                                               nearest framework's, which is libc's
+
+    Why per-framework build/ folders and the lib/ markers: NuGet imports the build/ props of
+    the framework nearest to the consumer's, so a libc consumer of a package that has both
+    builds links the libc build. And NuGet judges a package's compatibility by its lib/ and
+    ref/ folders: without the markers, a package with no lib/ counts as compatible with every
+    framework, and a freestanding project could restore a libc-only package, import nothing
+    and fail at link time with undefined symbols. With them, that restore fails with NU1202.
+    The marker is the name NuGet itself documents for an empty lib/ folder; it adds no
+    assembly reference to a .NET consumer.
 
     Package versions are the dependency versions: a consumer pins an asm library exactly as it
     pins a .NET library, and transitive dependencies flow through buildTransitive/.
@@ -27,6 +47,7 @@
     <!-- Property-name-safe form of the package id, for the generated props. -->
     <_AsmPackageIdIdentifier>$([System.Text.RegularExpressions.Regex]::Replace('$(PackageId)', '[^A-Za-z0-9_]', '_'))</_AsmPackageIdIdentifier>
     <_AsmGeneratedPropsPath>$(AsmIntermediateDirectory)pack/$(PackageId).props</_AsmGeneratedPropsPath>
+    <_AsmEmptyLibMarkerPath>$(AsmIntermediateDirectory)pack/_._</_AsmEmptyLibMarkerPath>
   </PropertyGroup>
 
   <ItemGroup Condition="'@(AsmPublicInclude)' == '' and '$(_AsmHasPublicIncludeFolder)' == 'true'">
@@ -35,30 +56,58 @@
   </ItemGroup>
 
   <!--
-    _AsmWriteConsumerProps: writes build/<id>.props. Paths are relative to the props file
-    itself ($(MSBuildThisFileDirectory)), so the package works from any NuGet cache location.
-    The items are conditioned on UsingAsmFoundationSdk: a .csproj consumer only needs the
-    runtimes/ folder, which NuGet handles on its own.
+    _AsmComputePackLayout: the package paths of this target framework's outputs, shared by the
+    consumer props and the package content below.
+
+    _AsmPackIsFirstTargetFramework: pack collects content from every inner build of a
+    multi-targeted project, and the include files and sources are the same in each. Only the
+    first target framework of TargetFrameworks packs them, so each lands once. A
+    single-target project is always "first".
+    _AsmPackIsMultiTargeted: the shared libraries of two target frameworks have the same file
+    name, so they cannot both go to runtimes/<rid>/native/.
   -->
-  <Target Name="_AsmWriteConsumerProps">
+  <Target Name="_AsmComputePackLayout">
+    <ItemGroup>
+      <!-- An item Include splits on ";" and trims each name, whatever the project's spacing. -->
+      <_AsmPackTargetFramework Include="$(TargetFrameworks)" />
+    </ItemGroup>
     <PropertyGroup>
-      <_AsmPackStaticLink Condition="'$(AsmStaticLibraryPath)' != ''">native/$(AsmTargetRid)/lib$(AsmLibraryName).a</_AsmPackStaticLink>
-      <_AsmPackSharedLink Condition="'$(AsmSharedLibraryPath)' != ''">runtimes/$(AsmTargetRid)/native/$(TargetFileName)</_AsmPackSharedLink>
+      <_AsmPackFirstTargetFramework>$([System.Text.RegularExpressions.Regex]::Replace('$(TargetFrameworks)', '(?s)^[\s;]*([^;\s]+).*$', '$1'))</_AsmPackFirstTargetFramework>
+      <_AsmPackIsFirstTargetFramework Condition="'$(TargetFrameworks)' == '' or '$(_AsmPackFirstTargetFramework)' == '$(TargetFramework)'">true</_AsmPackIsFirstTargetFramework>
+      <_AsmPackIsMultiTargeted Condition="@(_AsmPackTargetFramework->Count()) &gt; 1">true</_AsmPackIsMultiTargeted>
+
+      <_AsmPackStaticLink Condition="'$(AsmStaticLibraryPath)' != ''">native/$(AsmTargetRid)/$(_AsmTargetFrameworkName)/lib$(AssemblyName).a</_AsmPackStaticLink>
+      <_AsmPackSharedLink Condition="'$(AsmSharedLibraryPath)' != '' and '$(_AsmPackIsMultiTargeted)' != 'true'">runtimes/$(AsmTargetRid)/native/$(TargetFileName)</_AsmPackSharedLink>
+      <_AsmPackSharedLink Condition="'$(AsmSharedLibraryPath)' != '' and '$(_AsmPackIsMultiTargeted)' == 'true'">runtimes/$(AsmTargetRid)/nativeassets/$(_AsmNuGetFramework)/$(TargetFileName)</_AsmPackSharedLink>
+    </PropertyGroup>
+  </Target>
+
+  <!--
+    _AsmWriteConsumerProps: writes this target framework's build/<nuget-tfm>/<id>.props. Paths
+    are relative to the props file itself ($(MSBuildThisFileDirectory), two folders below the
+    package root), so the package works from any NuGet cache location. The items are
+    conditioned on UsingAsmFoundationSdk: a .csproj consumer only needs the runtimes/ folder,
+    which NuGet handles on its own.
+  -->
+  <Target Name="_AsmWriteConsumerProps" DependsOnTargets="_AsmComputePackLayout">
+    <PropertyGroup>
       <_AsmPackLink Condition="'$(AsmPackageLinkKind)' == 'Static' and '$(_AsmPackStaticLink)' != ''">$(_AsmPackStaticLink)</_AsmPackLink>
       <_AsmPackLink Condition="'$(_AsmPackLink)' == '' and '$(_AsmPackSharedLink)' != ''">$(_AsmPackSharedLink)</_AsmPackLink>
       <_AsmPackLink Condition="'$(_AsmPackLink)' == ''">$(_AsmPackStaticLink)</_AsmPackLink>
       <_AsmPackHasIncludes Condition="'@(AsmPublicInclude)' != ''">true</_AsmPackHasIncludes>
       <_AsmConsumerProps><![CDATA[<Project>
-  <!-- Generated by AsmFoundation.Sdk for $(PackageId) $(PackageVersion). Adds the package's
-       include files and library to a consuming .asmproj. -->
+  <!-- Generated by AsmFoundation.Sdk for $(PackageId) $(PackageVersion), target framework
+       $(_AsmTargetFrameworkName) ($(_AsmNuGetFramework)). NuGet imports the props of the
+       framework nearest to the consuming project's. Adds the package's include files and
+       this framework's library to a consuming .asmproj. -->
   <PropertyGroup>
-    <AsmPackageRoot_$(_AsmPackageIdIdentifier)>%24([MSBuild]::NormalizeDirectory('%24(MSBuildThisFileDirectory)', '..'))</AsmPackageRoot_$(_AsmPackageIdIdentifier)>
+    <AsmPackageRoot_$(_AsmPackageIdIdentifier)>%24([MSBuild]::NormalizeDirectory('%24(MSBuildThisFileDirectory)', '..', '..'))</AsmPackageRoot_$(_AsmPackageIdIdentifier)>
   </PropertyGroup>
   <ItemGroup Condition="'%24(UsingAsmFoundationSdk)' == 'true'">]]></_AsmConsumerProps>
       <_AsmConsumerProps Condition="'$(_AsmPackHasIncludes)' == 'true'"><![CDATA[$(_AsmConsumerProps)
-    <AsmIncludeDirectory Include="%24(MSBuildThisFileDirectory)../include/" AsmOrigin="Package" AsmPackage="$(PackageId)" />]]></_AsmConsumerProps>
+    <AsmIncludeDirectory Include="%24(MSBuildThisFileDirectory)../../include/" AsmOrigin="Package" AsmPackage="$(PackageId)" />]]></_AsmConsumerProps>
       <_AsmConsumerProps Condition="'$(_AsmPackLink)' != ''"><![CDATA[$(_AsmConsumerProps)
-    <AsmLinkLibrary Include="%24(MSBuildThisFileDirectory)../$(_AsmPackLink)" AsmOrigin="Package" AsmPackage="$(PackageId)" />]]></_AsmConsumerProps>
+    <AsmLinkLibrary Include="%24(MSBuildThisFileDirectory)../../$(_AsmPackLink)" AsmOrigin="Package" AsmPackage="$(PackageId)" />]]></_AsmConsumerProps>
       <_AsmConsumerProps><![CDATA[$(_AsmConsumerProps)
   </ItemGroup>
 </Project>
@@ -66,24 +115,29 @@
     </PropertyGroup>
     <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_AsmGeneratedPropsPath)'))" />
     <WriteLinesToFile File="$(_AsmGeneratedPropsPath)" Lines="$(_AsmConsumerProps)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <!-- The empty lib/ marker. Touch, not WriteLinesToFile: with no lines and Overwrite, that
+         task deletes the file instead of writing an empty one. -->
+    <Touch Files="$(_AsmEmptyLibMarkerPath)" AlwaysCreate="true" />
     <ItemGroup>
-      <FileWrites Include="$(_AsmGeneratedPropsPath)" />
+      <FileWrites Include="$(_AsmGeneratedPropsPath);$(_AsmEmptyLibMarkerPath)" />
     </ItemGroup>
   </Target>
 
   <!--
-    _AsmPackNativeContent: hooked into NuGet's TargetsForTfmSpecificContentInPackage. Returns
-    TfmSpecificPackageFile items whose PackagePath is the layout above.
+    _AsmPackNativeContent: hooked into NuGet's TargetsForTfmSpecificContentInPackage, so it
+    runs once per target framework. Returns TfmSpecificPackageFile items whose PackagePath is
+    the layout above.
   -->
   <Target Name="_AsmPackNativeContent" DependsOnTargets="AsmPrepare;_AsmWriteConsumerProps">
     <ItemGroup>
-      <TfmSpecificPackageFile Include="@(AsmPublicInclude)" PackagePath="include/%(RecursiveDir)%(Filename)%(Extension)" />
-      <TfmSpecificPackageFile Include="@(AsmSource)" Condition="'$(AsmPackSources)' == 'true'" PackagePath="src/%(RecursiveDir)%(Filename)%(Extension)" />
-      <TfmSpecificPackageFile Include="@(AsmInclude)" Condition="'$(AsmPackSources)' == 'true'" PackagePath="src/%(RecursiveDir)%(Filename)%(Extension)" />
-      <TfmSpecificPackageFile Include="$(AsmStaticLibraryPath)" Condition="'$(AsmStaticLibraryPath)' != ''" PackagePath="native/$(AsmTargetRid)/lib$(AsmLibraryName).a" />
-      <TfmSpecificPackageFile Include="$(AsmSharedLibraryPath)" Condition="'$(AsmSharedLibraryPath)' != ''" PackagePath="runtimes/$(AsmTargetRid)/native/$(TargetFileName)" />
-      <TfmSpecificPackageFile Include="$(_AsmGeneratedPropsPath)" PackagePath="build/$(PackageId).props" />
-      <TfmSpecificPackageFile Include="$(_AsmGeneratedPropsPath)" PackagePath="buildTransitive/$(PackageId).props" />
+      <TfmSpecificPackageFile Include="@(AsmPublicInclude)" Condition="'$(_AsmPackIsFirstTargetFramework)' == 'true'" PackagePath="include/%(RecursiveDir)%(Filename)%(Extension)" />
+      <TfmSpecificPackageFile Include="@(AsmSource)" Condition="'$(AsmPackSources)' == 'true' and '$(_AsmPackIsFirstTargetFramework)' == 'true'" PackagePath="src/%(RecursiveDir)%(Filename)%(Extension)" />
+      <TfmSpecificPackageFile Include="@(AsmInclude)" Condition="'$(AsmPackSources)' == 'true' and '$(_AsmPackIsFirstTargetFramework)' == 'true'" PackagePath="src/%(RecursiveDir)%(Filename)%(Extension)" />
+      <TfmSpecificPackageFile Include="$(_AsmEmptyLibMarkerPath)" PackagePath="lib/$(_AsmNuGetFramework)/_._" />
+      <TfmSpecificPackageFile Include="$(AsmStaticLibraryPath)" Condition="'$(_AsmPackStaticLink)' != ''" PackagePath="$(_AsmPackStaticLink)" />
+      <TfmSpecificPackageFile Include="$(AsmSharedLibraryPath)" Condition="'$(_AsmPackSharedLink)' != ''" PackagePath="$(_AsmPackSharedLink)" />
+      <TfmSpecificPackageFile Include="$(_AsmGeneratedPropsPath)" PackagePath="build/$(_AsmNuGetFramework)/$(PackageId).props" />
+      <TfmSpecificPackageFile Include="$(_AsmGeneratedPropsPath)" PackagePath="buildTransitive/$(_AsmNuGetFramework)/$(PackageId).props" />
     </ItemGroup>
   </Target>
 </Project>

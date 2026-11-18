@@ -1,0 +1,12 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A freestanding executable whose entry symbol is not _start: StartupObject names it, as it
+    names the class whose Main starts a .NET program. tests/run.py checks that the ELF entry
+    address is the address of entry_here, and runs it where Linux is available (exit code 42).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>entry</AssemblyName>
+    <StartupObject>entry_here</StartupObject>
+  </PropertyGroup>
+</Project>

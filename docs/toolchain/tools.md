@@ -55,8 +55,8 @@ The package's `lld` is LLVM's multi-flavor linker. The build runs it as
 
 ```text
 lld -flavor gnu -shared -soname libhello.so -z relro -z now --hash-style=gnu
-    -o ".../bin/Debug/libhello.so" ".../obj/Debug/asm/obj/hello.o" [link inputs] [libc stub]
-    -z noexecstack --build-id=sha1 $(AsmLinkFlags)
+    -o ".../bin/Debug/freestanding/libhello.so" ".../obj/Debug/freestanding/asm/obj/hello.o"
+    [link inputs] [libc stub] -z noexecstack --build-id=sha1 [ExportsFile] [LinkerArg items]
 ```
 
 The line for each kind of output is in the [reference](../asmproj.md#link-lines). It
@@ -69,7 +69,7 @@ differs from GNU `ld` in two ways that matter here:
 ## llvm-ar 23.1.5
 
 ```text
-llvm-ar rcsD ".../bin/Debug/libhello.a" ".../obj/Debug/asm/obj/hello.o" ...
+llvm-ar rcsD ".../bin/Debug/freestanding/libhello.a" ".../obj/Debug/freestanding/asm/obj/hello.o" ...
 ```
 
 `r` replaces members, `c` creates the archive, `s` writes the symbol index that linkers

@@ -1,0 +1,16 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A shared library for both target frameworks that links the freestanding-only Hello.Static
+    into each build: freestanding code links into libc builds too. tests/run.py checks both
+    outputs, and that Hello.Static was built only as freestanding. The libc inner build of
+    this project runs with a global TargetFramework=libc, and if the SDK's reference step
+    passed that on, Hello.Static would also be built as libc (into bin/Release/libc/).
+  -->
+  <PropertyGroup>
+    <TargetFrameworks>freestanding;libc</TargetFrameworks>
+    <AssemblyName>multisquare</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../samples/Hello.Static/Hello.Static.asmproj" />
+  </ItemGroup>
+</Project>

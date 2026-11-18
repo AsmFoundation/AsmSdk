@@ -1,0 +1,16 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A libc-only shared library packed as Test.LibcOnly 1.0.0 by tests/run.py, for the two
+    consumers next to it: LibcConsumer must restore and link it, FreestandingConsumer must be
+    refused at restore (NU1202), because the package's lib/netstandard2.0/_._ marker tells
+    NuGet that it supports libc projects only.
+  -->
+  <PropertyGroup>
+    <TargetFramework>libc</TargetFramework>
+    <AssemblyName>testlibconly</AssemblyName>
+    <PackageId>Test.LibcOnly</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>AsmFoundation tests</Authors>
+    <Description>Test package: a libc-only assembly shared library.</Description>
+  </PropertyGroup>
+</Project>

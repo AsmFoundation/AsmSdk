@@ -1,0 +1,9 @@
+/* exports.map - the version script of the Exports test project (ExportsFile).
+   Only exported_fn stays in the dynamic symbol table, as exported_fn@@EXPORTS_1.0;
+   every other global symbol of the library becomes local. */
+EXPORTS_1.0 {
+    global:
+        exported_fn;
+    local:
+        *;
+};

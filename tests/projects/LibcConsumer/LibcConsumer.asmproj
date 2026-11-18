@@ -1,0 +1,15 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A libc program that consumes the libc-only package Test.LibcOnly by version. The package
+    has no static library, so the consumer links its shared library: tests/run.py checks
+    DT_NEEDED libtestlibconly.so, and runs the program where Linux is available.
+  -->
+  <PropertyGroup>
+    <TargetFramework>libc</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>libc-consumer</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Test.LibcOnly" Version="1.0.0" />
+  </ItemGroup>
+</Project>

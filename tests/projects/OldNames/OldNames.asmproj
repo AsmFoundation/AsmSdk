@@ -1,0 +1,19 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    Expected to FAIL: every setting that AsmFoundation.Sdk 0.1.0 had and 0.2.0 replaced with a
+    .NET property. tests/run.py checks that one build reports all of them (ASM0100 to ASM0107)
+    and then stops with the ASM0108 summary, before anything is assembled.
+  -->
+  <PropertyGroup>
+    <AsmLibraryName>old</AsmLibraryName>
+    <AsmRuntime>Libc</AsmRuntime>
+    <AsmDefineConstants>FOO</AsmDefineConstants>
+    <AsmDebugInfo>true</AsmDebugInfo>
+    <AsmEntryPoint>my_entry</AsmEntryPoint>
+    <AsmLinkFlags>-z defs</AsmLinkFlags>
+    <AsmOutputKind>Executable</AsmOutputKind>
+  </PropertyGroup>
+  <ItemGroup>
+    <AsmDefine Include="BAR=1" />
+  </ItemGroup>
+</Project>

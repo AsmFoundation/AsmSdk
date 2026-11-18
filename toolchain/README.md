@@ -27,5 +27,5 @@ All of the tools are in `tools/`:
 `VERSIONS.txt` records the exact versions. Every download behind this package
 is pinned by SHA-256 in
 [toolchain/versions.json](https://github.com/AsmFoundation/AsmSdk/blob/main/toolchain/versions.json),
-and [toolchain/fetch.py](https://github.com/AsmFoundation/AsmSdk/blob/main/toolchain/fetch.py)
+and [toolchain/fetch.cs](https://github.com/AsmFoundation/AsmSdk/blob/main/toolchain/fetch.cs)
 verifies each hash before it opens the file.

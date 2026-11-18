@@ -1,10 +1,15 @@
 ; =============================================================================
-; hello.asm - libhello: a freestanding shared library (Hello.Library sample).
+; hello.asm - libhello: a shared library built for both target frameworks
+; (Hello.Library sample, TargetFrameworks=freestanding;libc).
 ;
-; Exports two System V ABI functions that a C or .NET caller can use:
+; Exports three System V ABI functions that a C or .NET caller can use:
 ;     int hello_add(int a, int b);
 ;     int hello_version(void);
+;     int hello_uses_libc(void);
 ; The code is position-independent (default rel), as a shared object requires.
+; The SDK assembles this file once per target framework, with -DFREESTANDING
+; or -DLIBC, the way a multi-targeted .csproj compiles with NET10_0 or
+; NETSTANDARD2_0 defined.
 ; =============================================================================
 
 default rel
@@ -32,6 +37,23 @@ hello_add:
 global hello_version:function
 hello_version:
     mov     eax, HELLO_VERSION
+    ret
+
+; -----------------------------------------------------------------------------
+; hello_uses_libc - tells the caller which build of the library it loaded.
+; The answer is fixed at assembly time by the target framework's define, so a
+; caller can check which build NuGet chose for it (a .NET program that
+; references the project gets the libc build: the framework nearest to its
+; own).
+; @returns eax = 1 in the libc build, 0 in the freestanding build
+; -----------------------------------------------------------------------------
+global hello_uses_libc:function
+hello_uses_libc:
+%ifdef LIBC
+    mov     eax, 1
+%else
+    xor     eax, eax                ; FREESTANDING
+%endif
     ret
 
 section .note.GNU-stack noalloc noexec nowrite progbits

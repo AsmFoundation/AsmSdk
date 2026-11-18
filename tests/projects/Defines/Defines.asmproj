@@ -1,0 +1,15 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    Objects only (no link), built in Release by tests/run.py. It checks:
+      - DefineConstants without $(DefineConstants) still keeps the configuration and target
+        framework symbols (RELEASE, FREESTANDING), which the SDK appends after the project
+        body like C# does; and ANSWER=42 reaches NASM as a value. defines.asm fails to
+        assemble (%error) when any of that is wrong.
+      - DebugSymbols=true puts DWARF in a Release object (the default is none in Release).
+  -->
+  <PropertyGroup>
+    <OutputType>Objects</OutputType>
+    <DefineConstants>ANSWER=42</DefineConstants>
+    <DebugSymbols>true</DebugSymbols>
+  </PropertyGroup>
+</Project>

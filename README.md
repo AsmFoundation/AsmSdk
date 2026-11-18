@@ -17,11 +17,14 @@ assembly, on MSBuild and NuGet.** This repo holds the MSBuild SDK behind
 - Nothing needs to be installed: restore downloads a bundled toolchain (NASM 3.02
   plus LLVM 23.1.5's `ld.lld` and `llvm-ar`) for Windows, Linux or macOS. Every
   build machine produces the same Linux x86-64 ELF.
+- The project file reads like a `.csproj`: `TargetFramework`, `OutputType`,
+  `AssemblyName`, `DefineConstants`, `DebugSymbols` and `StartupObject` are .NET's
+  own properties, with their .NET meaning.
 
 ```xml
 <Project Sdk="AsmFoundation.Sdk">
   <PropertyGroup>
-    <AsmLibraryName>hello</AsmLibraryName>   <!-- bin/Debug/libhello.so -->
+    <AssemblyName>hello</AssemblyName>   <!-- bin/Debug/freestanding/libhello.so -->
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Hello.Static" Version="1.0.0" />   <!-- an asm package -->
@@ -60,7 +63,7 @@ the .NET world takes for granted to them:
 1. `global.json` next to your solution:
 
    ```json
-   { "msbuild-sdks": { "AsmFoundation.Sdk": "0.1.0" } }
+   { "msbuild-sdks": { "AsmFoundation.Sdk": "0.2.0" } }
    ```
 
 2. `Hello/Hello.asmproj` (as above), and any number of `.asm` files next to it.
@@ -83,10 +86,20 @@ In a `.slnx` solution, give the project the generic MSBuild project type:
 | `Exe` | `<name>` | `_start` in a static executable, or `main` in a PIE on glibc |
 | `Objects` | `.o` files | for another project to link |
 
-The code runs on its own (`AsmRuntime=Freestanding`, the default, with raw
-system calls) or on glibc (`AsmRuntime=Libc`).
+The target framework says what the code links against, the way `net10.0` says
+which .NET a program runs on:
 
-- **How Libc links without a sysroot:** the SDK links against a generated
+- **`freestanding`** (the default): raw system calls, nothing linked. Runs on any
+  x86-64 Linux kernel.
+- **`libc`:** glibc. Runs where glibc 2.34 or later is installed.
+- **`<TargetFrameworks>freestanding;libc</TargetFrameworks>`** builds both, into
+  `bin/<Configuration>/<tfm>/` each, like a multi-targeted `.csproj`. NASM gets
+  `-DFREESTANDING` or `-DLIBC`, so one source can serve both.
+- **NuGet enforces what the linker can do:** a `libc` project may reference
+  `freestanding` code, but a `freestanding` project that references `libc`-only code
+  fails at restore (`NU1201`, `NU1202`). A .NET project that references a library built
+  both ways gets the `libc` build.
+- **How libc links without a sysroot:** the SDK links against a generated
   `libc.so.6` stub. The output gets `DT_NEEDED libc.so.6` and PLT entries, and
   the real glibc (2.34 or later) is used at run time.
 - **An `Exe` on glibc** starts in `main`, through a `_start` that calls
@@ -102,7 +115,7 @@ the guides are on the [documentation site](https://asmfoundation.github.io/AsmSd
 | `.asmproj` → `.asmproj` | `ProjectReference` | adds the other project's `include/` folder and links its library |
 | `.csproj` → `.asmproj` | `ProjectReference` | builds it and copies its `.so` next to the program for `[LibraryImport]`; no assembly reference |
 | package → `.asmproj` | `PackageReference` | the package's generated `build/<id>.props` adds its `include/` and its library |
-| package → `.csproj` | `PackageReference` | NuGet copies `runtimes/linux-x64/native/*.so` |
+| package → `.csproj` | `PackageReference` | NuGet copies the `.so` (`runtimes/linux-x64/native/`, or the nearest framework's from `nativeassets/` when the package has both) |
 
 `dotnet pack` on an `.asmproj` writes that package:
 
@@ -110,18 +123,22 @@ the guides are on the [documentation site](https://asmfoundation.github.io/AsmSd
 |---|---|
 | `include/` | public include files |
 | `src/` | the sources, with `AsmPackSources=true` |
-| `native/linux-x64/lib<name>.a` | the static library |
-| `runtimes/linux-x64/native/lib<name>.so` | the shared library |
-| `build/` and `buildTransitive/` | the generated props |
+| `lib/<framework>/_._` | an empty marker per target framework, so NuGet knows which projects may use the package |
+| `native/linux-x64/<tfm>/lib<name>.a` | the static library |
+| `runtimes/linux-x64/native/lib<name>.so` | the shared library (`nativeassets/<framework>/` when the project targets both) |
+| `build/<framework>/` and `buildTransitive/<framework>/` | the generated props, per target framework |
+
+`<tfm>` is `freestanding` or `libc`, and `<framework>` the NuGet framework behind it
+(`netstandard1.0` or `netstandard2.0`).
 
 ## Samples
 
-[`samples/`](samples) covers every case, and [`tests/run.py`](tests/run.py)
+[`samples/`](samples) covers every case, and [`tests/AsmSdk.Tests`](tests/AsmSdk.Tests)
 builds and checks it on every CI run:
 
 | Sample | Shows |
 |---|---|
-| `Hello.Library` | freestanding shared library |
+| `Hello.Library` | shared library built for both target frameworks (`TargetFrameworks=freestanding;libc`), with `%ifdef LIBC` |
 | `Hello.Static` | static library with public includes, packed as a NuGet package |
 | `Hello.App` | freestanding executable linking `Hello.Static` through a ProjectReference |
 | `Hello.Libc` | `main()` program calling `printf` on glibc |
@@ -139,7 +156,7 @@ builds and checks it on every CI run:
   apphost, no reference added to a referencing `.csproj`).
 - **Restore:** a `PackageDownload` fetches `AsmFoundation.Toolchain.<host-rid>`.
 - **The toolchain packages** are built by
-  [`toolchain/fetch.py`](toolchain/fetch.py) from pins in
+  [`toolchain/fetch.cs`](toolchain/fetch.cs) from pins in
   [`toolchain/versions.json`](toolchain/versions.json):
   - the official NASM binary on Windows;
   - NASM built from the official source on Linux (statically) and on macOS
@@ -149,22 +166,31 @@ builds and checks it on every CI run:
 ## Limits
 
 - **The output is Linux x86-64 ELF.** NASM syntax, System V ABI.
-- **Libc programs need glibc 2.34+ at run time.** That is when the `pthread_*`
+- **libc programs need glibc 2.34+ at run time.** That is when the `pthread_*`
   and `dl*` functions moved into `libc.so.6`.
 - **Linking against a static glibc** needs a real sysroot. Use
   `AsmToolchain=System` on Linux for that.
-- **Tests run on Linux.** On Windows, use WSL or Docker: the test runner does
-  both automatically when available.
+- **Programs run on Linux.** On Windows, the tests run the Linux outputs through
+  WSL and the .NET sample through Docker, automatically when available.
+
+## IDEs
+
+Rider, Visual Studio and VS Code show an `.asmproj` like a `.csproj`: its `.asm`
+sources (`AsmSource`), `.inc` files (`AsmInclude`) and every other file of the
+folder (`None`). Opening a solution never assembles or links: design-time builds
+skip the tools. See [IDEs](https://asmfoundation.github.io/AsmSdk/guide/ides.html).
 
 ## Development
 
+Only the .NET SDK (10 or later) is needed:
+
 ```sh
-python toolchain/fetch.py --rid win-x64     # or linux-x64 / osx-arm64: stages the tools
-python tests/run.py                         # packs, builds the samples, checks and runs them
+dotnet run toolchain/fetch.cs -- --rid win-x64                 # or linux-x64 / osx-arm64: stages the tools
+dotnet test --project tests/AsmSdk.Tests/AsmSdk.Tests.csproj   # packs, builds the samples, checks and runs them
 ```
 
-CI builds the toolchain on each OS, then runs `tests/run.py` on Windows, Linux
-and macOS. Releases are tags: `vX.Y.Z` publishes to nuget.org through trusted
+CI builds the toolchain on each OS, then runs `tests/AsmSdk.Tests` on Windows,
+Linux and macOS. Releases are tags: `vX.Y.Z` publishes to nuget.org through trusted
 publishing ([release.yml](.github/workflows/release.yml)).
 
 ## License

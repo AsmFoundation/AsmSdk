@@ -35,10 +35,16 @@ mapping all work as they do for a `.csproj`, because the SDK rides on `Microsoft
      `AsmProduceStaticLibrary=true`), otherwise the shared library.
 - **Configuration:** `-c Release` builds the referenced project in Release too, as for
   any project reference.
+- **Target framework:** NuGet picks it, as for a `.csproj`. A project that targets both
+  `freestanding` and `libc` gives each referencing project its nearest build: a `libc`
+  project gets the `libc` build, a `freestanding` project the `freestanding` one, and a
+  .NET project the `libc` one. A `freestanding` project that references a `libc`-only
+  project fails at restore with `NU1201`: freestanding code cannot link glibc code. The
+  other way round is fine.
 - **Kinds that don't fit:**
   - **A freestanding `Exe` must get a static library.** Given a `.so`, it fails with
     `attempted static link of dynamic object`.
-  - **`Objects` projects can't be referenced in 0.1.0.** The link fails with
+  - **`Objects` projects can't be referenced yet.** The link fails with
     `cannot open <referencing project>/obj/…/x.o`, because the object paths
     are passed relative to the wrong project. Use `StaticLibrary`: the linker takes only
     the archive members it needs, so nothing is lost.
@@ -58,7 +64,7 @@ mapping all work as they do for a `.csproj`, because the SDK rides on `Microsoft
 ```xml
 <PropertyGroup>
   <OutputType>StaticLibrary</OutputType>        <!-- or Library (+ AsmProduceStaticLibrary) -->
-  <AsmLibraryName>crc</AsmLibraryName>
+  <AssemblyName>crc</AssemblyName>
   <PackageId>Acme.Crc</PackageId>
   <Version>1.2.0</Version>
   <Authors>Acme</Authors>
@@ -76,11 +82,17 @@ mapping all work as they do for a `.csproj`, because the SDK rides on `Microsoft
 
 | Package path | From | Condition |
 |---|---|---|
-| `include/**` | `AsmPublicInclude` items (default `include/**/*`) | the project has an `include/` folder, or declares items |
-| `native/linux-x64/lib<name>.a` | the static library | `StaticLibrary`, or `AsmProduceStaticLibrary=true` |
-| `runtimes/linux-x64/native/lib<name>.so` | the shared library | `Library` |
+| `include/**` | `AsmPublicInclude` items (default `include/**/*`) | the project has an `include/` folder, or declares items; packed once whatever the number of target frameworks |
+| `lib/<framework>/_._` | an empty marker | one per target framework, always |
+| `native/linux-x64/<tfm>/lib<name>.a` | the static library | `StaticLibrary`, or `AsmProduceStaticLibrary=true` |
+| `runtimes/linux-x64/native/lib<name>.so` | the shared library | `Library`, single target framework |
+| `runtimes/linux-x64/nativeassets/<framework>/lib<name>.so` | the shared library of each target framework | `Library`, `TargetFrameworks` |
 | `src/**` | `AsmSource` and `AsmInclude` items, with their relative paths | `AsmPackSources=true` |
-| `build/<PackageId>.props`, `buildTransitive/<PackageId>.props` | generated | always |
+| `build/<framework>/<PackageId>.props`, `buildTransitive/<framework>/<PackageId>.props` | generated | one per target framework, always |
+
+`<tfm>` is `freestanding` or `libc`, and `<framework>` the NuGet framework behind it:
+`netstandard1.0` for `freestanding`, `netstandard2.0` for `libc`. NuGet only knows its own
+frameworks, and this mapping makes its compatibility rules match the linker's.
 
 **Footguns:**
 
@@ -88,28 +100,33 @@ mapping all work as they do for a `.csproj`, because the SDK rides on `Microsoft
   `ProjectReference` still worked, because it falls back to the project folder. Consumers
   of the package then fail with `unable to open include file`. Move public files to
   `include/`, or declare `<AsmPublicInclude Include="crc.inc" />` explicitly.
-- **The `.a` is named after `AsmLibraryName`** (which defaults to the project name), not
+- **The `.a` is named after `AssemblyName`** (which defaults to the project name), not
   after `PackageId`. `Acme.Crc` built from `Crc.asmproj` ships `libCrc.a` unless you set
-  `AsmLibraryName`.
-- **`lib/` is never used.** NuGet treats `lib/` as managed assemblies, so the static
-  library lives under `native/`. `NU5128` is suppressed for this reason.
-- **The package declares a `netstandard2.0` dependency group,** which every consumer
-  accepts. Its own `PackageReference`s become package dependencies, as usual.
+  `AssemblyName`.
+- **`lib/` holds only the empty `_._` markers.** NuGet treats `lib/` as managed assemblies,
+  so the static library lives under `native/`. The markers are there because NuGet judges a
+  package's compatibility by `lib/`: a package without one counts as compatible with every
+  framework, and a `freestanding` project would restore a `libc`-only package, import
+  nothing and fail at link time. With the markers, that restore fails with `NU1202`.
+- **The package declares one dependency group per target framework** (`netstandard1.0`,
+  `netstandard2.0`), which every .NET consumer accepts. Its own `PackageReference`s become
+  package dependencies, as usual.
 
 ## The generated consumer props
 
-`obj/<Configuration>/asm/pack/<PackageId>.props` is packed as both `build/<PackageId>.props`
-and `buildTransitive/<PackageId>.props`. For a package with includes and a static library
-it reads:
+Each target framework's `obj/<Configuration>/<tfm>/asm/pack/<PackageId>.props` is packed as
+both `build/<framework>/<PackageId>.props` and `buildTransitive/<framework>/<PackageId>.props`.
+NuGet imports the one whose framework is nearest to the consumer's. For a `freestanding`
+package with includes and a static library it reads:
 
 ```xml
 <Project>
   <PropertyGroup>
-    <AsmPackageRoot_Acme_Crc>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..'))</AsmPackageRoot_Acme_Crc>
+    <AsmPackageRoot_Acme_Crc>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..'))</AsmPackageRoot_Acme_Crc>
   </PropertyGroup>
   <ItemGroup Condition="'$(UsingAsmFoundationSdk)' == 'true'">
-    <AsmIncludeDirectory Include="$(MSBuildThisFileDirectory)../include/" AsmOrigin="Package" AsmPackage="Acme.Crc" />
-    <AsmLinkLibrary Include="$(MSBuildThisFileDirectory)../native/linux-x64/libcrc.a" AsmOrigin="Package" AsmPackage="Acme.Crc" />
+    <AsmIncludeDirectory Include="$(MSBuildThisFileDirectory)../../include/" AsmOrigin="Package" AsmPackage="Acme.Crc" />
+    <AsmLinkLibrary Include="$(MSBuildThisFileDirectory)../../native/linux-x64/freestanding/libcrc.a" AsmOrigin="Package" AsmPackage="Acme.Crc" />
   </ItemGroup>
 </Project>
 ```
@@ -146,7 +163,10 @@ section .text
 - **Include order:** the consumer's own folders come first, then each package or
   reference in the order the items were added. Choose distinctive include file names.
 - **Linking a package's `.a` into a `.so`** re-exports the archive's global symbols. Add
-  `--exclude-libs ALL` to `AsmLinkFlags` when the `.so` should export only its own API.
+  `<LinkerArg Include="--exclude-libs ALL" />` when the `.so` should export only its own API.
+- **Target frameworks:** a `libc` project can use a `freestanding` package, and a package
+  built for both gives it the `libc` build. A `freestanding` project cannot use a
+  `libc`-only package: restore fails with `NU1202`.
 - **Freestanding executables** need the package's `.a`. A package that ships only a `.so`,
   or was packed with `AsmPackageLinkKind=Shared`, fails to link into them.
 - **Restore failures:** `NU1101 Unable to find package` means a feed is missing, or package

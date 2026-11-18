@@ -26,7 +26,7 @@ You don't install an assembler or a linker: restore downloads them.
 Create `global.json` next to where your solution will be:
 
 ```json
-{ "msbuild-sdks": { "AsmFoundation.Sdk": "0.1.0" } }
+{ "msbuild-sdks": { "AsmFoundation.Sdk": "0.2.0" } }
 ```
 
 MSBuild resolves `<Project Sdk="AsmFoundation.Sdk">` through this entry, from nuget.org.
@@ -38,7 +38,7 @@ MSBuild resolves `<Project Sdk="AsmFoundation.Sdk">` through this entry, from nu
 ```xml
 <Project Sdk="AsmFoundation.Sdk">
   <PropertyGroup>
-    <AsmLibraryName>hello</AsmLibraryName>   <!-- bin/Debug/libhello.so -->
+    <AssemblyName>hello</AssemblyName>   <!-- bin/Debug/freestanding/libhello.so -->
   </PropertyGroup>
 </Project>
 ```
@@ -64,8 +64,13 @@ dotnet build Hello/Hello.asmproj
 ```
 
 The first build restores `AsmFoundation.Sdk` and the toolchain package for your machine.
-It then writes `Hello/bin/Debug/libhello.so`.
+It then writes `Hello/bin/Debug/freestanding/libhello.so`.
 
+- **The properties are .NET's own.** `AssemblyName` names the output, as it names a
+  `.csproj`'s DLL; libraries get Linux's `lib` prefix.
+- **The target framework is `freestanding`** when the project sets none: the code links no
+  C library. It is the `freestanding` folder in the output path, as `net10.0` is in a
+  `.csproj`'s.
 - **Every `*.asm` in the project folder is a source,** the way every `*.cs` is compiled
   in a `.csproj`.
 - **A second `dotnet build` with no changes runs no tool at all.**
@@ -83,7 +88,7 @@ It then writes `Hello/bin/Debug/libhello.so`.
 <Project Sdk="AsmFoundation.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <AsmLibraryName>hello-app</AsmLibraryName>
+    <AssemblyName>hello-app</AssemblyName>
   </PropertyGroup>
 </Project>
 ```
@@ -116,13 +121,13 @@ _start:                     ; the kernel enters here; there is no return address
 section .note.GNU-stack noalloc noexec nowrite progbits
 ```
 
-`dotnet build HelloApp/HelloApp.asmproj` writes `HelloApp/bin/Debug/hello-app`, a static
-Linux executable.
+`dotnet build HelloApp/HelloApp.asmproj` writes `HelloApp/bin/Debug/freestanding/hello-app`,
+a static Linux executable.
 
 **Running it on Linux:**
 
 ```sh
-./HelloApp/bin/Debug/hello-app
+./HelloApp/bin/Debug/freestanding/hello-app
 ```
 
 **Running it from Windows,** in a container. Files built on Windows have no execute bit,
@@ -130,11 +135,11 @@ so set it first:
 
 ```sh
 docker run --rm -v "$PWD:/w" -w /w mcr.microsoft.com/dotnet/runtime:10.0 \
-  sh -c 'chmod +x HelloApp/bin/Debug/hello-app && ./HelloApp/bin/Debug/hello-app'
+  sh -c 'chmod +x HelloApp/bin/Debug/freestanding/hello-app && ./HelloApp/bin/Debug/freestanding/hello-app'
 ```
 
-To use glibc instead (`printf`, `malloc`, threads), set `AsmRuntime` to `Libc` and write
-`main`. See [Runtimes and linking](runtimes-and-linking.md).
+To use glibc instead (`printf`, `malloc`, threads), set `<TargetFramework>libc</TargetFramework>`
+and write `main`. See [Runtimes and linking](runtimes-and-linking.md).
 
 ## 4. Call it from C#
 

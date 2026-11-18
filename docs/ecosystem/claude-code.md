@@ -83,8 +83,8 @@ the NuGet cache by itself. It reports:
 - for an archive, its members.
 
 ```sh
-python inspect_elf.py bin/Debug/libhello.so
-python inspect_elf.py bin/Release/libcalc.so --expect-type shared --expect-export calc_sum --expect-needed libc.so.6
+python inspect_elf.py bin/Debug/freestanding/libhello.so
+python inspect_elf.py bin/Release/libc/libcalc.so --expect-type shared --expect-export calc_sum --expect-needed libc.so.6
 ```
 
 With `--expect-…` options it exits 1 when an expectation fails, which makes it a release

@@ -24,5 +24,5 @@ Every source archive is pinned by SHA-256 in
 before use.
 
 Programs built with AsmFoundation.Sdk contain none of these tools. A program
-built with `AsmRuntime=Libc` links glibc **dynamically** at run time: it ships
+built for `TargetFramework=libc` links glibc **dynamically** at run time: it ships
 no glibc code.

@@ -39,7 +39,7 @@ jobs:
       - name: Run the outputs (Linux only)
         if: runner.os == 'Linux'
         run: |
-          ./Hello.App/bin/Release/hello-app
+          ./Hello.App/bin/Release/freestanding/hello-app
           dotnet test App.slnx -c Release --no-build
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Linux'
@@ -60,7 +60,7 @@ jobs:
   or `TreatWarningsAsErrors=true`, which makes NASM itself fail. Set both in
   `Directory.Build.props` for asm projects.
 - **`--no-build` on `pack`:** packs exactly what was built and tested.
-- **Running the outputs:** a freestanding executable runs on any Linux runner. A `Libc` one
+- **Running the outputs:** a freestanding executable runs on any Linux runner. A `libc` one
   needs glibc 2.34+, which `ubuntu-22.04` and later have.
 - **Tests that P/Invoke the `.so`:** these run in the Linux job.
 - **Pre-release SDKs:** while a project uses an SDK version that is not on nuget.org, commit
@@ -114,7 +114,7 @@ jobs:
         with:
           dotnet-version: 10.0.x
       - run: dotnet pack App.slnx -c Release -o artifacts/packages -p:Version=${GITHUB_REF_NAME#v}
-      - run: ./Hello.App/bin/Release/hello-app        # smoke-test on Linux before publishing
+      - run: ./Hello.App/bin/Release/freestanding/hello-app   # smoke-test on Linux before publishing
       - name: NuGet login (OIDC)
         id: login
         uses: NuGet/login@v1
@@ -140,7 +140,7 @@ jobs:
   path** in the object's symbol table, and in DWARF in Debug builds, and the linker keeps
   it. A Release `.so` built from `C:/src/x` differs from one built from `/home/ci/x`. For identical outputs across machines, do one of these:
   - build from the same absolute path everywhere (a fixed CI workspace);
-  - strip the static symbol table in Release: `<AsmLinkFlags>-s</AsmLinkFlags>` removes
+  - strip the static symbol table in Release: `<LinkerArg Include="-s" />` removes
     the paths and keeps the exported (dynamic) symbols.
 - **Checking it:** build on two runners and compare SHA-256 hashes of the outputs. A
   difference means an input differs, such as a define, a toolchain version or a path.
@@ -158,6 +158,6 @@ Any system that can run `dotnet` works:
 - **Azure Pipelines:** `UseDotNet@2`, then the same commands. Cache `$(NUGET_PACKAGES)`
   with `Cache@2`.
 - **GitLab CI:** the `mcr.microsoft.com/dotnet/sdk:10.0` image, a `cache:` entry for
-  `.nuget/packages`, and the same commands. Its glibc 2.39 also runs `Libc` outputs.
+  `.nuget/packages`, and the same commands. Its glibc 2.39 also runs `libc` outputs.
 - **Jenkins or TeamCity:** the same commands on Linux agents. Windows agents build but do
   not run.

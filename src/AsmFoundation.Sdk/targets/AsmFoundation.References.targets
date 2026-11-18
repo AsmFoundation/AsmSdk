@@ -8,7 +8,13 @@
       library, or its objects) - see GetAsmLinkInputs.
     csproj -> asmproj (ProjectReference): the asmproj is built first and its shared library is
       copied next to the managed output, ready for P/Invoke - see GetCopyToOutputDirectoryItems.
-      No assembly reference is added (see GetTargetPathWithTargetPlatformMoniker).
+      No assembly reference is added (see GetTargetPathWithTargetPlatformMoniker). When the
+      asmproj targets both freestanding and libc, NuGet's nearest-framework rule gives a .NET
+      project the libc build (libc stands for netstandard2.0, freestanding for netstandard1.0;
+      see AsmFoundation.Properties.targets).
+
+    Which target framework of a referenced asmproj is used is NuGet's decision, exactly as for
+    a .csproj: freestanding code links into libc projects, never the reverse (NU1201).
   -->
 
   <PropertyGroup>
@@ -41,7 +47,7 @@
       <_AsmExportedLinkInput Include="@(AsmPublicIncludeDirectory->'%(FullPath)')" AsmItemType="IncludeDirectory" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" />
       <_AsmExportedLinkInput Include="$(AsmStaticLibraryPath)" Condition="'$(AsmStaticLibraryPath)' != ''" AsmItemType="LinkInput" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" />
       <_AsmExportedLinkInput Include="$(AsmSharedLibraryPath)" Condition="'$(AsmStaticLibraryPath)' == '' and '$(AsmSharedLibraryPath)' != ''" AsmItemType="LinkInput" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" />
-      <_AsmExportedLinkInput Include="@(AsmSource->'%(ObjectFile)')" Condition="'$(AsmOutputKind)' == 'Objects'" AsmItemType="LinkInput" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" />
+      <_AsmExportedLinkInput Include="@(AsmSource->'%(ObjectFile)')" Condition="'$(_AsmOutputKind)' == 'Objects'" AsmItemType="LinkInput" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" />
     </ItemGroup>
   </Target>
 
@@ -49,6 +55,17 @@
     _AsmResolveProjectReferences: collects GetAsmLinkInputs from every referenced .asmproj and
     adds them to this project's AsmIncludeDirectory and AsmLinkLibrary items. ProjectReference
     items to anything else (for example a .csproj holding a generator) are left alone.
+
+    The referenced project is called exactly as ResolveProjectReferences calls it, so the
+    MSBuild engine reuses that build instead of starting another one:
+      - SetTargetFramework is NuGet's choice of the referenced project's target framework
+        (the nearest to ours: a libc project referencing a freestanding;libc project gets
+        libc). It is set only when the referenced project multi-targets.
+      - UndefineProperties (item metadata, which the MSBuild task honors) removes our own
+        global TargetFramework when the referenced project has a single one. Without it, the
+        libc inner build of a multi-targeted project would build a freestanding-only
+        reference as libc.
+      - RemoveProperties drops the global properties the common targets drop.
   -->
   <Target Name="_AsmResolveProjectReferences" DependsOnTargets="ResolveProjectReferences">
     <ItemGroup>
@@ -58,6 +75,7 @@
              Targets="GetAsmLinkInputs"
              BuildInParallel="$(BuildInParallel)"
              Properties="%(_AsmReferencedProject.SetConfiguration);%(_AsmReferencedProject.SetPlatform);%(_AsmReferencedProject.SetTargetFramework)"
+             RemoveProperties="%(_AsmReferencedProject.GlobalPropertiesToRemove)$(_GlobalPropertiesToRemoveFromProjectReferences)"
              Condition="'@(_AsmReferencedProject)' != ''">
       <Output TaskParameter="TargetOutputs" ItemName="_AsmReferencedOutput" />
     </MSBuild>

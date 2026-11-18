@@ -2,36 +2,48 @@
 
 This page covers how each kind of output is linked, how a program reaches glibc without a
 sysroot, and the link options that matter in production. Every link line and every error
-message here is the one the 0.1.0 targets and the bundled `ld.lld` 23.1.5 produce.
+message here is the one the 0.2.0 targets and the bundled `ld.lld` 23.1.5 produce.
 
 
-## Choosing a runtime
+## Choosing a target framework
 
-| | `Freestanding` (default) | `Libc` |
+The target framework says what the code links against, the way `net10.0` says which .NET a
+program runs on: `<TargetFramework>libc</TargetFramework>`.
+
+| | `freestanding` (default) | `libc` |
 |---|---|---|
 | Links against | nothing | glibc, dynamically, through a generated `libc.so.6` stub |
-| Executable entry | `_start` (or `AsmEntryPoint`); the kernel jumps there directly | `main`, called by the SDK's `crt1` through `__libc_start_main` |
+| Executable entry | `_start` (or `StartupObject`); the kernel jumps there directly | `main`, called by the SDK's `crt1` through `__libc_start_main` |
 | Executable type | static (`ET_EXEC`), no interpreter | PIE (`ET_DYN` with `DF_1_PIE`), `PT_INTERP /lib64/ld-linux-x86-64.so.2` |
 | Shared library `DT_NEEDED` | none | `libc.so.6` |
 | I/O, memory, threads | your own system calls | anything glibc offers: `printf`, `malloc`, `pthread_*`, `dlopen`, … |
 | Runs on | any x86-64 Linux kernel | glibc 2.34 or later |
 | Typical use | small and fast libraries for P/Invoke, tools without dependencies, kernels of hot loops | programs that need libc services; libraries that call `malloc`, `printf` or sockets through libc |
 
-A shared library loaded by .NET or Python can be `Freestanding` even though its host
-process uses glibc: it only has to avoid calling libc. Choose `Libc` the moment the
+A shared library loaded by .NET or Python can be `freestanding` even though its host
+process uses glibc: it only has to avoid calling libc. Choose `libc` the moment the
 library calls a libc function, because the stub is what gives the link `DT_NEEDED` and the
 PLT entries.
 
+**Both:** `<TargetFrameworks>freestanding;libc</TargetFrameworks>` builds the project once
+for each, like a multi-targeted `.csproj`, into `bin/<Configuration>/freestanding/` and
+`bin/<Configuration>/libc/`. NASM gets `-DFREESTANDING` or `-DLIBC`, so one source can use
+glibc where it has it (`%ifdef LIBC`) and its own system calls elsewhere. NuGet then gives
+each consumer the nearest build: a `libc` or .NET project gets the `libc` one, a
+`freestanding` project the `freestanding` one. A `freestanding` project cannot reference
+`libc`-only code at all: restore fails with `NU1201` (a project) or `NU1202` (a package).
+
 ## The exact link lines
 
-Every link appends `-z noexecstack --build-id=sha1 $(AsmLinkFlags)`. The linker is
-`lld -flavor gnu` (bundled) or `ld` (`AsmToolchain=System`).
+Every link appends `-z noexecstack --build-id=sha1`, then the `ExportsFile` arguments and
+the `LinkerArg` items, so your own arguments come last. The linker is `lld -flavor gnu`
+(bundled) or `ld` (`AsmToolchain=System`).
 
 | Output | Command (abridged) |
 |---|---|
 | Shared library | `-shared -soname lib<name>.so -z relro -z now --hash-style=gnu -o lib<name>.so <objects> <AsmLinkLibrary…> [--no-as-needed libc.so.6(stub)]` |
-| Freestanding executable | `-static -e <AsmEntryPoint or _start> -o <name> <objects> <AsmLinkLibrary…>` |
-| Libc executable | `-pie --dynamic-linker /lib64/ld-linux-x86-64.so.2 -z relro -z now --hash-style=gnu -e _start -o <name> crt1.o <objects> <AsmLinkLibrary…> --no-as-needed libc.so.6(stub)` |
+| freestanding executable | `-static -e <StartupObject or _start> -o <name> <objects> <AsmLinkLibrary…>` |
+| libc executable | `-pie --dynamic-linker /lib64/ld-linux-x86-64.so.2 -z relro -z now --hash-style=gnu -e _start -o <name> crt1.o <objects> <AsmLinkLibrary…> --no-as-needed libc.so.6(stub)` |
 | Static library | the archive is deleted, then `llvm-ar rcsD lib<name>.a <objects>` |
 
 **What the flags buy:**
@@ -89,12 +101,12 @@ section .note.GNU-stack noalloc noexec nowrite progbits
 - **Symbols are resolved at link time:** `undefined symbol: x` names the object and the
   source line.
 
-## Libc programs and libraries
+## libc programs and libraries
 
 ```xml
 <PropertyGroup>
+  <TargetFramework>libc</TargetFramework>
   <OutputType>Exe</OutputType>
-  <AsmRuntime>Libc</AsmRuntime>
 </PropertyGroup>
 ```
 
@@ -113,7 +125,7 @@ section .note.GNU-stack noalloc noexec nowrite progbits
   - In a PIE, `mov rdi, [rel stdout]` works through a copy relocation.
   - In a shared library, go through the GOT: `mov rax, [rel stdout wrt ..got]` then
     `mov rdi, [rax]`.
-- **Your own entry:** setting `AsmEntryPoint` on a `Libc` executable drops `crt1.o`. Your
+- **Your own entry:** setting `StartupObject` on a `libc` executable drops `crt1.o`. Your
   entry must then initialize glibc itself, by calling `__libc_start_main`. Without that,
   `printf` and `malloc` are used before glibc is ready.
 
@@ -126,7 +138,7 @@ section .note.GNU-stack noalloc noexec nowrite progbits
   - the output records `DT_NEEDED libc.so.6`;
   - the linker creates PLT and GOT entries for the functions;
   - at run time, the real glibc defines every symbol.
-- **Why a stub:** a Libc program builds on Windows and macOS without a Linux sysroot.
+- **Why a stub:** a libc program builds on Windows and macOS without a Linux sysroot.
 
 **The functions it lists**, grouped as in the source:
 
@@ -185,15 +197,25 @@ section .note.GNU-stack noalloc noexec nowrite progbits
 
 ## Production link options
 
-Add these with `AsmLinkFlags`, globally from `Directory.Build.props` when they suit every
-project.
+Add these as `LinkerArg` items, NativeAOT's name for extra linker arguments, globally from
+`Directory.Build.props` when they suit every project:
+
+```xml
+<ItemGroup>
+  <LinkerArg Include="-z defs" />
+  <LinkerArg Include="--exclude-libs ALL" />
+</ItemGroup>
+```
+
+Write the linker's own syntax: NativeAOT hands its `LinkerArg` items to clang, as `-Wl,…`,
+but AsmSdk runs `ld.lld` directly.
 
 | Option | Effect | When |
 |---|---|---|
-| `-z defs` | an undefined symbol in a shared library fails the link, instead of failing when the library loads | every shared library whose imports are all known at link time; with `Libc`, list extra libc functions as `AsmLibcSymbol` items |
+| `-z defs` | an undefined symbol in a shared library fails the link, instead of failing when the library loads | every shared library whose imports are all known at link time; with `libc`, list extra libc functions as `AsmLibcSymbol` items |
 | `--exclude-libs ALL` | symbols that come from linked archives are not exported from your `.so` | a `.so` that embeds a static dependency, such as a package's `.a`, and should export only its own API |
 | `-rpath $ORIGIN` | `DT_RUNPATH` makes the loader also look in the library's own folder | a `.so` that needs another `.so` shipped next to it |
-| `--version-script=<file>` | controls exactly which symbols are exported, and their versions | a public C ABI with a compatibility promise |
+| `<ExportsFile>file.map</ExportsFile>` (a property, NativeAOT's name: the SDK passes `--version-script=<file>`) | controls exactly which symbols are exported, and their versions; editing the file relinks | a public C ABI with a compatibility promise |
 | `--gc-sections` | drops unreferenced sections | only with one function per section (`section .text.fn`), which NASM sources rarely use |
 | `--strip-debug` / `-s` | removes DWARF / all symbols that are not dynamic | Release outputs where size matters; keep an unstripped copy for debugging |
 
@@ -201,10 +223,10 @@ project.
 through `/bin/sh` on Linux and macOS. `/bin/sh` expands `$ORIGIN` to an empty string, so the flag differs per build machine:
 
 ```xml
-<PropertyGroup>
-  <AsmLinkFlags Condition="$([MSBuild]::IsOSPlatform('Windows'))">$(AsmLinkFlags) -rpath $ORIGIN</AsmLinkFlags>
-  <AsmLinkFlags Condition="!$([MSBuild]::IsOSPlatform('Windows'))">$(AsmLinkFlags) -rpath '$ORIGIN'</AsmLinkFlags>
-</PropertyGroup>
+<ItemGroup>
+  <LinkerArg Include="-rpath $ORIGIN" Condition="$([MSBuild]::IsOSPlatform('Windows'))" />
+  <LinkerArg Include="-rpath '$ORIGIN'" Condition="!$([MSBuild]::IsOSPlatform('Windows'))" />
+</ItemGroup>
 ```
 
 Check the result with [`inspect_elf.py`](../ecosystem/claude-code.md#inspect_elfpy), which reports `RUNPATH: $ORIGIN`.
@@ -222,13 +244,16 @@ Static linking avoids the question.
 
 ## Debug information and stripping
 
-- **Debug:** `-g -F dwarf` puts DWARF line tables and symbols in the objects,
-  and the linker keeps them in the output. Debug with `gdb` on Linux: `break hello_add`,
-  `layout asm`, `info registers`.
-- **Release:** no debug information, no `DEBUG` define.
+- **Debug** (`DebugSymbols=true`, which Microsoft.NET.Sdk sets for every Debug build):
+  `-g -F dwarf` puts DWARF line tables and symbols in the objects, and the linker keeps them
+  in the output. Debug with `gdb` on Linux: `break hello_add`, `layout asm`,
+  `info registers`. `<DebugType>none</DebugType>` turns it off.
+- **Release:** no debug information, and `RELEASE` instead of `DEBUG`.
+  - `<DebugSymbols>true</DebugSymbols>` adds DWARF to a Release build. A .NET Release
+    build writes a PDB by default; an asm one stays free of debug information unless asked.
   - The symbol table remains, which keeps profiles readable.
-  - Add `--strip-debug` or `-s` to `AsmLinkFlags` in Release only to shrink the output
-    further.
+  - Add `<LinkerArg Include="-s" Condition="'$(Configuration)' == 'Release'" />` to shrink
+    the output further.
 - **Exported symbols:** `global name:function` gives the type, and
   `global name:function (name.end - name)` with a local `.end:` label gives the size.
   Profilers (`perf`) and symbolizers attribute samples correctly only with both.
@@ -237,11 +262,11 @@ Static linking avoids the question.
 
 - **Output:** Linux x86-64 ELF only. A Windows or macOS build machine builds it but cannot
   run it: use WSL, a container or a Linux CI job.
-- **musl (Alpine):** not supported for `Libc`, because the stub names `libc.so.6` and the
-  interpreter is glibc's. A `Freestanding` program runs on Alpine unchanged.
+- **musl (Alpine):** not supported for `libc`, because the stub names `libc.so.6` and the
+  interpreter is glibc's. A `freestanding` program runs on Alpine unchanged.
 - **Static glibc executables** need glibc's real archives and start files, which the
   bundled toolchain does not have. Use `AsmToolchain=System` on a Linux build machine with
-  glibc's development files, and pass your own link line through `AsmLinkFlags` or an
+  glibc's development files, and pass your own link line through `LinkerArg` items or an
   extension target (see [Extending the build](extending.md)).
 - **CPU features:** the SDK does not restrict instructions. Code that uses AVX2 or AVX-512
   must check CPUID at run time, or document the requirement.

@@ -1,9 +1,15 @@
 <Project Sdk="AsmFoundation.Sdk">
   <!--
-    A freestanding shared library: no libc, nothing in DT_NEEDED. OutputType defaults to
-    Library (a shared object), exactly as in a .csproj. Builds bin/<Configuration>/libhello.so.
+    A shared library built for both target frameworks, as a multi-targeted .csproj is built for
+    several: bin/<Configuration>/freestanding/libhello.so needs nothing (no DT_NEEDED), and
+    bin/<Configuration>/libc/libhello.so needs libc.so.6. One source serves both: NASM gets
+    -DFREESTANDING or -DLIBC, and hello.asm reports which build it is with %ifdef LIBC.
+    OutputType defaults to Library (a shared object), exactly as in a .csproj. Hello.Net
+    references this project and gets the libc build: NuGet picks the target framework nearest
+    to net10.0.
   -->
   <PropertyGroup>
-    <AsmLibraryName>hello</AsmLibraryName>
+    <TargetFrameworks>freestanding;libc</TargetFrameworks>
+    <AssemblyName>hello</AssemblyName>
   </PropertyGroup>
 </Project>

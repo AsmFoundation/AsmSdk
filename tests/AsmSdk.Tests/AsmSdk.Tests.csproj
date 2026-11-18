@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    AsmSdk.Tests: the end-to-end test of AsmFoundation.Sdk (it replaced tests/run.py in 0.2.0).
+
+    The assembly fixture (SdkUnderTest) packs the SDK and the toolchain packages staged by
+    toolchain/fetch.cs, then builds samples/Samples.slnx against a fresh NuGet cache in
+    artifacts/test-nuget, exactly as a user's repository consumes the SDK. Each test checks one
+    expectation of the outputs: ELF properties read with the bundled llvm-readobj, package
+    layouts, the test projects in tests/projects (including those that must fail), incremental
+    builds, IDE integration (items, design-time builds), and running the executables.
+
+    Run it with "dotnet test" on this project, after staging this machine's toolchain with
+    toolchain/fetch.cs (the README has both commands; XML comments cannot hold their double
+    dashes). Linux executables run natively on Linux and through WSL on Windows;
+    ASMSDK_TEST_RUN and ASMSDK_TEST_DOTNET_RUN override that (see LinuxRunner).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- xunit.v3 test projects are self-hosting executables (Microsoft.Testing.Platform). -->
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>AsmSdk.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="4.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
