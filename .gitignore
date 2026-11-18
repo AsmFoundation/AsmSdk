@@ -9,6 +9,3 @@ docs/_site/
 .vs/
 .idea/
 *.user
-
-# Python
-__pycache__/

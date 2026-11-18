@@ -19,9 +19,10 @@ must be packed first.
 
 ## How they are checked
 
-[`tests/run.py`](https://github.com/AsmFoundation/AsmSdk/blob/main/tests/run.py) packs the
-SDK and the toolchain into a local feed, then builds the samples against it, with a fresh
-`NUGET_PACKAGES`. Then it checks:
+[`tests/AsmSdk.Tests`](https://github.com/AsmFoundation/AsmSdk/tree/main/tests/AsmSdk.Tests),
+an xunit v3 project, packs the SDK and the toolchain into a local feed, then builds the
+samples against it, with a fresh `NUGET_PACKAGES`. Each of its 48 tests checks one
+expectation:
 
 - **the ELF properties of every output:** type, SONAME, `DT_NEEDED`, interpreter, exports
   and archive members;
@@ -33,14 +34,19 @@ SDK and the toolchain into a local feed, then builds the samples against it, wit
 - **the projects in [`tests/projects`](https://github.com/AsmFoundation/AsmSdk/tree/main/tests/projects),**
   which cover what the samples cannot: the target framework compatibility errors (`NU1201`,
   `NU1202`), the errors for settings removed in 0.2.0, `StartupObject`, `ExportsFile`,
-  `LinkerArg`, `DefineConstants` and `DebugSymbols`.
+  `LinkerArg`, `DefineConstants` and `DebugSymbols`;
+- **IDE integration:** the declared item types, that every file of a project folder is one
+  item, the up-to-date inputs and outputs, and that a design-time build runs no tool (see
+  [IDEs](../guide/ides.md)).
 
-On Windows, `tests/run.py` runs the Linux outputs through WSL and the .NET sample in
-Docker, when they are available.
+On Windows, the tests run the Linux outputs through WSL and the .NET sample in Docker, when
+they are available; where neither is, those tests are skipped with the reason
+(`ASMSDK_TEST_RUN` and `ASMSDK_TEST_DOTNET_RUN` choose explicitly). Only the .NET SDK is
+needed:
 
 ```sh
-python toolchain/fetch.py --rid win-x64     # or linux-x64 / osx-arm64: stages the tools
-python tests/run.py                         # packs, builds the samples, checks and runs them
+dotnet run toolchain/fetch.cs -- --rid win-x64                 # or linux-x64 / osx-arm64: stages the tools
+dotnet test --project tests/AsmSdk.Tests/AsmSdk.Tests.csproj   # packs, builds the samples, checks and runs them
 ```
 
 ## Bytes on the home page

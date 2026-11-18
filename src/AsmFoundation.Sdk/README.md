@@ -13,6 +13,8 @@ An `.asmproj` sits in a solution next to `.csproj` projects and builds with
 - **ProjectReference** and **PackageReference** work as they do in a `.csproj`.
 - `dotnet pack` writes a native package that both asm and .NET projects can
   consume.
+- **IDEs** (Rider, Visual Studio, VS Code) show an `.asmproj`'s files like a
+  `.csproj`'s, and opening a solution never assembles or links.
 
 Nothing needs to be installed. Restore downloads a bundled toolchain (NASM plus
 LLVM's `ld.lld` and `llvm-ar`) for Windows, Linux or macOS build machines. Every

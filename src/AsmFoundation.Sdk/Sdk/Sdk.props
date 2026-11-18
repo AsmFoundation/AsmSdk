@@ -32,7 +32,9 @@
     -->
 
     <!-- Item globs of the managed SDK (Compile, EmbeddedResource, None) are not wanted:
-         the asm items (AsmSource, AsmInclude) are declared by Sdk.targets instead. -->
+         AsmFoundation.Build.targets declares the asm items (AsmSource, AsmInclude) and a None
+         glob of its own for every other file. The managed None glob cannot be reused: with
+         no language source extension it removes every file it just included. -->
     <EnableDefaultItems>false</EnableDefaultItems>
     <!-- No NETStandard.Library reference, no reference assemblies, no assembly info. -->
     <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>

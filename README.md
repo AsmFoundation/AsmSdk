@@ -133,7 +133,7 @@ the guides are on the [documentation site](https://asmfoundation.github.io/AsmSd
 
 ## Samples
 
-[`samples/`](samples) covers every case, and [`tests/run.py`](tests/run.py)
+[`samples/`](samples) covers every case, and [`tests/AsmSdk.Tests`](tests/AsmSdk.Tests)
 builds and checks it on every CI run:
 
 | Sample | Shows |
@@ -156,7 +156,7 @@ builds and checks it on every CI run:
   apphost, no reference added to a referencing `.csproj`).
 - **Restore:** a `PackageDownload` fetches `AsmFoundation.Toolchain.<host-rid>`.
 - **The toolchain packages** are built by
-  [`toolchain/fetch.py`](toolchain/fetch.py) from pins in
+  [`toolchain/fetch.cs`](toolchain/fetch.cs) from pins in
   [`toolchain/versions.json`](toolchain/versions.json):
   - the official NASM binary on Windows;
   - NASM built from the official source on Linux (statically) and on macOS
@@ -170,18 +170,27 @@ builds and checks it on every CI run:
   and `dl*` functions moved into `libc.so.6`.
 - **Linking against a static glibc** needs a real sysroot. Use
   `AsmToolchain=System` on Linux for that.
-- **Tests run on Linux.** On Windows, use WSL or Docker: the test runner does
-  both automatically when available.
+- **Programs run on Linux.** On Windows, the tests run the Linux outputs through
+  WSL and the .NET sample through Docker, automatically when available.
+
+## IDEs
+
+Rider, Visual Studio and VS Code show an `.asmproj` like a `.csproj`: its `.asm`
+sources (`AsmSource`), `.inc` files (`AsmInclude`) and every other file of the
+folder (`None`). Opening a solution never assembles or links: design-time builds
+skip the tools. See [IDEs](https://asmfoundation.github.io/AsmSdk/guide/ides.html).
 
 ## Development
 
+Only the .NET SDK (10 or later) is needed:
+
 ```sh
-python toolchain/fetch.py --rid win-x64     # or linux-x64 / osx-arm64: stages the tools
-python tests/run.py                         # packs, builds the samples, checks and runs them
+dotnet run toolchain/fetch.cs -- --rid win-x64                 # or linux-x64 / osx-arm64: stages the tools
+dotnet test --project tests/AsmSdk.Tests/AsmSdk.Tests.csproj   # packs, builds the samples, checks and runs them
 ```
 
-CI builds the toolchain on each OS, then runs `tests/run.py` on Windows, Linux
-and macOS. Releases are tags: `vX.Y.Z` publishes to nuget.org through trusted
+CI builds the toolchain on each OS, then runs `tests/AsmSdk.Tests` on Windows,
+Linux and macOS. Releases are tags: `vX.Y.Z` publishes to nuget.org through trusted
 publishing ([release.yml](.github/workflows/release.yml)).
 
 ## License

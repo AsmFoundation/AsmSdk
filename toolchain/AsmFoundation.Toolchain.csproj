@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
     Packs AsmFoundation.Toolchain.<ToolchainRid> from artifacts/toolchain/<rid>/tools/, which
-    toolchain/fetch.py stages. One package per build machine OS/architecture:
+    toolchain/fetch.cs stages. One package per build machine OS/architecture:
         dotnet pack toolchain/AsmFoundation.Toolchain.csproj -p:ToolchainRid=win-x64
     Every package produces the same output (Linux x86-64 ELF); the RID only says where the
     tools themselves run. The SDK downloads the matching one with a PackageDownload.
@@ -40,6 +40,6 @@
   <!-- Fail with the fix instead of packing an empty toolchain. -->
   <Target Name="CheckStagedTools" BeforeTargets="_GetPackageFiles;GenerateNuspec">
     <Error Condition="!Exists('$(_ToolsDirectory)VERSIONS.txt')"
-           Text="No staged toolchain in $(_ToolsDirectory). Run: python toolchain/fetch.py --rid $(ToolchainRid)" />
+           Text="No staged toolchain in $(_ToolsDirectory). Run: dotnet run toolchain/fetch.cs -- --rid $(ToolchainRid)" />
   </Target>
 </Project>

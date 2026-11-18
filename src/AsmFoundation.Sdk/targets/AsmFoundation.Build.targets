@@ -25,6 +25,44 @@
     <AsmInclude Include="**/*.inc" Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)" />
   </ItemGroup>
 
+  <!--
+    Every other file of the project folder is a None item, as in a .csproj: IDEs show a project
+    as its items, so without this a linker script, a C header or a README next to the sources
+    would be invisible. Set EnableDefaultNoneItems=false (.NET's own switch) to list them
+    yourself.
+
+    Why not Microsoft.NET.Sdk's own None glob (EnableDefaultItems stays false in Sdk.props):
+    it removes "**/*$(DefaultLanguageSourceExtension)" from None right after including
+    "**/*", and an .asmproj has no language extension, so that Remove is "**/*" and takes
+    every file away again. The asm items are taken out of None below, so each file is one
+    item: a .asm file is an AsmSource, never also a None.
+  -->
+  <ItemGroup Condition="'$(EnableDefaultNoneItems)' != 'false'">
+    <None Include="**/*" Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)" />
+    <None Remove="@(AsmSource);@(AsmInclude)" />
+  </ItemGroup>
+
+  <!--
+    IDE integration.
+
+    AvailableItemName: the item types an IDE shows besides its built-in ones (Compile, None,
+    Content, ...). Rider's MSBuild host and Visual Studio's project system both read it; an
+    item type missing from it is not shown at all, which is how an .asmproj looked empty in
+    Rider before 0.2.0. It also offers AsmSource and AsmInclude as build actions.
+
+    UpToDateCheckInput / UpToDateCheckBuilt: the fast up-to-date checks of Visual Studio and
+    Rider decide whether to call MSBuild at all from these items. Without them an IDE would
+    not know that editing a .asm file (or the linker's version script) makes the outputs stale,
+    and would skip the build. Visible="false": they name files that are already items.
+  -->
+  <ItemGroup>
+    <AvailableItemName Include="AsmSource" />
+    <AvailableItemName Include="AsmInclude" />
+    <UpToDateCheckInput Include="@(AsmSource);@(AsmInclude)" Visible="false" />
+    <UpToDateCheckInput Include="$(ExportsFile)" Condition="'$(ExportsFile)' != ''" Visible="false" />
+    <UpToDateCheckBuilt Include="$(TargetPath)" Condition="'$(_AsmOutputKind)' != 'Objects'" Visible="false" />
+  </ItemGroup>
+
   <ItemGroup>
     <!-- The project's own include/ folder and the project folder are searched first, so a
          local file shadows one of the same name from a package or a referenced project. -->
@@ -330,8 +368,20 @@
   <!-- Replacing the managed build steps                                                      -->
   <!-- ===================================================================================== -->
 
-  <!-- The managed compiler step becomes assemble + link. -->
-  <Target Name="CoreCompile" DependsOnTargets="AsmAssemble;AsmLink" />
+  <!--
+    The managed compiler step becomes assemble + link, except in a design-time build.
+
+    IDEs run design-time builds whenever a project loads or changes, to learn its references
+    and items: Rider calls Compile and CoreCompile with DesignTimeBuild=true and
+    SkipCompilerExecution=true, and Visual Studio sets the same two properties. A design-time
+    build must not run the real tools: it would assemble and link on every load (slow), race
+    the real build for the same obj/ files, and fail where a referenced project has not been
+    built yet (Rider showed lld's "cannot open libgrpcasm.a" as a project warning). Csc honors
+    SkipCompilerExecution the same way.
+  -->
+  <Target Name="CoreCompile"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipCompilerExecution)' != 'true'"
+          DependsOnTargets="AsmAssemble;AsmLink" />
 
   <!-- An unknown project extension gets no language targets, and the common targets call
        this one unconditionally; there are no resources to name. -->

@@ -2,8 +2,8 @@
 
 Every toolchain package is built from official upstream releases, pinned by SHA-256. The
 build is in the AsmSdk repository:
-[`toolchain/fetch.py`](https://github.com/AsmFoundation/AsmSdk/blob/main/toolchain/fetch.py)
-reads its pins from
+[`toolchain/fetch.cs`](https://github.com/AsmFoundation/AsmSdk/blob/main/toolchain/fetch.cs),
+a .NET 10 file-based app, reads its pins from
 [`toolchain/versions.json`](https://github.com/AsmFoundation/AsmSdk/blob/main/toolchain/versions.json).
 
 ## Where each tool comes from
@@ -14,7 +14,10 @@ reads its pins from
 | `lld`, `llvm-ar`, `llvm-readobj` (LLVM 23.1.5) | the official LLVM release archive | the official LLVM release archive (binaries stripped) | the official LLVM release archive |
 
 - **Only three members are extracted from LLVM.** The release archives are large, so
-  `fetch.py` streams them and keeps only `lld`, `llvm-ar` and `llvm-readobj`.
+  `fetch.cs` streams them and keeps only `lld`, `llvm-ar` and `llvm-readobj`. It decodes
+  `.tar.xz` with SharpCompress, since .NET has no xz decoder. On the 901 MB Windows archive
+  that took 83.5 s, against 78.0 s for Python's lzma, the decoder of the earlier `fetch.py`,
+  and staged byte-identical tools.
 - **macOS binaries are not stripped,** because stripping would break their code
   signatures.
 
@@ -31,17 +34,17 @@ Toolchain package version 0.1.0:
 | `LLVM-23.1.5-macOS-ARM64.tar.xz` | `aba592b4a15e8f90c634c5367b51ec8418b8bcd2829865db331a17dc9418dcff` |
 | LLVM `LICENSE.TXT` (llvmorg-23.1.5) | `8d85c1057d742e597985c7d4e6320b015a9139385cff4cbae06ffc0ebe89afee` |
 
-`fetch.py` verifies each hash before it opens the file. Inside each package,
+`fetch.cs` verifies each hash before it opens the file. Inside each package,
 `tools/VERSIONS.txt` records the exact tool versions.
 
 ## Building a toolchain package yourself
 
 ```sh
-python toolchain/fetch.py --rid win-x64        # or linux-x64 / osx-arm64: downloads, verifies, stages
+dotnet run toolchain/fetch.cs -- --rid win-x64   # or linux-x64 / osx-arm64: downloads, verifies, stages
 dotnet pack toolchain/AsmFoundation.Toolchain.csproj -p:ToolchainRid=win-x64 -o artifacts/packages
 ```
 
-`fetch.py` keeps its downloads in a cache keyed by hash, so a second run downloads nothing.
+`fetch.cs` keeps its downloads in a cache keyed by hash, so a second run downloads nothing.
 NASM is built from source on Linux and macOS, which needs a C compiler and `make` on that
 machine.
 

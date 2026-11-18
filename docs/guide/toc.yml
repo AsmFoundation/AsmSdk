@@ -12,6 +12,8 @@
   href: references-and-packages.md
 - name: Calling assembly from .NET, Python and C
   href: interop.md
+- name: IDEs
+  href: ides.md
 - name: CI and releases
   href: ci-and-release.md
 - name: Extending the build

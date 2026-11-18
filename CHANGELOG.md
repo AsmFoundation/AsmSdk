@@ -8,10 +8,10 @@ packages. The format follows
 The toolchain packages carry their own version (`toolchain/versions.json`).
 Each SDK release names the one it was tested with.
 
-## [Unreleased]
+## [0.2.0] — 2026-11-18
 
-The next release is **0.2.0**: an `.asmproj` now uses the .NET property of the same purpose
-wherever one exists, and 0.1.0's own names are gone, without a compatibility layer. A project
+An `.asmproj` now uses the .NET property of the same purpose wherever one exists, and 0.1.0's
+own names are gone, without a compatibility layer. A project
 that still sets one fails with an error that names the replacement (`ASM0100` to `ASM0108`),
 all of them in one build. Migration:
 
@@ -29,6 +29,35 @@ all of them in one build. Migration:
 
 ### Added
 
+- **IDE integration, like a `.csproj`:** Rider, Visual Studio and VS Code show an `.asmproj`'s
+  files, and opening a solution no longer assembles or links anything.
+  - **The asm item types are declared** (`AvailableItemName`): IDEs show only the item types
+    they know plus those, so in 0.1.0 Rider showed every `.asmproj` empty. `AsmSource` and
+    `AsmInclude` are also offered as build actions.
+  - **Every other file of the project folder is a `None` item,** as in a `.csproj` (a linker
+    script, a C header, a README). `EnableDefaultNoneItems=false`, .NET's own switch, turns it
+    off. The managed SDK's `None` glob could not be reused: with no language source extension,
+    it removes every file it included.
+  - **Design-time builds run no tool.** IDEs build a project's design-time view on every
+    load, calling `Compile` and `CoreCompile` with `DesignTimeBuild` and
+    `SkipCompilerExecution`. 0.1.0 assembled and linked there: slow loads, races with the
+    real build, and errors such as lld's "cannot open libgrpcasm.a" shown as project
+    warnings when a referenced project was not built yet. `CoreCompile` now honors both
+    properties, as Csc does.
+  - **The fast up-to-date checks** of Visual Studio and Rider get `UpToDateCheckInput` (the
+    sources, includes and `ExportsFile`) and `UpToDateCheckBuilt` (the output), so editing a
+    `.asm` file makes the IDE call MSBuild.
+- **The tooling is .NET only.** The end-to-end test is the xunit v3 project
+  `tests/AsmSdk.Tests` (`dotnet test`, 48 tests), and the toolchain is staged by
+  `toolchain/fetch.cs`, a .NET 10 file-based app (`dotnet run toolchain/fetch.cs -- --rid
+  win-x64`). Neither the repository nor CI needs Python.
+  - The tests cover what `tests/run.py` checked, one test per expectation, plus IDE
+    integration. Through MSBuild they check the declared item types, that every file is
+    one item, the up-to-date inputs and outputs, and a replay of Rider's design-time build
+    against a control build that does run the tools.
+  - `fetch.cs` decodes `.tar.xz` with SharpCompress (.NET has no xz decoder). On the 901 MB
+    Windows LLVM archive it took 83.5 s against 78.0 s for Python's lzma, and staged
+    byte-identical tools. `VERSIONS.txt` now ends its lines with LF on every build machine.
 - **Target frameworks:** `freestanding` and `libc`, and `<TargetFrameworks>freestanding;libc</TargetFrameworks>`
   to build both, exactly like a multi-targeted `.csproj`. Behind the names, freestanding is
   netstandard1.0 and libc is netstandard2.0, so NuGet's own rules say who may use what:
@@ -50,7 +79,7 @@ all of them in one build. Migration:
 - **`tests/projects`:** test projects for the compatibility errors, the removed settings,
   `StartupObject`, `ExportsFile`, `LinkerArg`, `DefineConstants`, `DebugSymbols`, a
   multi-targeted project referencing a single-targeted one, and a libc package consumed by
-  version. `tests/run.py` builds them all, and runs the executables.
+  version. `tests/AsmSdk.Tests` builds them all, and runs the executables.
 - **The `Hello.Library` sample** targets both frameworks and reports which build it is
   (`hello_uses_libc`), so `Hello.Net` proves it was given the libc build.
 - **The documentation site,** <https://asmfoundation.github.io/AsmSdk/>: guides, the
@@ -77,6 +106,8 @@ all of them in one build. Migration:
 
 ### Removed
 
+- **`tests/run.py` and `toolchain/fetch.py`,** replaced by `tests/AsmSdk.Tests` and
+  `toolchain/fetch.cs` (see Added).
 - **`AsmLibraryName`, `AsmRuntime`, `AsmDefineConstants`, `AsmDefine` items, `AsmDebugInfo`,
   `AsmEntryPoint`, `AsmLinkFlags` and `AsmOutputKind`.** See the table above.
 - **The hidden `netstandard2.0` target framework** of every 0.1.0 project. A project that sets
@@ -150,4 +181,5 @@ The first release.
     libraries.
   - It verifies the incremental builds.
 
+[0.2.0]: https://github.com/AsmFoundation/AsmSdk/releases/tag/v0.2.0
 [0.1.0]: https://github.com/AsmFoundation/AsmSdk/releases/tag/v0.1.0

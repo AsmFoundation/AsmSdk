@@ -158,6 +158,7 @@ object named `libc.so.6`:
 | Property | Default | Meaning and footguns |
 |---|---|---|
 | `EnableDefaultAsmItems` | `true` | adds `**/*.asm` as `AsmSource` and `**/*.inc` as `AsmInclude`, excluding `bin/`, `obj/` and the other `DefaultItemExcludes`. Set `false` to list them yourself. |
+| `EnableDefaultNoneItems` | `true` (.NET's own switch) | adds every other file of the project folder as a `None` item, as a `.csproj` does, so IDEs show it: a linker script, a C header, a README. The asm items are taken out of `None`, so each file is one item. Set `false` to list `None` items yourself. |
 | `DefineConstants` | empty, then the SDK appends the configuration and target framework symbols | semicolon-separated `NAME` or `NAME=VALUE`, each passed as `-DNAME` or `-DNAME=VALUE`. The SDK appends `DEBUG` or `RELEASE` (the configuration name in upper case, with `-`, `.` and spaces as `_`, exactly like C#) and `FREESTANDING` or `LIBC` after your project body, so setting the property never drops them. `DisableImplicitConfigurationDefines=true` and `DisableImplicitFrameworkDefines=true` turn them off. C#'s `TRACE` is not added. |
 | `DebugSymbols` | `true` in Debug (from `Microsoft.NET.Sdk.props`), `false` otherwise | `-g -F dwarf`: DWARF in the objects and in the linked output. Set `true` for DWARF in Release. Unlike .NET, whose Release builds still write a PDB, a Release build stays free of debug information by default. |
 | `DebugType` | `portable` (from `Microsoft.NET.Sdk.props`) | `none` turns DWARF off even when `DebugSymbols` is `true`. Other values do not change the DWARF. |
@@ -226,7 +227,7 @@ Read-only in practice.
 |---|---|---|
 | `UsingAsmFoundationSdk` | `true` | detect asm projects in `Directory.Build.*`, targets and package props |
 | `AsmFoundationSdkDirectory` | the SDK package root | where `Sdk/`, `targets/` and `stubs/` live |
-| `EnableDefaultItems` | `false` | no `Compile`, `None` or `EmbeddedResource` globs |
+| `EnableDefaultItems` | `false` | no managed `Compile`, `None` or `EmbeddedResource` globs. The managed `None` glob removes `**/*$(DefaultLanguageSourceExtension)` right after including `**/*`, and an `.asmproj` has no language extension, so it would remove every file again. The SDK declares its own `None` glob instead (`EnableDefaultNoneItems`). |
 | `DisableImplicitFrameworkReferences`, `AutomaticallyUseReferenceAssemblyPackages` | `true`, `false` | no NETStandard.Library reference |
 | `GenerateAssemblyInfo`, `ProduceReferenceAssembly`, `GenerateDependencyFile`, `GenerateRuntimeConfigurationFiles`, `UseAppHost` | `false` | nothing managed exists |
 | `IncludeBuildOutput`, `CopyBuildOutputToOutputDirectory`, `CopyOutputSymbolsToOutputDirectory` | `false` | the native outputs are written and packed by the SDK's own steps |
@@ -258,6 +259,9 @@ Read-only in practice.
 | `AsmPublicIncludeDirectory` | `include/` when it exists, else the project folder | what a referencing `.asmproj` adds to its `-I` path. Declaring any item replaces the default. |
 | `AsmPublicInclude` | `include/**/*`, only when `include/` exists | the files packed into the package's `include/`. **Without an `include/` folder, the default is empty** and the package has no include files. Declaring any item replaces the default; packed paths are `include/%(RecursiveDir)%(Filename)%(Extension)`. |
 | `PackageDownload` | `AsmFoundation.Toolchain.<host-rid>` at `[<version>]` | added when `AsmToolchain=Bundled`, `AsmToolchainDirectory` is empty and `AsmToolchainVersion` is set. A `PackageDownload` is not a dependency of your package. |
+| `None` | every other file of the project folder (`EnableDefaultNoneItems`) | what IDEs show besides the sources and includes. The asm items are removed from it, so a file is never both. |
+| `AvailableItemName` | `AsmSource`, `AsmInclude` | the item types an IDE shows besides its built-in ones, and offers as build actions. Rider's MSBuild host and Visual Studio's project system read it; without it an `.asmproj` looks empty. |
+| `UpToDateCheckInput`, `UpToDateCheckBuilt` | the `AsmSource` and `AsmInclude` items and the `ExportsFile`; `$(TargetPath)` (unless `Objects`) | what the fast up-to-date checks of Visual Studio and Rider compare, so that editing a `.asm` file makes the IDE build. `Visible="false"`: they name files that are items already. |
 
 **Metadata the SDK reads or writes:**
 
@@ -280,7 +284,7 @@ Read-only in practice.
 | `_AsmBuildLibcStub` | `libc` shared libraries and executables | `stubs/libc.asm` → `obj/…/asm/stubs/libc.so.6` (`-soname libc.so.6`) |
 | `_AsmBuildCrt` | `libc` executables with no `StartupObject` | `stubs/crt1.asm` → `obj/…/asm/stubs/crt1.o` |
 | `AsmLink` | unless `Objects` | Inputs: objects, link inputs, the `ExportsFile`, the project file. Outputs: `$(TargetPath)` and the static library |
-| `CoreCompile` | replaced | `AsmAssemble;AsmLink` |
+| `CoreCompile` | replaced, skipped in design-time builds | `AsmAssemble;AsmLink`, unless `DesignTimeBuild` or `SkipCompilerExecution` is `true`: IDEs call `Compile` and `CoreCompile` with both on every project load, and a design-time build must not run the tools (see [IDEs](guide/ides.md)) |
 | `CreateManifestResourceNames`, `CopyFilesToOutputDirectory` | replaced, empty | no resources, nothing managed to copy |
 | `GetTargetPathWithTargetPlatformMoniker` | replaced, returns nothing | so a referencing `.csproj` adds no assembly reference (a `.so` would raise `MSB3246`) |
 | `GetAsmLinkInputs` | called by referencing `.asmproj` projects | returns the public include directories, then the static library, else the shared library, else (for `Objects`) the objects |

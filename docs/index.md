@@ -109,7 +109,7 @@ title: AsmSdk
     <h2><a href="ecosystem/index.md">The ecosystem</a></h2>
     <dl class="asm-list">
       <dt>KvAsm</dt><dd>A gRPC key-value server in assembly. Its unmodified source builds with AsmSdk.</dd>
-      <dt>GrpcAsm</dt><dd>A gRPC server and client with NASM, C, .NET and Python APIs, built with AsmSdk (in development).</dd>
+      <dt>GrpcAsm</dt><dd>A gRPC server and client in assembly, built with AsmSdk: its NASM, C and .NET APIs work today, Python is next (in development).</dd>
       <dt>asmsdk for Claude Code</dt><dd>A plugin that teaches Claude Code the SDK, with a scaffolder, a linter and an ELF inspector.</dd>
     </dl>
   </div>

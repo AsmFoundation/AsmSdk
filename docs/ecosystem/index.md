@@ -18,7 +18,7 @@ assembly codebase. The projects below are some of its users.
 | Project | What it is | Relation to AsmSdk |
 |---|---|---|
 | [KvAsm](https://github.com/AsmFoundation/KvAsm) | A gRPC key-value server in x86-64 assembly, with its own HTTP/2 engine, HPACK decoder and protobuf codec. It ships as a 2 MB container image, plus the `KvAsm.Client` .NET package. | Its unmodified server source builds with AsmSdk, as a glibc PIE, and passes KvAsm's whole end-to-end suite. |
-| [GrpcAsm](https://github.com/AsmFoundation/GrpcAsm) | A gRPC server and client in assembly, with NASM, C, .NET and Python APIs. It generalizes KvAsm's engine. In development. | A solution of `.asmproj` and `.csproj` projects, built and packed with AsmSdk. |
+| [GrpcAsm](https://github.com/AsmFoundation/GrpcAsm) | A gRPC server and client in assembly, generalizing KvAsm's engine. Its NASM API (services declared in a few lines, the dispatch generated at assembly time), its C ABI (`libgrpcasm.so`) and its .NET API (`GrpcAsm.Net`) work today, with h2spec 146/146 and grpc-dotnet interop in CI; Python is next. In development, not released. | A solution of `.asmproj` and `.csproj` projects, built and packed with AsmSdk. |
 | StorageAsm | Blob and S3-style object storage over gRPC on an assembly server. In design. | Planned to build with AsmSdk. |
 | [AsmClaudeMarketplace](https://github.com/AsmFoundation/AsmClaudeMarketplace) | Claude Code plugins for the ecosystem, one per topic. | Its `asmsdk` plugin teaches Claude Code this SDK; see [Claude Code plugin](claude-code.md). |
 

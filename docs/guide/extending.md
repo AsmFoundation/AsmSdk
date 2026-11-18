@@ -132,12 +132,12 @@ between releases.
 - **Run it before `AsmPrepare`,** so that the items exist when the include path and the
   dependencies are computed.
 
-**Generate a source file** (for example a table computed by a script):
+**Generate a source file** (for example a table computed by a .NET 10 file-based app):
 
 ```xml
-<Target Name="GenerateTables" BeforeTargets="AsmPrepare" Inputs="tools/gen_tables.py" Outputs="$(IntermediateOutputPath)gen/tables.asm">
+<Target Name="GenerateTables" BeforeTargets="AsmPrepare" Inputs="tools/gen_tables.cs" Outputs="$(IntermediateOutputPath)gen/tables.asm">
   <MakeDir Directories="$(IntermediateOutputPath)gen" />   <!-- a clean obj/ has no gen/ yet -->
-  <Exec Command="python tools/gen_tables.py &quot;$(IntermediateOutputPath)gen/tables.asm&quot;" />
+  <Exec Command="dotnet run tools/gen_tables.cs -- &quot;$(IntermediateOutputPath)gen/tables.asm&quot;" />
   <ItemGroup>
     <AsmSource Include="$(IntermediateOutputPath)gen/tables.asm" />
     <FileWrites Include="$(IntermediateOutputPath)gen/tables.asm" />
@@ -147,6 +147,12 @@ between releases.
 
 With `Inputs` and `Outputs` on a target, MSBuild still runs the target's item groups when
 it skips the target as up to date. The `AsmSource` item exists either way.
+
+**Keep tools out of design-time builds.** IDEs run `Compile` and `CoreCompile` on every
+project load with `DesignTimeBuild=true` (see [IDEs](ides.md)). A target hooked to
+`AsmPrepare`, `AsmAssemble` or `AsmLink`, as above, never runs then: `CoreCompile`, which
+leads to them, is skipped. A target hooked anywhere else that runs a tool needs
+`Condition="'$(DesignTimeBuild)' != 'true'"`.
 
 **Post-link steps** (strip a copy, sign, compute a checksum):
 
