@@ -17,7 +17,7 @@ section .text
 ; -----------------------------------------------------------------------------
 ; main - entered from the SDK's crt1 through __libc_start_main.
 ; @returns eax = libconly_length("eleven char") = 11, the exit status that
-;          tests/run.py expects
+;          RunTests (tests/AsmSdk.Tests) expects
 ; -----------------------------------------------------------------------------
 global main:function
 main:

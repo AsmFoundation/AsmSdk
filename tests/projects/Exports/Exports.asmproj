@@ -1,9 +1,10 @@
 <Project Sdk="AsmFoundation.Sdk">
   <!--
     A libc shared library linked with NativeAOT's names for extra link input: ExportsFile (the
-    version script) and a LinkerArg item. tests/run.py checks that only exported_fn is in the
-    dynamic symbol table, versioned EXPORTS_1.0, that internal_fn is not, and that -Bsymbolic
-    set DF_SYMBOLIC.
+    version script) and a LinkerArg item. ProjectRuleTests (tests/AsmSdk.Tests) checks that
+    only exported_fn is in the dynamic symbol table, versioned EXPORTS_1.0, that internal_fn is
+    not, and that -Bsymbolic set DF_SYMBOLIC; IdeIntegrationTests reads its IDE items and
+    replays an IDE's design-time build on it.
   -->
   <PropertyGroup>
     <TargetFramework>libc</TargetFramework>

@@ -3,8 +3,8 @@
     The test projects consume AsmFoundation.Sdk exactly as a user's repository would, like the
     samples, so they must not inherit the SDK repository's own settings (its version, package
     output folder, metadata). This file stops MSBuild's upward search for
-    Directory.Build.props here. tests/run.py builds every project in this folder and checks
-    the result, including the projects that are meant to fail.
+    Directory.Build.props here. The end-to-end tests (tests/AsmSdk.Tests) build every project
+    in this folder and check the result, including the projects that are meant to fail.
   -->
   <PropertyGroup>
     <!-- Test packages go to the local feed the samples and these projects restore from. -->

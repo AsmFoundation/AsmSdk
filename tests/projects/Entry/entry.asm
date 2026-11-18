@@ -12,7 +12,7 @@ section .text
 
 ; -----------------------------------------------------------------------------
 ; entry_here - process entry (static executable: the kernel jumps here).
-; Never returns; exits with status 42, which tests/run.py expects.
+; Never returns; exits with status 42, which RunTests (tests/AsmSdk.Tests) expects.
 ; -----------------------------------------------------------------------------
 global entry_here:function
 entry_here:

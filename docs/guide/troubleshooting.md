@@ -2,8 +2,8 @@
 
 Find the message, then apply the fix. Unless a row says otherwise, every message below
 was reproduced with AsmFoundation.Sdk 0.1.0, NASM 3.02 and `ld.lld` 23.1.5, and is
-written with the 0.2.0 property names. The `ASM0003` and `ASM0100` to `ASM0108` rows, and the
-target framework rows, come from 0.2.0.
+written with the 0.2.0 property names. The `ASM0003`, `ASM0100` to `ASM0108` and
+`Ambiguous project name` rows, and the target framework rows, come from 0.2.0.
 
 **First, get the real message.** By default, a failed NASM run surfaces as:
 

@@ -25,8 +25,8 @@ A team can mix Windows, Linux and macOS machines.
   NuGet extracts the package into the global packages folder: `~/.nuget/packages`, or
   `$NUGET_PACKAGES` when set.
 - **`AsmToolchainVersion` defaults to the version the SDK release was tested with:** `0.1.0`
-  for SDK 0.1.0. Toolchain packages carry their own version, so a new SDK release does not
-  download unchanged tools again.
+  for SDK 0.1.0 and for SDK 0.2.0, which kept the same tools. Toolchain packages carry their
+  own version, so a new SDK release does not download unchanged tools again.
 - **A `PackageDownload` is not a dependency.** Packages built from your projects do not list
   the toolchain, and their consumers download their own.
 - **Before each build,** the SDK checks that the tools are present. If one is missing, the

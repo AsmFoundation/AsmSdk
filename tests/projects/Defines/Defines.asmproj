@@ -1,6 +1,7 @@
 <Project Sdk="AsmFoundation.Sdk">
   <!--
-    Objects only (no link), built in Release by tests/run.py. It checks:
+    Objects only (no link), built in Release by ProjectRuleTests (tests/AsmSdk.Tests). It
+    checks:
       - DefineConstants without $(DefineConstants) still keeps the configuration and target
         framework symbols (RELEASE, FREESTANDING), which the SDK appends after the project
         body like C# does; and ANSWER=42 reaches NASM as a value. defines.asm fails to

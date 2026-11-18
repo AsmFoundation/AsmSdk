@@ -1,8 +1,9 @@
 <Project Sdk="AsmFoundation.Sdk">
   <!--
     A libc program that consumes the libc-only package Test.LibcOnly by version. The package
-    has no static library, so the consumer links its shared library: tests/run.py checks
-    DT_NEEDED libtestlibconly.so, and runs the program where Linux is available.
+    has no static library, so the consumer links its shared library: ProjectRuleTests
+    (tests/AsmSdk.Tests) checks DT_NEEDED libtestlibconly.so, and RunTests runs the program
+    where Linux is available.
   -->
   <PropertyGroup>
     <TargetFramework>libc</TargetFramework>
