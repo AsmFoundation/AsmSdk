@@ -1,0 +1,6 @@
+- name: The ecosystem
+  href: index.md
+- name: Samples
+  href: samples.md
+- name: Claude Code plugin
+  href: claude-code.md

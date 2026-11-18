@@ -3,6 +3,7 @@ bin/
 obj/
 artifacts/
 *.binlog
+docs/_site/
 
 # IDE
 .vs/

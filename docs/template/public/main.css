@@ -1,0 +1,304 @@
+/*
+ * AsmSdk site theme for DocFX's modern template (docs/template/public/main.css).
+ *
+ * Brand: the AsmFoundation logo's mint and teal blocks with deep-teal ink. Type: Archivo
+ * (a grotesk with a width axis; headings are set wide) and Martian Mono for code and bytes.
+ * Both fonts are self-hosted from ./fonts (SIL Open Font License 1.1, texts beside them),
+ * so the site makes no third-party requests.
+ *
+ * The modern template is Bootstrap 5: colors are set through Bootstrap's CSS variables for
+ * the light and dark themes, and the landing page (docs/index.md) uses the asm-* classes.
+ */
+
+/* ---------------------------------------------------------------- fonts */
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  font-display: swap;
+  src: url("fonts/archivo-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  font-display: swap;
+  src: url("fonts/archivo-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Martian Mono";
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url("fonts/martian-mono-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Martian Mono";
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url("fonts/martian-mono-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* ---------------------------------------------------------------- palette */
+:root,
+[data-bs-theme="light"] {
+  --asm-ink: #062f2e;          /* headings, primary button */
+  --asm-teal: #06706d;         /* the logo's lower blocks; links */
+  --asm-mint: #3eea8c;         /* the logo's upper blocks; focus, accents */
+  --asm-text: #1d2b2a;
+  --asm-muted: #566a68;
+  --asm-rule: #d8e5e2;
+  --asm-wash: #f1f7f5;         /* bands on the landing page */
+  --asm-card: #ffffff;
+  --asm-byte-teal-text: #b8f7d4;
+
+  --bs-body-bg: #ffffff;
+  --bs-body-bg-rgb: 255, 255, 255;   /* .bg-body (the header) reads the rgb form */
+  --bs-body-color: var(--asm-text);
+  --bs-emphasis-color: var(--asm-ink);
+  --bs-secondary-color: var(--asm-muted);
+  --bs-border-color: var(--asm-rule);
+  --bs-link-color: #06706d;
+  --bs-link-color-rgb: 6, 112, 109;
+  --bs-link-hover-color: #054f4d;
+  --bs-link-hover-color-rgb: 5, 79, 77;
+  --bs-code-color: #0b5c59;
+  --bs-primary: #06706d;
+  --bs-primary-rgb: 6, 112, 109;
+}
+
+[data-bs-theme="dark"] {
+  --asm-ink: #e6f4f1;
+  --asm-teal: #5fd6c3;
+  --asm-mint: #3eea8c;
+  --asm-text: #cfe1de;
+  --asm-muted: #93aeaa;
+  --asm-rule: #1d3a38;
+  --asm-wash: #0b2221;
+  --asm-card: #0e2928;
+  --asm-byte-teal-text: #b8f7d4;
+
+  --bs-body-bg: #071817;
+  --bs-body-bg-rgb: 7, 24, 23;
+  --bs-body-color: var(--asm-text);
+  --bs-emphasis-color: var(--asm-ink);
+  --bs-secondary-color: var(--asm-muted);
+  --bs-border-color: var(--asm-rule);
+  --bs-link-color: #6fe3cf;
+  --bs-link-color-rgb: 111, 227, 207;
+  --bs-link-hover-color: #a6f2e4;
+  --bs-link-hover-color-rgb: 166, 242, 228;
+  --bs-code-color: #8ff0c0;
+  --bs-tertiary-bg: #0b2221;
+  --bs-secondary-bg: #0e2928;
+}
+
+/* ---------------------------------------------------------------- base type */
+body {
+  --bs-body-font-family: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --bs-font-monospace: "Martian Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-family: var(--bs-body-font-family);
+  font-size: 16.5px;
+  line-height: 1.6;
+}
+
+code, kbd, pre, samp, .hljs {
+  font-family: var(--bs-font-monospace);
+  font-size: 0.86em;
+}
+
+article h1, article h2, article h3, article h4 {
+  font-family: "Archivo", system-ui, sans-serif;
+  font-stretch: 112%;
+  color: var(--asm-ink);
+  letter-spacing: -0.01em;
+}
+article h1 { font-weight: 720; }
+article h2 { font-weight: 680; margin-top: 2.2rem; }
+article h3 { font-weight: 650; }
+
+/* Readable measure for prose; tables and code may use the full column. */
+article > p, article > ul, article > ol, article > blockquote { max-width: 46rem; }
+
+article table { font-size: 0.95em; }
+article table code { white-space: nowrap; }
+
+/* Code blocks: a calm card that matches both themes. The attribute selector outranks the
+   template's own [data-bs-theme=dark] .hljs background, which would otherwise paint grey. */
+pre {
+  background: var(--asm-wash);
+  border: 1px solid var(--asm-rule);
+  border-radius: 8px;
+}
+[data-bs-theme] pre code.hljs { background: transparent; }
+
+/* Breathing room at the page edges; the header and the content share one inset. */
+.container-xxl { padding-inline: clamp(1rem, 3vw, 2.5rem); }
+
+/* The navbar: logo plus a wide-set product name, like the landing page headline. */
+.navbar-brand {
+  font-family: "Archivo", system-ui, sans-serif;
+  font-weight: 700;
+  font-stretch: 112%;
+  color: var(--asm-ink);
+}
+.navbar-brand #logo { width: 26px; height: 26px; margin-right: 0.5rem; }
+
+/* "In this article": sentence case like every other label on the site. */
+.affix h5 {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 650;
+  font-size: 0.9rem;
+  color: var(--asm-ink);
+}
+
+a:focus-visible, button:focus-visible, .btn:focus-visible {
+  outline: 3px solid var(--asm-mint);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------- landing page */
+.asm-landing { color: var(--asm-text); }
+.asm-landing h1, .asm-landing h2, .asm-landing h3 { color: var(--asm-ink); font-family: "Archivo", system-ui, sans-serif; }
+.asm-landing code { font-family: var(--bs-font-monospace); }
+
+.asm-hero {
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  gap: 4rem;
+  align-items: center;
+  padding: 4.5rem 0 4rem;
+}
+.asm-hero h1 {
+  font-size: clamp(2.4rem, 4.6vw, 3.45rem);
+  line-height: 1.06;
+  font-weight: 700;
+  font-stretch: 112%;
+  letter-spacing: -0.015em;
+  margin: 0 0 1.4rem;
+}
+.asm-lede { font-size: 1.2rem; max-width: 32em; margin: 0 0 2rem; }
+.asm-actions { display: flex; flex-wrap: wrap; gap: 0.9rem; }
+.asm-btn {
+  display: inline-block;
+  padding: 0.75rem 1.4rem;
+  border-radius: 999px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.asm-btn-primary { background: #062f2e; color: #ffffff; }
+.asm-btn-primary:hover { background: #06706d; color: #ffffff; }
+.asm-btn-secondary { background: var(--asm-wash); color: var(--asm-ink); }
+.asm-btn-secondary:hover { color: var(--asm-ink); background: var(--asm-rule); }
+[data-bs-theme="dark"] .asm-btn-secondary { border: 1px solid var(--asm-rule); }
+[data-bs-theme="dark"] .asm-btn-primary { background: #3eea8c; color: #062f2e; }
+[data-bs-theme="dark"] .asm-btn-primary:hover { background: #8ff0c0; color: #062f2e; }
+
+/* The byte A: the one bold element. Brand colors stay the same in both themes. */
+.asm-byte-a { margin: 0; }
+.asm-byte-a svg { display: block; width: 100%; max-width: 470px; margin: 0 auto; }
+.asm-byte-a text {
+  font-family: "Martian Mono", ui-monospace, monospace;
+  font-weight: 600;
+  font-size: 46px;
+  dominant-baseline: central;
+  text-anchor: middle;
+}
+.asm-byte-mint rect { fill: #3eea8c; }
+.asm-byte-mint text { fill: #062f2e; }
+.asm-byte-teal rect { fill: #06706d; }
+.asm-byte-teal text { fill: var(--asm-byte-teal-text); }
+.asm-byte-a figcaption { font-size: 0.9rem; color: var(--asm-muted); max-width: 470px; margin: 1.1rem auto 0; }
+.asm-byte-a figcaption code { color: var(--asm-ink); }
+
+/* Sections. The band spans the full width behind its content. */
+.asm-section { padding: 3.5rem 0; }
+.asm-section h2 { font-size: 1.9rem; font-weight: 700; font-stretch: 112%; margin: 0 0 1.6rem; }
+.asm-section h2 a { color: inherit; text-decoration: none; }
+.asm-section h2 a:hover { text-decoration: underline; }
+.asm-band { background: var(--asm-wash); box-shadow: 0 0 0 100vmax var(--asm-wash); clip-path: inset(0 -100vmax); }
+
+/* Three steps: a real sequence, so it is numbered. */
+.asm-steps { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.8rem; counter-reset: step; }
+.asm-steps > li { counter-increment: step; }
+.asm-steps h3 { font-size: 1.05rem; font-weight: 650; margin: 0 0 0.8rem; }
+.asm-steps h3::before {
+  content: counter(step);
+  display: block;
+  font-family: "Martian Mono", ui-monospace, monospace;
+  font-size: 0.85rem;
+  color: var(--asm-teal);
+  margin-bottom: 0.2rem;
+}
+.asm-steps pre { margin: 0 0 0.8rem; background: var(--asm-card); }
+.asm-steps p { font-size: 0.95rem; margin: 0; }
+
+/* The build map. */
+.asm-map {
+  display: grid;
+  grid-template-columns: 1fr 28px 1.25fr 28px 1fr 28px 1fr;
+  align-items: center;
+}
+.asm-map-col h3 { font-size: 0.95rem; font-weight: 650; color: var(--asm-muted); margin: 0 0 0.6rem; }
+.asm-map-item {
+  background: var(--asm-card);
+  border: 1px solid var(--asm-rule);
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 0.6rem;
+  font-size: 0.92rem;
+}
+.asm-map-item code { color: var(--asm-ink); background: none; padding: 0; }
+.asm-map-item span { display: block; color: var(--asm-muted); }
+.asm-map-arrow { height: 2px; background: var(--asm-teal); position: relative; }
+.asm-map-arrow::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  top: -5px;
+  border: 6px solid transparent;
+  border-left: 8px solid var(--asm-teal);
+}
+.asm-map-sdk { background: #062f2e; color: #dcefeb; border-radius: 10px; padding: 1.1rem 1.1rem 0.4rem; }
+.asm-map-sdk-title { display: flex; align-items: center; gap: 0.6rem; font-weight: 700; color: #ffffff; margin-bottom: 0.8rem; }
+.asm-map-stage { border-left: 3px solid #3eea8c; padding: 0.2rem 0 0.2rem 0.75rem; margin-bottom: 0.75rem; }
+.asm-map-stage b { display: block; color: #ffffff; font-weight: 600; }
+.asm-map-stage span { font-size: 0.88rem; color: #a9cfc9; }
+[data-bs-theme="dark"] .asm-map-sdk { background: #0e2928; border: 1px solid #1d3a38; }
+
+/* Ecosystem and toolchain, side by side. */
+.asm-two { display: grid; grid-template-columns: 1fr 1fr; gap: 3.5rem; border-top: 1px solid var(--asm-rule); }
+.asm-list { display: grid; grid-template-columns: 11rem 1fr; row-gap: 0.8rem; column-gap: 1.2rem; margin: 0; }
+.asm-list dt { font-weight: 650; color: var(--asm-ink); }
+.asm-list dd { margin: 0; }
+
+/* Grid children default to min-width: auto, so one long code line would widen the page past
+   a phone's screen; letting them shrink keeps overflow inside the code block's own scroller. */
+.asm-hero > *, .asm-steps > li, .asm-map > *, .asm-two > * { min-width: 0; }
+.asm-landing pre { max-width: 100%; overflow-x: auto; }
+
+@media (max-width: 992px) {
+  .asm-hero, .asm-two { grid-template-columns: 1fr; gap: 2.5rem; }
+  .asm-steps { grid-template-columns: 1fr; }
+  .asm-map { grid-template-columns: 1fr; }
+  .asm-map-arrow { display: none; }
+  .asm-map-sdk { margin-bottom: 1rem; }
+}
+
+/* On phones, a name column would squeeze the descriptions into a few words per line. */
+@media (max-width: 576px) {
+  .asm-list { grid-template-columns: 1fr; row-gap: 0.15rem; }
+  .asm-list dd { margin-bottom: 0.9rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { scroll-behavior: auto !important; }
+}

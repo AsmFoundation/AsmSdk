@@ -1,0 +1,22 @@
+- name: What is AsmSdk
+  href: index.md
+- name: Getting started
+  href: getting-started.md
+- name: Projects
+  href: projects.md
+- name: Writing NASM for AsmSdk
+  href: writing-nasm.md
+- name: Runtimes and linking
+  href: runtimes-and-linking.md
+- name: References and packages
+  href: references-and-packages.md
+- name: Calling assembly from .NET, Python and C
+  href: interop.md
+- name: CI and releases
+  href: ci-and-release.md
+- name: Extending the build
+  href: extending.md
+- name: Troubleshooting
+  href: troubleshooting.md
+- name: Changelog
+  href: changelog.md
