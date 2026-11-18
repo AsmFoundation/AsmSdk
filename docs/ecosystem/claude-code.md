@@ -17,9 +17,10 @@ You can also call it by name: `/asmsdk:asmsdk`.
 
 ## What it knows
 
-Plugin 0.1.0 documents AsmFoundation.Sdk 0.1.0. Each behavior it states was reproduced by
-building with that release and its bundled NASM and `ld.lld`. The same knowledge is on this
-site:
+Plugin 0.2.0 documents AsmFoundation.Sdk 0.2.0. Each behavior it states was reproduced by
+building with an AsmSdk release and its bundled NASM and `ld.lld`; what 0.2.0 changed is
+verified by AsmSdk's own tests. For a 0.1.0 project, it names each setting's 0.2.0
+replacement. The same knowledge is on this site:
 
 - the project model;
 - the complete property, item and target reference;
@@ -37,8 +38,8 @@ or later, with no packages.
 Scaffolds a project that builds on the first `dotnet build`:
 
 ```sh
-python new_asmproj.py Hello --kind library --lib-name hello --sln App.slnx
-python new_asmproj.py Tool --kind exe --runtime libc
+python new_asmproj.py Hello --kind library --assembly-name hello --sln App.slnx
+python new_asmproj.py Tool --kind exe --framework libc
 python new_asmproj.py Crc --kind static --package-id Acme.Crc --version 1.2.0
 ```
 
@@ -65,8 +66,8 @@ python check_asmproj.py App.slnx --json
 |---|---|
 | `ASMPIC001`–`005` | absolute addressing without `default rel`; calls and data access across objects without `wrt ..plt` / `wrt ..got`; absolute addresses in `.text`; `dq label` in read-only sections |
 | `ASMSRC005`–`013` | an unwritable `.data.rel.ro`; a missing `.note.GNU-stack`; untyped exports; keyword symbol names; `%include` paths NASM won't find; an `.asm` included and assembled twice; a missing entry symbol; symbols nothing defines (including libc functions outside the stub); `hidden` written after the size, which NASM ignores |
-| `ASMPRJ000`–`012` | `AsmDefineConstants` dropping `DEBUG`; include folders outside the project that don't rebuild; packages without include files; `$ORIGIN` that `/bin/sh` empties; a bad `AsmToolchain`; recommendations (`-Xvc`, `-z defs`) |
-| `ASMREF000`–`002` | missing references; a freestanding executable referencing a shared-only library; references to `Objects` projects (the 0.1.0 issue) |
+| `ASMPRJ000`–`014` | a 0.1.0 setting that 0.2.0 removed, with its replacement; two projects of one restore graph with the same `PackageId` ("Ambiguous project name"); include folders outside the project that don't rebuild; packages without include files; `$ORIGIN` that `/bin/sh` empties; a bad `AsmToolchain`; recommendations (`-Xvc`, `-z defs`) |
+| `ASMREF000`–`003` | missing references; a freestanding executable referencing a shared-only library; references to `Objects` projects (a known issue); a freestanding project referencing libc-only code (`NU1201`) |
 | `ASMSLN001`–`003` | no `msbuild-sdks` entry; `.slnx` entries without the type GUID; an SDK version other than the one the checks encode |
 
 On AsmSdk's own samples it reports no error and no warning.
