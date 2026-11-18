@@ -127,8 +127,9 @@ article h3 { font-weight: 650; }
 /* Readable measure for prose; tables and code may use the full column. */
 article > p, article > ul, article > ol, article > blockquote { max-width: 46rem; }
 
-article table { font-size: 0.95em; }
-article table code { white-space: nowrap; }
+/* Wide tables (command columns, long property names) scroll inside their own box instead of
+   being clipped by the content column; code in cells may wrap at spaces like any text. */
+article table { font-size: 0.95em; display: block; max-width: 100%; overflow-x: auto; }
 
 /* Code blocks: a calm card that matches both themes. The attribute selector outranks the
    template's own [data-bs-theme=dark] .hljs background, which would otherwise paint grey. */
@@ -238,7 +239,7 @@ a:focus-visible, button:focus-visible, .btn:focus-visible {
   color: var(--asm-teal);
   margin-bottom: 0.2rem;
 }
-.asm-steps pre { margin: 0 0 0.8rem; background: var(--asm-card); }
+.asm-steps pre { margin: 0 0 0.8rem; background: var(--asm-card); font-size: 0.8rem; }
 .asm-steps p { font-size: 0.95rem; margin: 0; }
 
 /* The build map. */
