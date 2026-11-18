@@ -137,11 +137,32 @@
       <_AsmDefineArguments>@(_AsmDefine->'-D%(Identity)', ' ')</_AsmDefineArguments>
       <_AsmDebugArguments Condition="'$(AsmDebugInfo)' == 'true'">-g -F dwarf</_AsmDebugArguments>
       <!--
-        Every warning except two that flag ordinary relocations: reloc-rel-dword fires on any
-        RIP-relative reference to another section (lea rsi, [rel msg] from .text to .rodata,
-        a call to an extern), and reloc-abs-qword on a dq of a label (a jump table), which a
-        shared object resolves with R_X86_64_RELATIVE. Both are how position-independent ELF
-        code is written. TreatWarningsAsErrors works as in a .csproj.
+        Every warning except two that NASM raises on relocations it cannot judge:
+
+        - reloc-rel-dword fires on any RIP-relative reference to another section (lea rsi,
+          [rel msg] from .text to .rodata, a call to an extern). That is how
+          position-independent code is written, and it always links.
+        - reloc-abs-qword fires on a dq of a label (a jump table, a table of handlers). Whether
+          such a pointer works depends on the output and on the section, which NASM cannot see:
+          - In a Freestanding executable (-static, not position-independent), the address is
+            fixed at link time, and the pointer works in any section.
+          - In a shared library or a Libc executable (a PIE), the address is known only at
+            load time. In a writable section, the linker emits an R_X86_64_RELATIVE dynamic
+            relocation, and the loader applies it when the program starts. That covers .data,
+            and also ".data.rel.ro" when it is declared "write". There, -z relro makes the
+            section read-only again after relocation. Without "write", NASM leaves a section of
+            that name read-only.
+          - In .rodata, or any other section without the write flag, the LINK FAILS: ld.lld
+            reports "relocation R_X86_64_64 cannot be used against local symbol; recompile
+            with -fPIC". The fix would be to relocate a read-only page at load time (a text
+            relocation), and ld.lld's default -z text forbids that. Tables in read-only data
+            hold 32-bit offsets instead (dd label - table), which need no relocation.
+
+        The warning stays off: NASM would flag the valid cases too, and the linker still
+        rejects every invalid one. Measured with the bundled NASM 3.02 and ld.lld 23.1.5,
+        using this SDK's link lines.
+
+        TreatWarningsAsErrors works as in a .csproj.
       -->
       <_AsmWarningArguments>-w+all -w-reloc-rel-dword -w-reloc-abs-qword</_AsmWarningArguments>
       <_AsmWarningArguments Condition="'$(TreatWarningsAsErrors)' == 'true'">$(_AsmWarningArguments) -w+error</_AsmWarningArguments>

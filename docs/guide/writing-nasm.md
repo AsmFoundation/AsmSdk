@@ -53,7 +53,7 @@ go into either kind of output.
 | `lea rax, [msg]` | `mov rax, msg` | `.so`/PIE: `relocation R_X86_64_64 cannot be used against local symbol; recompile with -fPIC` (an absolute address in read-only `.text`) |
 | `call helper wrt ..plt` (helper in another object or library) | `call helper` | `.so`: `relocation R_X86_64_PC32 cannot be used against symbol 'helper'; recompile with -fPIC` |
 | `mov rax, [rel stdout wrt ..got]` then `mov rdi, [rax]` | `mov rdi, [rel stdout]` | `.so`: `relocation R_X86_64_PC32 cannot be used against symbol 'stdout'`. This also applies to a `global` data symbol defined in **another object of the same library**, unless that symbol is `hidden`. A PIE accepts it, through a copy relocation |
-| jump table of offsets in `.rodata`: `dd .case1 - table` | `dq .case1` in `.rodata` | `.so`: `relocation R_X86_64_64 cannot be used against local symbol` |
+| jump table of offsets in `.rodata`: `dd .case1 - table` | `dq .case1` in `.rodata` | `.so`/PIE: `relocation R_X86_64_64 cannot be used against local symbol` (a Freestanding executable, linked `-static`, accepts it) |
 
 **Calls inside one library.** A `global` function is "preemptible" in a shared library:
 another library loaded earlier may define the same name, and the dynamic loader would
@@ -71,8 +71,10 @@ three ways to write it:
 
 For a hot internal call path, use option 2. Export only the API.
 
-**Jump tables.** Absolute addresses in data need a dynamic relocation. In a shared object,
-that relocation is only allowed in a writable section:
+**Jump tables.** In a shared library or a Libc executable (a PIE), an absolute address in
+data needs a dynamic relocation, and that relocation is only allowed in a writable section.
+A Freestanding executable is linked `-static`: its addresses are fixed at link time, so
+`dq .case0` works there in any section.
 
 ```nasm
 section .rodata                     ; read-only, no relocations: preferred

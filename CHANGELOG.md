@@ -27,6 +27,18 @@ Each SDK release names the one it was tested with.
   - A function missing from the libc stub fails executables, not shared libraries.
 - **The package's project URL** points at the documentation site, from the next release.
 
+### Fixed
+
+- **The build targets' comment on `reloc-abs-qword`** said that a shared object always
+  resolves a `dq` of a label at load time. That holds only in a writable section: `.data`,
+  or `.data.rel.ro` declared `write`. In `.rodata`, or in any section without the write
+  flag, the link of a shared library or a Libc executable fails. The comment now says so,
+  and explains why the warning can stay off: the linker rejects every case that cannot
+  work. Only the comment changed; the build does the same.
+- **The guide's jump-table rule** now covers Libc executables, which are PIEs, as well as
+  shared libraries. It also says that a Freestanding executable, linked `-static`, accepts
+  a `dq` of a label in any section.
+
 ## [0.1.0] — 2026-11-17
 
 The first release.
