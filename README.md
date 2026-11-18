@@ -3,6 +3,7 @@
 [![CI](https://github.com/AsmFoundation/AsmSdk/actions/workflows/ci.yml/badge.svg)](https://github.com/AsmFoundation/AsmSdk/actions/workflows/ci.yml)
 [![NuGet: AsmFoundation.Sdk](https://img.shields.io/nuget/v/AsmFoundation.Sdk.svg?label=AsmFoundation.Sdk)](https://www.nuget.org/packages/AsmFoundation.Sdk)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-asmfoundation.github.io%2FAsmSdk-06706d.svg)](https://asmfoundation.github.io/AsmSdk/)
 
 **`.asmproj`: x86-64 assembly as a first-class .NET-style project.** This repo
 holds the MSBuild SDK behind it.
@@ -85,7 +86,8 @@ system calls) or on glibc (`AsmRuntime=Libc`).
 - **An `Exe` on glibc** starts in `main`, through a `_start` that calls
   `__libc_start_main` as glibc's `crt1.o` does.
 
-Every property, item and error is described in [docs/asmproj.md](docs/asmproj.md).
+Every property, item and error is described in [docs/asmproj.md](docs/asmproj.md), and
+the guides are on the [documentation site](https://asmfoundation.github.io/AsmSdk/).
 
 ## Sharing code
 

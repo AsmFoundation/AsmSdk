@@ -13,7 +13,7 @@
     <Company>AsmFoundation</Company>
     <Copyright>Copyright 2026 Eli Belash</Copyright>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/AsmFoundation/AsmSdk</PackageProjectUrl>
+    <PackageProjectUrl>https://asmfoundation.github.io/AsmSdk/</PackageProjectUrl>
     <RepositoryUrl>https://github.com/AsmFoundation/AsmSdk</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageReleaseNotes>https://github.com/AsmFoundation/AsmSdk/blob/main/CHANGELOG.md</PackageReleaseNotes>

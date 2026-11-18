@@ -1,0 +1,37 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dotnet/docfx/main/schemas/docfx.schema.json",
+  "build": {
+    "content": [
+      {
+        "files": [ "**/*.{md,yml}" ],
+        "exclude": [ "_site/**", "obj/**", "template/**" ]
+      }
+    ],
+    "resource": [
+      {
+        "files": [ "images/**" ]
+      }
+    ],
+    "output": "_site",
+    "template": [ "default", "modern", "template" ],
+    "globalMetadata": {
+      "_appName": "AsmSdk",
+      "_appTitle": "AsmSdk",
+      "_appLogoPath": "images/logo.svg",
+      "_appFaviconPath": "images/favicon.svg",
+      "_appFooter": "AsmSdk is open source under the Apache-2.0 license, and part of the <a href=\"https://github.com/AsmFoundation\">AsmFoundation</a>.",
+      "_enableSearch": true,
+      "_gitContribute": {
+        "repo": "https://github.com/AsmFoundation/AsmSdk",
+        "branch": "main"
+      },
+      "_lang": "en",
+      "_description": "AsmSdk: project, dependency and build management for x86-64 assembly, on MSBuild and NuGet. Build NASM with dotnet build, share it as NuGet packages, call it from C#."
+    },
+    "sitemap": {
+      "baseUrl": "https://asmfoundation.github.io/AsmSdk/",
+      "changefreq": "weekly",
+      "priority": 0.5
+    }
+  }
+}

@@ -1,0 +1,9 @@
+# The top navigation bar. Each entry opens the first page of its section's toc.yml.
+- name: Docs
+  href: guide/
+- name: Reference
+  href: asmproj.md
+- name: Toolchain
+  href: toolchain/
+- name: Ecosystem
+  href: ecosystem/

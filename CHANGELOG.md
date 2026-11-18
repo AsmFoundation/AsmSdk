@@ -10,6 +10,23 @@ Each SDK release names the one it was tested with.
 
 ## [Unreleased]
 
+### Added
+
+- **The documentation site,** <https://asmfoundation.github.io/AsmSdk/>: guides, the
+  complete `.asmproj` reference, the toolchain and the ecosystem. It is built with DocFX
+  from `docs/`, with DocFX pinned in `.config/dotnet-tools.json`, and deployed to GitHub
+  Pages by `.github/workflows/docs.yml`.
+
+### Changed
+
+- **`docs/asmproj.md` is now the complete reference:** evaluation order, every item and its
+  metadata, link lines, the libc stub, and generated files.
+- **Two corrections in it:**
+  - NASM's messages become MSBuild errors with file and line only with `-Xvc`. `lld`'s
+    messages always do.
+  - A function missing from the libc stub fails executables, not shared libraries.
+- **The package's project URL** points at the documentation site, from the next release.
+
 ## [0.1.0] — 2026-11-17
 
 The first release.
