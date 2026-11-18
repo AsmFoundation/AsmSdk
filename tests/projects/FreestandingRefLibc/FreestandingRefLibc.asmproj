@@ -1,0 +1,13 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    Expected to FAIL at restore with NU1201: a freestanding program cannot link code built for
+    libc, and NuGet says so because freestanding stands for netstandard1.0 and libc for
+    netstandard2.0. Hello.LibcLibrary targets libc only.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../samples/Hello.LibcLibrary/Hello.LibcLibrary.asmproj" />
+  </ItemGroup>
+</Project>

@@ -49,19 +49,19 @@ title: AsmSdk
       <li>
         <h3>Name the SDK in <code>global.json</code></h3>
 <pre><code class="lang-json">{ "msbuild-sdks": {
-    "AsmFoundation.Sdk": "0.1.0" } }</code></pre>
+    "AsmFoundation.Sdk": "0.2.0" } }</code></pre>
       </li>
       <li>
         <h3>Add <code>Hello/Hello.asmproj</code></h3>
 <pre><code class="lang-xml">&lt;Project Sdk="AsmFoundation.Sdk"&gt;
   &lt;PropertyGroup&gt;
-    &lt;AsmLibraryName&gt;hello&lt;/AsmLibraryName&gt;
+    &lt;AssemblyName&gt;hello&lt;/AssemblyName&gt;
   &lt;/PropertyGroup&gt;
 &lt;/Project&gt;</code></pre>
       </li>
       <li>
         <h3>Run <code>dotnet build</code></h3>
-<pre><code class="lang-text">Hello -&gt; bin/Debug/libhello.so</code></pre>
+<pre><code class="lang-text">Hello -&gt; bin/Debug/freestanding/libhello.so</code></pre>
         <p>Every <code>*.asm</code> next to the project is assembled, the way every <code>*.cs</code>
           is compiled in a <code>.csproj</code>. <a href="guide/getting-started.md">Walk through it</a>.</p>
       </li>

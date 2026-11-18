@@ -30,7 +30,7 @@ section .note.GNU-stack noalloc noexec nowrite progbits
 
 **Why each line is there:**
 
-- **`default rel`** is required for any shared library or Libc executable, and harmless
+- **`default rel`** is required for any shared library or libc executable, and harmless
   elsewhere. Without it NASM 3 warns `implicit DEFAULT ABS is deprecated`, and the link
   fails (see below).
 - **`bits 64`** is implied by `-f elf64`, but it states the intent.
@@ -42,7 +42,7 @@ section .note.GNU-stack noalloc noexec nowrite progbits
 
 ## Position-independent code
 
-A shared library is always position-independent, and so is a Libc executable (a PIE). A
+A shared library is always position-independent, and so is a libc executable (a PIE). A
 freestanding executable is not, but writing PIC everywhere costs nothing on x86-64
 (RIP-relative addressing is as fast as absolute addressing). It also lets the same object
 go into either kind of output.
@@ -53,7 +53,7 @@ go into either kind of output.
 | `lea rax, [msg]` | `mov rax, msg` | `.so`/PIE: `relocation R_X86_64_64 cannot be used against local symbol; recompile with -fPIC` (an absolute address in read-only `.text`) |
 | `call helper wrt ..plt` (helper in another object or library) | `call helper` | `.so`: `relocation R_X86_64_PC32 cannot be used against symbol 'helper'; recompile with -fPIC` |
 | `mov rax, [rel stdout wrt ..got]` then `mov rdi, [rax]` | `mov rdi, [rel stdout]` | `.so`: `relocation R_X86_64_PC32 cannot be used against symbol 'stdout'`. This also applies to a `global` data symbol defined in **another object of the same library**, unless that symbol is `hidden`. A PIE accepts it, through a copy relocation |
-| jump table of offsets in `.rodata`: `dd .case1 - table` | `dq .case1` in `.rodata` | `.so`/PIE: `relocation R_X86_64_64 cannot be used against local symbol` (a Freestanding executable, linked `-static`, accepts it) |
+| jump table of offsets in `.rodata`: `dd .case1 - table` | `dq .case1` in `.rodata` | `.so`/PIE: `relocation R_X86_64_64 cannot be used against local symbol` (a freestanding executable, linked `-static`, accepts it) |
 
 **Calls inside one library.** A `global` function is "preemptible" in a shared library:
 another library loaded earlier may define the same name, and the dynamic loader would
@@ -62,7 +62,9 @@ three ways to write it:
 
 1. **`call helper wrt ..plt`.** It works everywhere, and costs one indirect jump per call
    through the PLT in a `.so`. Linked into an executable, the linker turns it into a
-   direct call.
+   direct call. One exception: when `helper` is defined in the same section of the same
+   file, NASM 3.02 stops with `panic: intra-segment OUT_REL4ADR`. Use a plain `call helper`
+   there (option 3).
 2. **Make the helper hidden in its defining file:** `global helper:function hidden`. A
    plain `call helper` then links. The call is direct, and `helper` is no
    longer exported, which is right for internal helpers.
@@ -71,9 +73,9 @@ three ways to write it:
 
 For a hot internal call path, use option 2. Export only the API.
 
-**Jump tables.** In a shared library or a Libc executable (a PIE), an absolute address in
+**Jump tables.** In a shared library or a libc executable (a PIE), an absolute address in
 data needs a dynamic relocation, and that relocation is only allowed in a writable section.
-A Freestanding executable is linked `-static`: its addresses are fixed at link time, so
+A freestanding executable is linked `-static`: its addresses are fixed at link time, so
 `dq .case0` works there in any section.
 
 ```nasm
@@ -157,8 +159,10 @@ section .text
 
 - **Only `.inc` files are include files.** An `.asm` file is a source: if another file
   `%include`s it, its symbols are assembled twice, giving `duplicate symbol`.
-- **Defines from the project:** `<AsmDefine Include="LEVEL=3" />` becomes `-DLEVEL=3`. Test
-  it with `%ifdef LEVEL` / `%if LEVEL >= 2`. A value with spaces or quotes is not quoted for
+- **Defines from the project:** `<DefineConstants>$(DefineConstants);LEVEL=3</DefineConstants>`
+  becomes `-DLEVEL=3`. Test it with `%ifdef LEVEL` / `%if LEVEL >= 2`. The SDK also defines
+  `DEBUG` or `RELEASE`, and `FREESTANDING` or `LIBC`, so one source can serve both target
+  frameworks: `%ifdef LIBC`. A value with spaces or quotes is not quoted for
   the shell, so keep values simple: numbers and identifiers.
 - **Structures:** `struc point` / `.x: resd 1` / `.y: resd 1` / `endstruc`, then
   `mov eax, [rdi + point.y]`. `point_size` holds the size. Put the shared `struc`
@@ -233,7 +237,7 @@ the ones a real codebase meets:
 ## Templates
 
 **A function for a shared library that calls a helper from another file and a libc
-function** (`AsmRuntime=Libc`):
+function** (`TargetFramework=libc`):
 
 ```nasm
 default rel
@@ -283,7 +287,7 @@ helper_checksum:                    ; a byte sum, as a placeholder for the real 
 section .note.GNU-stack noalloc noexec nowrite progbits
 ```
 
-**A function exported to .NET or Python without libc** (`Freestanding`):
+**A function exported to .NET or Python without libc** (`freestanding`):
 
 ```nasm
 default rel

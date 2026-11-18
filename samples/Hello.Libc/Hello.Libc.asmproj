@@ -1,13 +1,14 @@
 <Project Sdk="AsmFoundation.Sdk">
   <!--
-    An executable that uses glibc (AsmRuntime=Libc): a PIE with DT_NEEDED libc.so.6, started
-    by the SDK's crt1 (_start -> __libc_start_main -> main), so the program is an ordinary
-    main() calling printf. Links on any build machine: the SDK links against a generated
-    libc.so.6 stub, the real glibc is used at run time (glibc 2.34+).
+    An executable on glibc (TargetFramework libc): a PIE with DT_NEEDED libc.so.6, started by
+    the SDK's crt1 (_start -> __libc_start_main -> main), so the program is an ordinary main()
+    calling printf. Links on any build machine: the SDK links against a generated libc.so.6
+    stub, and the real glibc is used at run time (glibc 2.34+).
+    Builds bin/<Configuration>/libc/hello-libc.
   -->
   <PropertyGroup>
+    <TargetFramework>libc</TargetFramework>
     <OutputType>Exe</OutputType>
-    <AsmRuntime>Libc</AsmRuntime>
-    <AsmLibraryName>hello-libc</AsmLibraryName>
+    <AssemblyName>hello-libc</AssemblyName>
   </PropertyGroup>
 </Project>

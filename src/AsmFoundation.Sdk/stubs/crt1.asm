@@ -1,5 +1,5 @@
 ; =============================================================================
-; crt1.asm - the process entry of an AsmRuntime=Libc executable.
+; crt1.asm - the process entry of an executable for TargetFramework=libc.
 ;
 ; The dynamic loader has already loaded and initialized glibc when it jumps
 ; here. _start hands control to glibc's __libc_start_main, which runs the

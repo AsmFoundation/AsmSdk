@@ -1,0 +1,14 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    Expected to FAIL at restore with NU1202: a freestanding program referencing the libc-only
+    package Test.LibcOnly. Without the package's lib/netstandard2.0/_._ marker, NuGet would
+    treat a package with no lib/ folder as compatible with every framework; the restore would
+    succeed, import nothing, and the link would fail later with undefined symbols.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Test.LibcOnly" Version="1.0.0" />
+  </ItemGroup>
+</Project>

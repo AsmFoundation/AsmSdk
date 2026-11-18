@@ -23,7 +23,7 @@ build machine produces the same Linux x86-64 ELF output.
 `global.json`:
 
 ```json
-{ "msbuild-sdks": { "AsmFoundation.Sdk": "0.1.0" } }
+{ "msbuild-sdks": { "AsmFoundation.Sdk": "0.2.0" } }
 ```
 
 `Hello/Hello.asmproj`:
@@ -31,7 +31,7 @@ build machine produces the same Linux x86-64 ELF output.
 ```xml
 <Project Sdk="AsmFoundation.Sdk">
   <PropertyGroup>
-    <AsmLibraryName>hello</AsmLibraryName>   <!-- bin/Debug/libhello.so -->
+    <AssemblyName>hello</AssemblyName>   <!-- bin/Debug/freestanding/libhello.so -->
   </PropertyGroup>
 </Project>
 ```
@@ -61,7 +61,7 @@ In a `.slnx`, give the project the generic MSBuild project type:
 |---|---|---|
 | `Library` (default) | `lib<name>.so` | position-independent code required (`default rel`, calls `wrt ..plt`) |
 | `StaticLibrary` | `lib<name>.a` | deterministic archive with a symbol index |
-| `Exe` | `<name>` | static `_start` (freestanding), or a PIE entering `main` (see `AsmRuntime`) |
+| `Exe` | `<name>` | static `_start` (`freestanding`), or a PIE entering `main` (`libc`) |
 | `Objects` | `.o` files only | for other projects to link |
 
 `<AsmProduceStaticLibrary>true</AsmProduceStaticLibrary>` also writes
@@ -71,12 +71,14 @@ In a `.slnx`, give the project the generic MSBuild project type:
 
 | Property / item | Default | Meaning |
 |---|---|---|
-| `AsmLibraryName` | project name | base name of the output |
-| `AsmRuntime` | `Freestanding` | `Libc`: link glibc dynamically (`DT_NEEDED libc.so.6`) through a generated stub, so no Linux sysroot is needed. An `Exe` then starts in `main`. Needs glibc 2.34+ at run time. |
-| `AsmEntryPoint` | `_start` | entry symbol of an `Exe` |
-| `AsmDefineConstants`, `AsmDefine` items | `DEBUG` in Debug | NASM `-D` symbols |
+| `TargetFramework` | `freestanding` | `libc`: link glibc dynamically (`DT_NEEDED libc.so.6`) through a generated stub, so no Linux sysroot is needed. An `Exe` then starts in `main`. Needs glibc 2.34+ at run time. `TargetFrameworks=freestanding;libc` builds both, like a multi-targeted `.csproj`. |
+| `AssemblyName` | project name | base name of the output |
+| `StartupObject` | `_start` | entry symbol of an `Exe` |
+| `DefineConstants` | | NASM `-D` symbols. `DEBUG` or `RELEASE`, and `FREESTANDING` or `LIBC`, are added for you, as C# adds `DEBUG` |
+| `DebugSymbols` | `true` in Debug | DWARF; `DebugType=none` turns it off |
 | `AsmIncludeDirectory` items | `include/`, the project folder | NASM `-I` paths |
-| `AsmFlags`, `AsmLinkFlags` | | extra NASM / linker arguments |
+| `AsmFlags` | | extra NASM arguments |
+| `LinkerArg` items, `ExportsFile` | | extra linker arguments, and the version script (NativeAOT's names) |
 | `AsmLinkLibrary` items | | extra `.a` / `.so` link inputs |
 | `AsmLibcSymbol` items | | libc functions missing from the stub's list |
 | `TreatWarningsAsErrors` | `false` | NASM `-w+error` |
@@ -94,11 +96,13 @@ In a `.slnx`, give the project the generic MSBuild project type:
   | Path | Contents |
   |---|---|
   | `include/` | the public include files |
-  | `native/linux-x64/lib<name>.a` | the static library |
-  | `runtimes/linux-x64/native/lib<name>.so` | the shared library |
-  | `build/<id>.props` | the generated props |
+  | `lib/<framework>/_._` | an empty marker per target framework, so NuGet knows which projects may use the package |
+  | `native/linux-x64/<tfm>/lib<name>.a` | the static library |
+  | `runtimes/linux-x64/native/lib<name>.so` | the shared library (`nativeassets/<framework>/` when the project targets both) |
+  | `build/<framework>/<id>.props` | the generated props, per target framework |
 
-  A consuming `.asmproj` gets the package's include files and library from
-  `build/<id>.props`. A consuming `.csproj` gets the `.so`.
+  A consuming `.asmproj` gets the package's include files and the library of the nearest
+  target framework from `build/<framework>/<id>.props`. A consuming `.csproj` gets the
+  `.so`. A `freestanding` project cannot use a `libc`-only package (`NU1202`).
 
 Source, documentation and samples: <https://github.com/AsmFoundation/AsmSdk>.

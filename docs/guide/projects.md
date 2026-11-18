@@ -3,6 +3,8 @@
 An `.asmproj` behaves like an SDK-style `.csproj`:
 
 - properties go in a `<PropertyGroup>`, items in an `<ItemGroup>`;
+- the properties a `.csproj` uses mean the same here: `TargetFramework(s)`, `OutputType`,
+  `AssemblyName`, `DefineConstants`, `DebugSymbols`, `DebugType` and `StartupObject`;
 - `Version`, `PackageId`, `Configuration`, `Directory.Build.props`,
   `Directory.Packages.props` and `nuget.config` all work as usual.
 
@@ -16,33 +18,64 @@ Hello/
   Hello.asmproj        <Project Sdk="AsmFoundation.Sdk"> ... </Project>
   include/hello.inc    public include files: referencing projects and package consumers get them
   hello.asm            every *.asm is a source (one NASM run each)
-  util/strings.asm     subfolders too; each object keeps the subfolder: obj/Debug/asm/obj/util/strings.o
-  bin/Debug/libhello.so
+  util/strings.asm     subfolders too; each object keeps the subfolder: obj/Debug/freestanding/asm/obj/util/strings.o
+  bin/Debug/freestanding/libhello.so
 ```
+
+## Target frameworks
+
+The target framework says what the code links against, the way `net10.0` says which .NET a
+`.csproj` runs on:
+
+| `TargetFramework` | The code | Runs on |
+|---|---|---|
+| `freestanding` (the default) | makes its own system calls; links no C library | any x86-64 Linux kernel |
+| `libc` | links glibc; an executable starts at `main` | glibc 2.34 or later |
+
+- **Build both** with `<TargetFrameworks>freestanding;libc</TargetFrameworks>`, exactly like
+  a multi-targeted `.csproj`. Each build has its own `bin/<Configuration>/<tfm>/` folder.
+- **One source for both:** NASM gets `-DFREESTANDING` or `-DLIBC`:
+
+  ```nasm
+  %ifdef LIBC
+      call    puts wrt ..plt          ; glibc
+  %else
+      mov     eax, 1                  ; write(2)
+      syscall
+  %endif
+  ```
+
+- **Who may reference whom** is NuGet's decision, as for a `.csproj`: a `libc` project may
+  use `freestanding` projects and packages, never the reverse (`NU1201`, `NU1202`). A
+  project that targets both gives each consumer its nearest build, and a .NET project the
+  `libc` one.
+- [Runtimes and linking](runtimes-and-linking.md) covers what each one links and how.
 
 ## Output kinds and names
 
-| `OutputType` | Output in `bin/<Configuration>/` |
+| `OutputType` | Output in `bin/<Configuration>/<tfm>/` |
 |---|---|
 | `Library` (default) | `lib<name>.so` |
 | `StaticLibrary` | `lib<name>.a` |
 | `Exe` | `<name>`, with no extension |
 | `Objects` | nothing; the objects stay in `obj/` |
 
-- **`<name>` is `AsmLibraryName`.** It defaults to the assembly name, which defaults to the
-  project name.
+- **`<name>` is `AssemblyName`,** which defaults to the project name, as in a `.csproj`.
+  Libraries get Linux's `lib` prefix, which `-l<name>` and .NET's `[DllImport("<name>")]`
+  both look for.
 - **`AsmProduceStaticLibrary=true`** also writes `lib<name>.a` next to a `.so`. That suits a
   library that ships both: programs that load it (P/Invoke, `dlopen`) take the `.so`, and
   assembly projects that link statically take the `.a`.
-- **No framework or RID folder** is appended to `bin/`. The project's `netstandard2.0` target
-  framework exists only so that NuGet can restore it.
+- **The target framework folder** is appended to `bin/` and `obj/`, as in .NET:
+  `bin/Debug/freestanding/`, `bin/Release/libc/`.
 - **The SDK sets `OutputType` back to `Library`** after reading it, so that the .NET SDK never
-  builds an apphost. In your own targets, test `AsmOutputKind` (`SharedLibrary`,
-  `StaticLibrary`, `Executable`, `Objects`) instead.
+  builds an apphost. Its internal `_AsmOutputKind` (`SharedLibrary`, `StaticLibrary`,
+  `Executable`, `Objects`) keeps the kind; a target of your own can read it, but it is not a
+  stable API.
 
 > [!WARNING]
-> **Known issue in 0.1.0:** a `ProjectReference` to an `Objects` project fails to link with
-> `cannot open <referencing project>/obj/Debug/asm/obj/x.o`. The object paths are passed
+> **Known issue:** a `ProjectReference` to an `Objects` project fails to link with
+> `cannot open <referencing project>/obj/Debug/<tfm>/asm/obj/x.o`. The object paths are passed
 > relative to the wrong project. Use `StaticLibrary` instead: the linker takes only the
 > archive members it needs.
 
@@ -84,28 +117,24 @@ Hello/
 
 | | Debug | Release |
 |---|---|---|
-| `DEBUG` defined | yes | no |
+| defined | `DEBUG`, and `FREESTANDING` or `LIBC` | `RELEASE`, and `FREESTANDING` or `LIBC` |
 | DWARF debug information (`-g -F dwarf`) | yes | no |
 
-- **Add symbols with items, which keep `DEBUG`:**
+- **Add symbols with `DefineConstants`,** as in C#: semicolon-separated `NAME` or
+  `NAME=VALUE`, each passed to NASM as `-D`:
 
   ```xml
-  <ItemGroup>
-    <AsmDefine Include="FAST_PATH" />
-    <AsmDefine Include="LEVEL=3" />
-  </ItemGroup>
+  <DefineConstants>$(DefineConstants);FAST_PATH;LEVEL=3</DefineConstants>
   ```
 
-- **Setting `AsmDefineConstants` replaces `DEBUG`.** The SDK applies its `DEBUG` default
-  after reading your project, and only when the property is empty. So both of these lose
-  `DEBUG` in Debug builds:
-
-  ```xml
-  <AsmDefineConstants>FOO</AsmDefineConstants>
-  <AsmDefineConstants>$(AsmDefineConstants);FOO</AsmDefineConstants>   <!-- still loses DEBUG -->
-  ```
-
-  Use `AsmDefineConstants` only when you mean to replace the whole set.
+- **The configuration and target framework symbols are never lost.** Like C#, the SDK
+  appends them after reading your project, so `<DefineConstants>FAST_PATH</DefineConstants>`
+  keeps `DEBUG` too. `DisableImplicitConfigurationDefines=true` drops `DEBUG`/`RELEASE`, and
+  `DisableImplicitFrameworkDefines=true` drops `FREESTANDING`/`LIBC`.
+- **Debug information follows `DebugSymbols`:** `<DebugSymbols>true</DebugSymbols>` adds DWARF
+  to Release builds, and `<DebugType>none</DebugType>` removes it from Debug builds. Unlike
+  .NET, whose Release builds still write a PDB, a Release build carries no debug information
+  unless you ask.
 - **In MSBuild text, `%` starts an escape sequence.** A target that writes `%define …`
   into a file must write `%25define`; `%de` would decode to the byte `0xDE`.
 
@@ -119,7 +148,7 @@ triggers (`reloc-rel-dword` and `reloc-abs-qword`).
   is printed in brackets after it.
 
 > [!TIP]
-> In 0.1.0, NASM's messages are printed as plain text above an `MSB3073: The command …
+> By default, NASM's messages are printed as plain text above an `MSB3073: The command …
 > exited with code 1` error, and `-v:q` hides them. Add `<AsmFlags>-Xvc</AsmFlags>`: NASM
 > then reports `file.asm(12): error : …`, which MSBuild counts as an error or warning, and
 > which IDEs link to the right line.
@@ -141,10 +170,13 @@ file can hold settings for both the C# and the assembly projects of a solution:
 ```xml
 <Project>
   <PropertyGroup Condition="'$(UsingAsmFoundationSdk)' == 'true'">
+    <TargetFramework>libc</TargetFramework>                <!-- every asm project links glibc -->
     <AsmFlags>-Xvc</AsmFlags>                              <!-- NASM messages become MSBuild errors -->
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <AsmLinkFlags>-z defs</AsmLinkFlags>                   <!-- undefined symbols fail the link -->
   </PropertyGroup>
+  <ItemGroup Condition="'$(UsingAsmFoundationSdk)' == 'true'">
+    <LinkerArg Include="-z defs" />                        <!-- undefined symbols fail the link -->
+  </ItemGroup>
 </Project>
 ```
 

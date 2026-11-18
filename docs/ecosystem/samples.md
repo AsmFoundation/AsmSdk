@@ -6,13 +6,13 @@ Linux and macOS.
 
 | Sample | Shows |
 |---|---|
-| [`Hello.Library`](https://github.com/AsmFoundation/AsmSdk/tree/main/samples/Hello.Library) | a freestanding shared library (`libhello.so`) with a public `include/` file |
+| [`Hello.Library`](https://github.com/AsmFoundation/AsmSdk/tree/main/samples/Hello.Library) | a shared library (`libhello.so`) with a public `include/` file, built for both target frameworks (`TargetFrameworks=freestanding;libc`): one source, `%ifdef LIBC` |
 | [`Hello.Static`](https://github.com/AsmFoundation/AsmSdk/tree/main/samples/Hello.Static) | a static library (`libhellostatic.a`) with public includes, packed as the NuGet package `Hello.Static` 1.0.0 |
 | [`Hello.App`](https://github.com/AsmFoundation/AsmSdk/tree/main/samples/Hello.App) | a freestanding executable that links `Hello.Static` through a `ProjectReference` |
 | [`Hello.Libc`](https://github.com/AsmFoundation/AsmSdk/tree/main/samples/Hello.Libc) | a `main()` program on glibc that calls `printf` |
 | [`Hello.LibcLibrary`](https://github.com/AsmFoundation/AsmSdk/tree/main/samples/Hello.LibcLibrary) | a shared library that calls `strlen` through its PLT |
 | [`consumer/Hello.Consumer`](https://github.com/AsmFoundation/AsmSdk/tree/main/samples/consumer) | an executable that consumes the `Hello.Static` package by version |
-| [`Hello.Net`](https://github.com/AsmFoundation/AsmSdk/tree/main/samples/Hello.Net) | a C# program that P/Invokes both shared libraries |
+| [`Hello.Net`](https://github.com/AsmFoundation/AsmSdk/tree/main/samples/Hello.Net) | a C# program that P/Invokes both shared libraries, and checks that it was given the `libc` build of `Hello.Library` |
 
 `Samples.slnx` holds them all. `consumer/` sits outside the solution, because its package
 must be packed first.
@@ -28,7 +28,12 @@ SDK and the toolchain into a local feed, then builds the samples against it, wit
 - **that the executables run,** and that the C# program's calls into both libraries return
   the right values;
 - **incremental builds:** a rebuild without changes runs no tool, and an include-file
-  change reassembles what depends on it.
+  change reassembles what depends on it;
+- **the package layouts** of a single-target and a multi-target library;
+- **the projects in [`tests/projects`](https://github.com/AsmFoundation/AsmSdk/tree/main/tests/projects),**
+  which cover what the samples cannot: the target framework compatibility errors (`NU1201`,
+  `NU1202`), the errors for settings removed in 0.2.0, `StartupObject`, `ExportsFile`,
+  `LinkerArg`, `DefineConstants` and `DebugSymbols`.
 
 On Windows, `tests/run.py` runs the Linux outputs through WSL and the .NET sample in
 Docker, when they are available.

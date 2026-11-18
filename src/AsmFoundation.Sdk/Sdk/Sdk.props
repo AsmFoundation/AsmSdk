@@ -22,12 +22,14 @@
     <AsmFoundationSdkDirectory>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..'))</AsmFoundationSdkDirectory>
 
     <!--
-      NuGet needs a target framework to restore a project. netstandard2.0 is the neutral
-      choice: every .NET project may reference it, so a .csproj can hold a ProjectReference to
-      an .asmproj, and a package built from an .asmproj lists its dependencies in a group any
-      consumer accepts. Nothing managed is ever compiled for it.
+      No TargetFramework default here, on purpose. The project's TargetFramework (freestanding
+      or libc) or TargetFrameworks is read after the project body, in
+      targets/AsmFoundation.Properties.targets, which also defaults it to freestanding. A
+      default set here, before the body, would turn a project's TargetFrameworks into a
+      single-target build (Microsoft.NET.Sdk multi-targets only when TargetFramework is empty).
+      Footgun, as in any .NET project: Directory.Build.props, imported below, sees
+      $(TargetFramework) empty unless the project or the command line set it globally.
     -->
-    <TargetFramework Condition="'$(TargetFramework)' == '' and '$(TargetFrameworks)' == ''">netstandard2.0</TargetFramework>
 
     <!-- Item globs of the managed SDK (Compile, EmbeddedResource, None) are not wanted:
          the asm items (AsmSource, AsmInclude) are declared by Sdk.targets instead. -->
@@ -40,9 +42,12 @@
     <GenerateDependencyFile>false</GenerateDependencyFile>
     <GenerateRuntimeConfigurationFiles>false</GenerateRuntimeConfigurationFiles>
     <UseAppHost>false</UseAppHost>
-    <!-- No PDB: NASM writes DWARF into the object files instead (Debug configuration). -->
-    <DebugType>none</DebugType>
-    <DebugSymbols>false</DebugSymbols>
+    <!--
+      DebugType and DebugSymbols are left to Microsoft.NET.Sdk.props and the project, as in a
+      .csproj (DebugSymbols=true in Debug). Properties.targets reads them after the project
+      body to decide on DWARF, then hides them from the managed SDK so it never expects a PDB.
+      Forcing them here, before the body, would also force Debug builds to have no DWARF.
+    -->
 
     <!-- The managed build output does not exist; the native outputs are copied by the
          targets in this SDK, and packed by its own pack step. -->
@@ -51,15 +56,19 @@
     <CopyOutputSymbolsToOutputDirectory>false</CopyOutputSymbolsToOutputDirectory>
     <SkipCopyBuildProduct>true</SkipCopyBuildProduct>
 
-    <!-- Native outputs land in bin/<Configuration>/ without a framework folder: the
-         framework above is only there for NuGet and means nothing to the output. -->
-    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <!--
+      Output folders follow .NET: bin/<Configuration>/<TargetFramework>/ and
+      obj/<Configuration>/<TargetFramework>/ (AppendTargetFrameworkToOutputPath and
+      AppendRuntimeIdentifierToOutputPath keep Microsoft.NET.Sdk's defaults). The target
+      framework now means something (freestanding or libc), and a multi-targeted project needs
+      one folder per framework anyway.
+    -->
 
     <!--
-      NU5128: "the package has a dependency group for netstandard2.0 but no lib/ folder".
-      True by design for a native package: its payload is include/, lib/linux-x64/ and
-      runtimes/, which NuGet's framework check does not know about.
+      NU5128: "some target frameworks of the dependency groups have no exact match in lib/".
+      A native package's payload is include/, native/ and runtimes/, which NuGet's framework
+      check does not know about; the SDK's pack step adds only an empty lib/<framework>/_._
+      marker per framework (see AsmFoundation.Pack.targets).
     -->
     <NoWarn>$(NoWarn);NU5128</NoWarn>
   </PropertyGroup>

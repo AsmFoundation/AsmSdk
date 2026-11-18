@@ -1,5 +1,5 @@
 ; =============================================================================
-; libc.asm - the link-time stand-in for glibc (AsmRuntime=Libc).
+; libc.asm - the link-time stand-in for glibc (TargetFramework=libc).
 ;
 ; The SDK assembles this file and links it as a shared object with
 ; SONAME libc.so.6. A project linked against it gets:
@@ -12,7 +12,7 @@
 ;
 ; Why a stub instead of the real libc.so.6: linking against glibc normally
 ; needs a Linux sysroot (libc.so.6, libc_nonshared.a, the linker script). The
-; stub lets the bundled toolchain link Libc programs on Windows and macOS too.
+; stub lets the bundled toolchain link libc programs on Windows and macOS too.
 ;
 ; Footguns:
 ;   - Symbols are unversioned. At run time an unversioned reference binds to
@@ -21,7 +21,7 @@
 ;     today would use.
 ;   - pthread_* functions are listed here because they live in libc.so.6 since
 ;     glibc 2.34. On older glibc they are in libpthread.so.0, which this stub
-;     does not name: Libc programs need glibc 2.34 or later (Ubuntu 22.04+,
+;     does not name: libc programs need glibc 2.34 or later (Ubuntu 22.04+,
 ;     Debian 12+, RHEL 9+).
 ;   - A data object's size must equal glibc's (all four below are pointers),
 ;     because a copy relocation copies exactly st_size bytes.

@@ -1,11 +1,12 @@
 <Project Sdk="AsmFoundation.Sdk">
   <!--
-    A shared library that calls into glibc (AsmRuntime=Libc): libhellolibc.so gets
+    A shared library that calls into glibc (TargetFramework libc): libhellolibc.so gets
     DT_NEEDED libc.so.6 and imports strlen through its PLT. This is the shape of a native
     library loaded by .NET or Python (Hello.Net loads it).
+    Builds bin/<Configuration>/libc/libhellolibc.so.
   -->
   <PropertyGroup>
-    <AsmRuntime>Libc</AsmRuntime>
-    <AsmLibraryName>hellolibc</AsmLibraryName>
+    <TargetFramework>libc</TargetFramework>
+    <AssemblyName>hellolibc</AssemblyName>
   </PropertyGroup>
 </Project>

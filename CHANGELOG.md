@@ -10,8 +10,49 @@ Each SDK release names the one it was tested with.
 
 ## [Unreleased]
 
+The next release is **0.2.0**: an `.asmproj` now uses the .NET property of the same purpose
+wherever one exists, and 0.1.0's own names are gone, without a compatibility layer. A project
+that still sets one fails with an error that names the replacement (`ASM0100` to `ASM0108`),
+all of them in one build. Migration:
+
+| 0.1.0 | 0.2.0 |
+|---|---|
+| `<AsmLibraryName>hello</AsmLibraryName>` | `<AssemblyName>hello</AssemblyName>` (still `libhello.so`, `libhello.a`, `hello`) |
+| `<AsmRuntime>Freestanding</AsmRuntime>` (the default) | `<TargetFramework>freestanding</TargetFramework>` (still the default) |
+| `<AsmRuntime>Libc</AsmRuntime>` | `<TargetFramework>libc</TargetFramework>` |
+| `<AsmDefineConstants>A;B=1</AsmDefineConstants>`, `<AsmDefine Include="C" />` | `<DefineConstants>A;B=1;C</DefineConstants>` |
+| `<AsmDebugInfo>true</AsmDebugInfo>` | `<DebugSymbols>true</DebugSymbols>` (`<DebugType>none</DebugType>` turns it off) |
+| `<AsmEntryPoint>my_entry</AsmEntryPoint>` | `<StartupObject>my_entry</StartupObject>` |
+| `<AsmLinkFlags>-z defs --version-script=x.map</AsmLinkFlags>` | `<LinkerArg Include="-z defs" />` and `<ExportsFile>x.map</ExportsFile>` |
+| `<AsmOutputKind>StaticLibrary</AsmOutputKind>` | `<OutputType>StaticLibrary</OutputType>` |
+| outputs in `bin/<Configuration>/` | outputs in `bin/<Configuration>/<TargetFramework>/`, as in .NET |
+
 ### Added
 
+- **Target frameworks:** `freestanding` and `libc`, and `<TargetFrameworks>freestanding;libc</TargetFrameworks>`
+  to build both, exactly like a multi-targeted `.csproj`. Behind the names, freestanding is
+  netstandard1.0 and libc is netstandard2.0, so NuGet's own rules say who may use what:
+  - a libc project may reference freestanding projects and packages;
+  - a freestanding project that references a libc-only project fails at restore with
+    `NU1201`, and a libc-only package with `NU1202`;
+  - a project or package that targets both gives each consumer the nearest build. A .NET
+    project gets the libc build.
+- **Implicit preprocessor symbols, as in C#:** `DEBUG` or `RELEASE` (the configuration),
+  and `FREESTANDING` or `LIBC` (the target framework), appended after the project body, so
+  setting `DefineConstants` never drops them. `DisableImplicitConfigurationDefines` and
+  `DisableImplicitFrameworkDefines` turn them off.
+- **NativeAOT's names for extra link input:** `LinkerArg` items, and `ExportsFile` for the
+  version script (with `--export-dynamic` for an executable, as NativeAOT does). Editing the
+  version script relinks.
+- **Package layout per target framework:** `build/<framework>/`, `buildTransitive/<framework>/`,
+  an empty `lib/<framework>/_._` marker, `native/linux-x64/<tfm>/`, and, when a project
+  multi-targets, `runtimes/linux-x64/nativeassets/<framework>/` for its shared libraries.
+- **`tests/projects`:** test projects for the compatibility errors, the removed settings,
+  `StartupObject`, `ExportsFile`, `LinkerArg`, `DefineConstants`, `DebugSymbols`, a
+  multi-targeted project referencing a single-targeted one, and a libc package consumed by
+  version. `tests/run.py` builds them all, and runs the executables.
+- **The `Hello.Library` sample** targets both frameworks and reports which build it is
+  (`hello_uses_libc`), so `Hello.Net` proves it was given the libc build.
 - **The documentation site,** <https://asmfoundation.github.io/AsmSdk/>: guides, the
   complete `.asmproj` reference, the toolchain and the ecosystem. It is built with DocFX
   from `docs/`, with DocFX pinned in `.config/dotnet-tools.json`, and deployed to GitHub
@@ -27,6 +68,20 @@ Each SDK release names the one it was tested with.
   - A function missing from the libc stub fails executables, not shared libraries.
 - **The package's project URL** points at the documentation site, from the next release.
 
+- **Outputs go to `bin/<Configuration>/<TargetFramework>/`** and `obj/<Configuration>/<TargetFramework>/`,
+  as in .NET: `bin/Release/libc/hello-libc` instead of `bin/Release/hello-libc`.
+- **Debug information follows `DebugSymbols` and `DebugType`:** DWARF in Debug, none in
+  Release, as before; `DebugSymbols=true` adds it to Release, and `DebugType=none` removes it.
+- **Every page of the documentation site, the samples and the package readme** use the
+  0.2.0 names.
+
+### Removed
+
+- **`AsmLibraryName`, `AsmRuntime`, `AsmDefineConstants`, `AsmDefine` items, `AsmDebugInfo`,
+  `AsmEntryPoint`, `AsmLinkFlags` and `AsmOutputKind`.** See the table above.
+- **The hidden `netstandard2.0` target framework** of every 0.1.0 project. A project that sets
+  it now fails with `ASM0003`.
+
 ### Fixed
 
 - **The build targets' comment on `reloc-abs-qword`** said that a shared object always
@@ -38,6 +93,18 @@ Each SDK release names the one it was tested with.
 - **The guide's jump-table rule** now covers Libc executables, which are PIEs, as well as
   shared libraries. It also says that a Freestanding executable, linked `-static`, accepts
   a `dq` of a label in any section.
+- **Multi-targeting never worked in 0.1.0.** The SDK set `TargetFramework` before the
+  project body, which turned any `TargetFrameworks` into a single-target build, and
+  Microsoft.NET.Sdk gives the outer build of a project with an unknown extension the
+  single-target common targets ("Non-CrossTargeting GetTargetFrameworks target should not
+  be used in cross targeting (outer) build"). The default is now applied after the body,
+  and the outer build gets `Microsoft.Common.CrossTargeting.targets`.
+- **A referenced `.asmproj` could be built with the referencing project's
+  `TargetFramework`.** `_AsmResolveProjectReferences` now removes the same global
+  properties that `ResolveProjectReferences` removes.
+- **A 0.1.0 package counted as compatible with every framework,** because it had no
+  `lib/` folder. The `lib/<framework>/_._` markers narrow it to the frameworks it was
+  built for.
 
 ## [0.1.0] — 2026-11-17
 

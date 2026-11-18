@@ -15,7 +15,7 @@ An `.asmproj` is to NASM what a `.csproj` is to C#:
 ```xml
 <Project Sdk="AsmFoundation.Sdk">
   <PropertyGroup>
-    <AsmLibraryName>hello</AsmLibraryName>   <!-- bin/Debug/libhello.so -->
+    <AssemblyName>hello</AssemblyName>   <!-- bin/Debug/freestanding/libhello.so -->
   </PropertyGroup>
 </Project>
 ```

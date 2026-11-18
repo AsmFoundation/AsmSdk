@@ -16,7 +16,7 @@ targets/AsmFoundation.Properties.targets   defaults, output names, toolchain sel
 targets/AsmFoundation.Build.targets        items, toolchain checks, assemble, stubs, link
 targets/AsmFoundation.References.targets   ProjectReference handling in both directions
 targets/AsmFoundation.Pack.targets         native package layout and consumer props
-stubs/libc.asm, stubs/crt1.asm             the Libc link stub and start-up code
+stubs/libc.asm, stubs/crt1.asm             the libc link stub and start-up code
 ```
 
 **Design choices:**
@@ -47,9 +47,9 @@ Pack
 | Target | Inputs → outputs | Condition |
 |---|---|---|
 | `AsmAssemble` | `@(AsmSource)`, `@(_AsmDependency)`, the project file → `%(AsmSource.ObjectFile)`, batched per source | always |
-| `_AsmBuildLibcStub` | `stubs/libc.asm`, the project file → `obj/…/asm/stubs/libc.so.6` | `AsmRuntime=Libc` and a shared library or executable |
-| `_AsmBuildCrt` | `stubs/crt1.asm` → `obj/…/asm/stubs/crt1.o` | Libc executable without `AsmEntryPoint` |
-| `AsmLink` | `@(_AsmObject)`, `@(_AsmLinkInput)`, the project file → `$(TargetPath)`, `$(AsmStaticLibraryPath)` | `AsmOutputKind != Objects` |
+| `_AsmBuildLibcStub` | `stubs/libc.asm`, the project file → `obj/…/asm/stubs/libc.so.6` | `TargetFramework=libc` and a shared library or executable |
+| `_AsmBuildCrt` | `stubs/crt1.asm` → `obj/…/asm/stubs/crt1.o` | libc executable without `StartupObject` |
+| `AsmLink` | `@(_AsmObject)`, `@(_AsmLinkInput)`, the `ExportsFile`, the project file → `$(TargetPath)`, `$(AsmStaticLibraryPath)` | `OutputType` is not `Objects` |
 
 **`AsmPrepare` computes, once:**
 
@@ -58,7 +58,9 @@ Pack
 - the include directories, local ones first, each with a trailing `/`;
 - the dependency list: `@(AsmInclude)`, plus every `**/*.inc` under include directories
   that carry `AsmOrigin`;
-- the `-D` arguments from `AsmDefineConstants` and `@(AsmDefine)`;
+- the `-D` arguments from `DefineConstants`, to which `Properties.targets` has appended
+  `DEBUG` or `RELEASE`, and `FREESTANDING` or `LIBC`;
+- the `ExportsFile` (`--version-script`) and `LinkerArg` arguments of the link;
 - the link inputs, from `@(AsmLinkLibrary)`.
 
 **All paths handed to tools use forward slashes.** A trailing backslash before a closing
@@ -97,8 +99,9 @@ arguments into one.
     so no assembly reference is added and no `MSB3246` occurs.
   - It calls `GetCopyToOutputDirectoryItems` and `GetCopyToPublishDirectoryItems`, which
     return the `.so` with `TargetPath=lib<name>.so` and `PreserveNewest`.
-- **Restore:** the `.asmproj` targets `netstandard2.0`, which every `.csproj` may
-  reference. The asm project's own `PackageReference`s flow to the `.csproj` as transitive
+- **Restore:** the `.asmproj`'s target frameworks stand for `netstandard1.0`
+  (`freestanding`) and `netstandard2.0` (`libc`), which every `.csproj` may reference. A
+  `.csproj` gets the `libc` build of a project that targets both. The asm project's own `PackageReference`s flow to the `.csproj` as transitive
   dependencies, as they would for any project.
 
 ## Extending the build
@@ -150,22 +153,23 @@ it skips the target as up to date. The `AsmSource` item exists either way.
 ```xml
 <Target Name="StripCopy" AfterTargets="AsmLink" Condition="'$(Configuration)' == 'Release'">
   <Copy SourceFiles="$(TargetPath)" DestinationFiles="$(TargetDir)debug/$(TargetFileName)" />
-  <!-- the shipped file is linked with -s via AsmLinkFlags; the copy keeps symbols for debugging -->
+  <!-- the shipped file is linked with -s via a LinkerArg item; the copy keeps symbols for debugging -->
 </Target>
 ```
 
 **Change a link line:**
 
-- Use `AsmLinkFlags` for flags, and `AsmLinkLibrary` items for inputs.
+- Use `LinkerArg` items for flags, `ExportsFile` for a version script, and `AsmLinkLibrary`
+  items for inputs.
 - Don't override `AsmLink`. To change the whole link, set
-  `<AsmOutputKind>Objects</AsmOutputKind>` and link in your own target, after
+  `<OutputType>Objects</OutputType>` and link in your own target, after
   `AsmAssemble`, from `@(AsmSource->'%(ObjectToolPath)')`.
 
 ## Inspecting a build
 
 - **`dotnet build -v:n`** prints every NASM and linker command exactly as run. Copy one
   and re-run it from the project folder to experiment.
-- **`dotnet msbuild X.asmproj -getProperty:AsmOutputKind -getProperty:AsmToolchainDirectory`**
+- **`dotnet msbuild X.asmproj -getProperty:TargetFileName -getProperty:AsmToolchainDirectory`**
   shows evaluated properties, without building.
 - **`dotnet msbuild X.asmproj -getItem:AsmSource -getItem:AsmIncludeDirectory`** shows the
   items, as JSON.

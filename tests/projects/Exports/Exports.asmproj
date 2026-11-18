@@ -1,0 +1,16 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A libc shared library linked with NativeAOT's names for extra link input: ExportsFile (the
+    version script) and a LinkerArg item. tests/run.py checks that only exported_fn is in the
+    dynamic symbol table, versioned EXPORTS_1.0, that internal_fn is not, and that -Bsymbolic
+    set DF_SYMBOLIC.
+  -->
+  <PropertyGroup>
+    <TargetFramework>libc</TargetFramework>
+    <AssemblyName>exports</AssemblyName>
+    <ExportsFile>exports.map</ExportsFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <LinkerArg Include="-Bsymbolic" />
+  </ItemGroup>
+</Project>

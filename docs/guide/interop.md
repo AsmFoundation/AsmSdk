@@ -126,7 +126,7 @@ comparison against a C# reference implementation, and fuzzing.
 ```python
 import ctypes
 
-lib = ctypes.CDLL("./bin/Release/libhello.so")
+lib = ctypes.CDLL("./bin/Release/freestanding/libhello.so")
 lib.hello_add.argtypes = [ctypes.c_int, ctypes.c_int]
 lib.hello_add.restype = ctypes.c_int
 assert lib.hello_add(40, 2) == 42
@@ -139,9 +139,9 @@ assert lib.hello_add(40, 2) == 42
 - **The GIL:** `ctypes.CDLL` releases the GIL around foreign calls, while
   `ctypes.PyDLL` keeps it. For a function that runs only nanoseconds, the `ctypes` call
   overhead dominates, so batch the work into one call per array.
-- **Distributing:** ship the `.so` inside a wheel tagged `manylinux_2_34_x86_64` (Libc) or
-  `manylinux2014_x86_64` (Freestanding: no glibc requirement), and load it relative to the
-  module file.
+- **Distributing:** ship the `.so` inside a wheel tagged `manylinux_2_34_x86_64` (`libc`)
+  or `manylinux2014_x86_64` (`freestanding`: no glibc requirement), and load it relative to
+  the module file.
 - **`cffi`:** `cffi` in ABI mode reads a C header, so the `include/<name>.h` you ship for C
   users serves Python too.
 
@@ -168,9 +168,9 @@ int32_t hello_add(int32_t a, int32_t b);
 
 **Linking from C:**
 
-- `gcc main.c -Iinclude -Lbin/Release -lhello`, then run with `LD_LIBRARY_PATH` set, or
-  link with `-Wl,-rpath,'$ORIGIN'`.
-- Or link the static library: `gcc main.c bin/Release/libhello.a`. Objects in the `.a` must
+- `gcc main.c -Iinclude -Lbin/Release/libc -lhello`, then run with `LD_LIBRARY_PATH` set,
+  or link with `-Wl,-rpath,'$ORIGIN'`.
+- Or link the static library: `gcc main.c bin/Release/libc/libhello.a`. Objects in the `.a` must
   then carry `.note.GNU-stack`, or recent GNU `ld` warns that the stack is executable.
 
 **Rust, Go and Zig** bind the same functions through their C FFI (`extern "C"`, cgo,

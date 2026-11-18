@@ -1,0 +1,10 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    Expected to FAIL with ASM0003: netstandard2.0 is a real .NET framework (it was the hidden
+    default of AsmFoundation.Sdk 0.1.0), but not an AsmSdk target framework. Only freestanding
+    and libc are.
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+  </PropertyGroup>
+</Project>

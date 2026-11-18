@@ -4,8 +4,9 @@
 
     Imported at the bottom of every .asmproj, after the project's own properties and items.
     Order matters:
-      1. Properties.targets decides the output kind, file names and toolchain BEFORE the
-         managed SDK fills in its defaults for the same properties.
+      1. Properties.targets decides the target framework (freestanding or libc, and the
+         NuGet framework behind it), the output kind, file names, defines, debug information
+         and toolchain BEFORE the managed SDK fills in its defaults for the same properties.
       2. Microsoft.NET.Sdk's targets (restore, pack, references, Build orchestration).
       3. Build / References / Pack targets of this SDK, which replace managed targets of the
          same name (MSBuild keeps the last definition).

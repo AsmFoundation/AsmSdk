@@ -1,12 +1,13 @@
 <Project Sdk="AsmFoundation.Sdk">
   <!--
-    A freestanding executable (static ELF, entry _start, no libc) that links Hello.Static
-    through a ProjectReference: the reference adds Hello.Static's include/ folder to the
-    include path and libhellostatic.a to the link. Builds bin/<Configuration>/hello-app.
+    A freestanding executable (static ELF, entry _start, no libc): with no TargetFramework,
+    an .asmproj targets freestanding. It links Hello.Static through a ProjectReference: the
+    reference adds Hello.Static's include/ folder to the include path and libhellostatic.a to
+    the link. Builds bin/<Configuration>/freestanding/hello-app.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <AsmLibraryName>hello-app</AsmLibraryName>
+    <AssemblyName>hello-app</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Hello.Static/Hello.Static.asmproj" />
