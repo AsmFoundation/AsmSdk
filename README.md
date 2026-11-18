@@ -5,8 +5,9 @@
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-asmfoundation.github.io%2FAsmSdk-06706d.svg)](https://asmfoundation.github.io/AsmSdk/)
 
-**`.asmproj`: x86-64 assembly as a first-class .NET-style project.** This repo
-holds the MSBuild SDK behind it.
+**Enterprise-grade project, dependency and build management for x86-64
+assembly, on MSBuild and NuGet.** This repo holds the MSBuild SDK behind
+`.asmproj`, the assembly project type that sits next to `.csproj`.
 
 - It builds NASM sources into Linux shared libraries, static libraries and
   executables with `dotnet build`.
@@ -28,10 +29,15 @@ holds the MSBuild SDK behind it.
 </Project>
 ```
 
-Part of the [AsmFoundation](https://github.com/AsmFoundation). AsmSdk is the build
-system for [GrpcAsm](https://github.com/AsmFoundation/GrpcAsm), a gRPC server and
-client in assembly (in development), and
-[KvAsm](https://github.com/AsmFoundation/KvAsm) is planned to move onto it.
+Part of the [AsmFoundation](https://github.com/AsmFoundation). AsmSdk is a
+product of its own, not an internal tool of another project. It is for any
+assembly codebase that wants the project, dependency and build management
+the .NET world takes for granted:
+
+- solutions;
+- versioned packages with transitive restore;
+- reproducible toolchains;
+- CI on every OS.
 
 ## Why
 
