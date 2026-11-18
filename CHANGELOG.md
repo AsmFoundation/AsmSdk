@@ -27,6 +27,10 @@ all of them in one build. Migration:
 | `<AsmOutputKind>StaticLibrary</AsmOutputKind>` | `<OutputType>StaticLibrary</OutputType>` |
 | outputs in `bin/<Configuration>/` | outputs in `bin/<Configuration>/<TargetFramework>/`, as in .NET |
 
+`PackageId` defaults to `AssemblyName`, as in .NET, and 0.1.0's `AsmLibraryName` did not
+touch it. Two projects that share an `AssemblyName` (a static and a shared build of one
+library) therefore restore with `Ambiguous project name`: give each its own `PackageId`.
+
 ### Added
 
 - **IDE integration, like a `.csproj`:** Rider, Visual Studio and VS Code show an `.asmproj`'s

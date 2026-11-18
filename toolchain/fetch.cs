@@ -165,7 +165,11 @@ internal static class Fetch
                 environment["LDFLAGS"] = "-static"; // runs on any distribution, whatever its glibc
             }
 
-            Run("./configure", ["--disable-werror"], source, environment);
+            // Through sh, by absolute path: .NET resolves a relative program path ("./configure")
+            // against this process's working directory, not ProcessStartInfo.WorkingDirectory
+            // (Python's subprocess changes directory first), and sh does not need the execute
+            // bit. The script itself still runs in the source folder.
+            Run("sh", [Path.Combine(source, "configure"), "--disable-werror"], source, environment);
             Run("make", ["-j4", "nasm"], source, environment);
             File.Copy(Path.Combine(source, "nasm"), Path.Combine(tools, "nasm"), overwrite: true);
             File.Copy(Path.Combine(source, "LICENSE"), Path.Combine(tools, "LICENSE.nasm.txt"), overwrite: true);
@@ -309,7 +313,7 @@ internal static class Fetch
     }
 
     /// <summary>Runs a build step and fails the staging when it fails.</summary>
-    /// <param name="program">The program (./configure, make, strip).</param>
+    /// <param name="program">The program (sh, make, strip), found on PATH or given as an absolute path.</param>
     /// <param name="arguments">Its arguments.</param>
     /// <param name="directory">The working directory.</param>
     /// <param name="environment">Variables added to the inherited environment.</param>
