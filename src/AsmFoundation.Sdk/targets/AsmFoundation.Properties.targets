@@ -337,9 +337,24 @@
     -->
     <_AsmSdkRid>$(NETCoreSdkRuntimeIdentifier)</_AsmSdkRid>
     <_AsmSdkArch Condition="'$(_AsmSdkRid)' != ''">$(_AsmSdkRid.Substring($([MSBuild]::Add($(_AsmSdkRid.LastIndexOf('-')), 1))))</_AsmSdkArch>
+    <!-- A musl machine (Alpine; its own SDK packages report alpine.3.x-x64) keeps "musl" in
+         its host RID: LLVM's Linux binaries need glibc and do not run there, so it must not
+         be mistaken for linux-x64 (see ASM0006). -->
+    <_AsmSdkRidIsMusl Condition="$(_AsmSdkRid.Contains('musl')) or $(_AsmSdkRid.StartsWith('alpine'))">true</_AsmSdkRidIsMusl>
     <AsmHostRid Condition="'$(AsmHostRid)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">win-$(_AsmSdkArch)</AsmHostRid>
     <AsmHostRid Condition="'$(AsmHostRid)' == '' and $([MSBuild]::IsOSPlatform('OSX'))">osx-$(_AsmSdkArch)</AsmHostRid>
+    <AsmHostRid Condition="'$(AsmHostRid)' == '' and '$(_AsmSdkRidIsMusl)' == 'true'">linux-musl-$(_AsmSdkArch)</AsmHostRid>
     <AsmHostRid Condition="'$(AsmHostRid)' == ''">linux-$(_AsmSdkArch)</AsmHostRid>
+
+    <!--
+      The build machines a toolchain package exists for: those LLVM publishes release binaries
+      for. No osx-x64 (LLVM 23.1.5 has no Intel Mac build) and no musl (its Linux binaries need
+      glibc): such machines build with AsmToolchain=System, and ASM0006 says so before restore
+      fails on a package that does not exist. A project may set AsmHostRid itself, for example
+      to linux-x64 on an Alpine machine that has gcompat.
+    -->
+    <_AsmBundledHostRids>;win-x64;win-arm64;linux-x64;linux-arm64;osx-arm64;</_AsmBundledHostRids>
+    <_AsmHostHasBundledToolchain Condition="$(_AsmBundledHostRids.Contains(';$(AsmHostRid);'))">true</_AsmHostHasBundledToolchain>
 
     <AsmToolchainPackageId>AsmFoundation.Toolchain.$(AsmHostRid)</AsmToolchainPackageId>
     <_AsmExe Condition="$([MSBuild]::IsOSPlatform('Windows'))">.exe</_AsmExe>
@@ -347,7 +362,7 @@
 
   <!-- Restore downloads the toolchain for this build machine. PackageDownload (not
        PackageReference) because the tools are not a dependency of the project's output. -->
-  <ItemGroup Condition="'$(AsmToolchain)' == 'Bundled' and '$(AsmToolchainDirectory)' == '' and '$(AsmToolchainVersion)' != ''">
+  <ItemGroup Condition="'$(AsmToolchain)' == 'Bundled' and '$(AsmToolchainDirectory)' == '' and '$(AsmToolchainVersion)' != '' and '$(_AsmHostHasBundledToolchain)' == 'true'">
     <PackageDownload Include="$(AsmToolchainPackageId)" Version="[$(AsmToolchainVersion)]" />
   </ItemGroup>
 
@@ -369,6 +384,7 @@
 
     Errors:
       ASM0003  TargetFramework is neither freestanding nor libc.
+      ASM0006  no bundled toolchain exists for this build machine (Intel Mac, musl Linux).
       ASM0100  AsmLibraryName      -> AssemblyName
       ASM0101  AsmRuntime          -> TargetFramework
       ASM0102  AsmDefineConstants  -> DefineConstants
@@ -389,6 +405,9 @@
     <Error Code="ASM0003"
            Condition="'$(TargetFramework)' != '' and '$(_AsmRuntime)' == ''"
            Text="TargetFramework '$(TargetFramework)' is not an AsmSdk target framework. Use freestanding (the code makes its own system calls; the default) or libc (the code links glibc), or TargetFrameworks=freestanding;libc to build both." />
+    <Error Code="ASM0006"
+           Condition="'$(AsmToolchain)' == 'Bundled' and '$(AsmToolchainDirectory)' == '' and '$(_AsmHostHasBundledToolchain)' != 'true'"
+           Text="There is no bundled toolchain for $(AsmHostRid) build machines: LLVM publishes no release binaries for Intel Macs, and its Linux binaries need glibc. Build with &lt;AsmToolchain&gt;System&lt;/AsmToolchain&gt; and the system's nasm, llvm-mc, lld and llvm-ar (Homebrew: nasm llvm lld; Alpine: nasm llvm lld), or set AsmHostRid to a supported machine whose tools run here: win-x64, win-arm64, linux-x64, linux-arm64 or osx-arm64." />
 
     <PropertyGroup>
       <!-- Any removed setting at all: their values concatenated are empty only when none is set. -->

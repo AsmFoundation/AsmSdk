@@ -1,10 +1,10 @@
 #:package SharpCompress@1.0.0
 // =============================================================================================
-// fetch.cs: stages the bundled toolchain (NASM, ld.lld, llvm-ar, llvm-readobj) for one build
-// machine. A .NET 10 file-based app; it replaced toolchain/fetch.py in AsmSdk 0.2.0.
+// fetch.cs: stages the bundled toolchain (NASM, llvm-mc, lld, llvm-ar, llvm-readobj) for one
+// build machine. A .NET 10 file-based app; it replaced toolchain/fetch.py in AsmSdk 0.2.0.
 //
 // Usage (from the repository root):
-//   dotnet run toolchain/fetch.cs -- --rid win-x64|linux-x64|osx-arm64
+//   dotnet run toolchain/fetch.cs -- --rid win-x64|win-arm64|linux-x64|linux-arm64|osx-arm64
 //                                    [--out artifacts/toolchain] [--cache artifacts/downloads]
 //
 // Writes <out>/<rid>/tools/ with the executables, their license texts and VERSIONS.txt.
@@ -13,13 +13,19 @@
 //
 // Where each tool comes from (pinned in versions.json; every download is checked against its
 // SHA-256 before it is opened):
-//   - NASM on win-x64: the official win64 zip.
+//   - NASM on win-x64 and win-arm64: the official win64 zip. NASM publishes no ARM64 Windows
+//     build, so a Windows on Arm machine runs the x64 nasm.exe under Windows 11's x64
+//     emulation (NASM is a small, short-lived process; the LLVM tools next to it are native).
 //   - NASM elsewhere: built from the official source tarball on the machine running this
-//     program, which must therefore be the target OS (the release workflow runs one job per
-//     RID). The official macOS binary is i386/x86_64 only and would need Rosetta on Apple
-//     silicon; the Linux build is static, so it runs on any distribution.
-//   - lld, llvm-ar, llvm-readobj: read out of the official LLVM release archive for the RID,
-//     as a stream: only these members are kept from the 0.9-2 GB .tar.xz, nothing is unpacked.
+//     program, which must therefore be the target OS and CPU (the release workflow runs one
+//     job per RID, linux-arm64 on an ARM64 runner). The official macOS binary is i386/x86_64
+//     only and would need Rosetta on Apple silicon; the Linux builds are static, so they run
+//     on any distribution. NASM on ARM64 still assembles x86-64 only: it is a cross-assembler
+//     there, which is all an x64 RID needs.
+//   - llvm-mc, lld, llvm-ar, llvm-readobj: read out of the official LLVM release archive for
+//     the RID, as a stream: only these members are kept from the 0.7-2 GB .tar.xz, nothing is
+//     unpacked. LLVM 23.1.5 publishes no Intel Mac (osx-x64) archive, so there is no osx-x64
+//     toolchain: such a machine builds with AsmToolchain=System (Homebrew's nasm and llvm).
 //
 // The .tar.xz archives are decoded by SharpCompress (pure managed; .NET has no xz decoder).
 // Measured on the 901 MB Windows LLVM archive: 83.5 s against 78.0 s for Python's lzma, the
@@ -32,6 +38,7 @@ using System.Diagnostics;
 using System.Formats.Tar;
 using System.IO.Compression;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using SharpCompress.Compressors.Xz;
@@ -41,8 +48,11 @@ return await Fetch.MainAsync(args);
 /// <summary>The toolchain staging steps; see the file header.</summary>
 internal static class Fetch
 {
-    /// <summary>The build machines a toolchain package exists for.</summary>
-    private static readonly string[] SupportedRids = ["win-x64", "linux-x64", "osx-arm64"];
+    /// <summary>
+    /// The build machines a toolchain package exists for: those LLVM 23.1.5 publishes release
+    /// binaries for (it publishes none for Intel Macs).
+    /// </summary>
+    private static readonly string[] SupportedRids = ["win-x64", "win-arm64", "linux-x64", "linux-arm64", "osx-arm64"];
 
     /// <summary>The HTTP client for every download (GitHub's release downloads redirect, which it follows).</summary>
     private static readonly HttpClient Http = CreateClient();
@@ -123,7 +133,8 @@ internal static class Fetch
     /// <exception cref="HttpRequestException">A download fails.</exception>
     private static async Task StageNasmAsync(string rid, JsonElement pins, string cache, string tools)
     {
-        if (rid == "win-x64")
+        // Windows on Arm gets the x64 build too, run under emulation (see the file header).
+        if (rid is "win-x64" or "win-arm64")
         {
             string zip = await DownloadAsync(pins.GetProperty("win-x64"), cache);
             using ZipArchive archive = ZipFile.OpenRead(zip);
@@ -138,12 +149,20 @@ internal static class Fetch
             return;
         }
 
-        // Building from source needs the target OS: refuse early instead of producing a binary
-        // for the wrong platform.
-        bool onTarget = rid == "linux-x64" ? OperatingSystem.IsLinux() : OperatingSystem.IsMacOS();
+        // Building from source needs the target OS and CPU: refuse early instead of producing a
+        // binary for the wrong platform (an x64 Linux machine would build an x64 nasm for the
+        // linux-arm64 package, which an ARM64 machine cannot run).
+        Architecture cpu = RuntimeInformation.OSArchitecture;
+        bool onTarget = rid switch
+        {
+            "linux-x64" => OperatingSystem.IsLinux() && cpu == Architecture.X64,
+            "linux-arm64" => OperatingSystem.IsLinux() && cpu == Architecture.Arm64,
+            "osx-arm64" => OperatingSystem.IsMacOS() && cpu == Architecture.Arm64,
+            _ => false,
+        };
         if (!onTarget)
         {
-            throw new FetchException($"NASM for {rid} is built from source and must be staged on {(rid == "linux-x64" ? "Linux" : "macOS")}");
+            throw new FetchException($"NASM for {rid} is built from source and must be staged on a {rid} machine (this one is {RuntimeInformation.RuntimeIdentifier})");
         }
 
         string tarball = await DownloadAsync(pins.GetProperty("sources"), cache);
@@ -160,7 +179,7 @@ internal static class Fetch
 
             string source = Directory.GetDirectories(work).Single();
             var environment = new Dictionary<string, string>();
-            if (rid == "linux-x64")
+            if (rid.StartsWith("linux-", StringComparison.Ordinal))
             {
                 environment["LDFLAGS"] = "-static"; // runs on any distribution, whatever its glibc
             }
@@ -200,7 +219,8 @@ internal static class Fetch
     private static async Task StageLlvmAsync(string rid, JsonElement pins, string cache, string tools)
     {
         string exe = rid.StartsWith("win", StringComparison.Ordinal) ? ".exe" : "";
-        HashSet<string> wanted = pins.GetProperty("tools").EnumerateArray().Select(t => t.GetString() + exe).ToHashSet(StringComparer.Ordinal);
+        string[] toolNames = pins.GetProperty("tools").EnumerateArray().Select(t => t.GetString()!).ToArray();
+        HashSet<string> wanted = toolNames.Select(t => t + exe).ToHashSet(StringComparer.Ordinal);
         string archive = await DownloadAsync(pins.GetProperty(rid), cache);
         var found = new Dictionary<string, byte[]>(StringComparer.Ordinal);
         var links = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -224,11 +244,11 @@ internal static class Fetch
                 }
 
                 // Keep link targets too: a wanted name may turn out to be a link to this file,
-                // and the archive lists links and files in no particular order.
+                // and the archive lists links and files in no particular order. Any file whose
+                // name starts with a wanted tool's name may be such a target (ld.lld -> lld,
+                // llvm-ranlib -> llvm-ar); a few unwanted ones (llvm-mca) only cost memory.
                 bool candidate = wanted.Contains(name) || links.ContainsValue(name)
-                                 || name.StartsWith("lld", StringComparison.Ordinal)
-                                 || name.StartsWith("llvm-ar", StringComparison.Ordinal)
-                                 || name.StartsWith("llvm-readobj", StringComparison.Ordinal);
+                                 || toolNames.Any(t => name.StartsWith(t, StringComparison.Ordinal));
                 if (candidate && entry.DataStream is { } data)
                 {
                     using var copy = new MemoryStream();
@@ -356,14 +376,15 @@ internal static class Fetch
     /// <exception cref="FetchException">strip failed on a file it should handle.</exception>
     /// <remarks>
     /// The official LLVM Linux binaries keep their symbol tables (19 MB of lld's 203 MB) and the
-    /// static NASM build keeps its DWARF; neither is needed to run the tool. Only linux-x64 is
-    /// stripped, on Linux with binutils' strip: a Mach-O binary must not be stripped here,
+    /// static NASM build keeps its DWARF; neither is needed to run the tool. Only the Linux RIDs
+    /// are stripped, on Linux with binutils' strip (staged on the RID's own CPU, so the host's
+    /// strip reads them): a Mach-O binary must not be stripped here,
     /// because that invalidates its code signature and Apple silicon refuses to run an unsigned
     /// binary; Windows PE files carry no symbols (they live in PDBs).
     /// </remarks>
     private static void StripSymbols(string rid, string path)
     {
-        if (rid != "linux-x64" || !OperatingSystem.IsLinux() || !OnPath("strip"))
+        if (!rid.StartsWith("linux-", StringComparison.Ordinal) || !OperatingSystem.IsLinux() || !OnPath("strip"))
         {
             return;
         }

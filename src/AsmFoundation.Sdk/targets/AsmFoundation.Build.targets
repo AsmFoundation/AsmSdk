@@ -109,8 +109,10 @@
          local file shadows one of the same name from a package or a referenced project. -->
     <AsmIncludeDirectory Include="$(MSBuildProjectDirectory)/include/" Condition="Exists('$(MSBuildProjectDirectory)/include')" />
     <AsmIncludeDirectory Include="$(MSBuildProjectDirectory)/" />
-    <!-- The SDK's own include folder, searched last: asmsdk.inc (the calling-convention macros
-         for NASM) and asmsdk-gnu.inc (the same for GNU syntax). A project's file of the same
+    <!-- The SDK's own include folder, searched last: asmsdk.inc (NASM: the x86-64 calling
+         conventions, FUNCTION with exports per OS) and asmsdk-gnu.inc (llvm-mc's GNU syntax:
+         FUNCTION, CALL and ADDRESS with each OS's symbol names and relocations; ARM64 needs
+         no argument macros, AAPCS64 is the same everywhere). A project's file of the same
          name shadows it. -->
     <AsmIncludeDirectory Include="$(AsmFoundationSdkDirectory)include/" AsmOrigin="Sdk" />
   </ItemGroup>
@@ -383,7 +385,12 @@
       <_AsmLlvmMcTriple Condition="'$(_AsmOs)' == 'MacOS'">$(_AsmLlvmMcCpu)-apple-macos$(AsmMacOSMinimumVersion)</_AsmLlvmMcTriple>
       <_AsmLlvmMcTriple Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmMusl)' == 'true'">$(_AsmLlvmMcCpu)-linux-musl</_AsmLlvmMcTriple>
       <_AsmLlvmMcTriple Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmMusl)' != 'true'">$(_AsmLlvmMcCpu)-linux-gnu</_AsmLlvmMcTriple>
-      <_AsmLlvmMcDebugArguments Condition="'$(_AsmDebugSymbols)' == 'true'">-g</_AsmLlvmMcDebugArguments>
+      <!-- llvm-mc writes DWARF only (it has no CodeView option for assembly sources). Windows
+           debuggers read PDBs, and lld-link copied the DWARF sections into the DLL with a
+           warning per section (".debug_info is longer than 8 characters", measured on
+           win-arm64), so Windows objects from .s files carry no line information; the PDB
+           still names every function. -->
+      <_AsmLlvmMcDebugArguments Condition="'$(_AsmDebugSymbols)' == 'true' and '$(_AsmOs)' != 'Windows'">-g</_AsmLlvmMcDebugArguments>
       <_AsmLlvmMcIncludeArguments>@(_AsmIncludeDirectoryOrdered->'-I &quot;%(ToolPath)&quot;', ' ')</_AsmLlvmMcIncludeArguments>
     </PropertyGroup>
     <ItemGroup>
@@ -500,7 +507,15 @@
 
     Shared library: the code must be position-independent (NASM: "default rel", calls through
     "wrt ..plt"); -z now + relro make the GOT read-only once loaded; the sha1 build id is
-    derived from the content, so identical inputs give identical outputs.
+    derived from the content, so identical inputs give identical outputs. Linux shared
+    libraries are linked -Bsymbolic: a reference from the library to its own global symbol
+    binds to that symbol, never to one of the same name in the executable or another library
+    (ELF's default "interposition"). Without it, a PC-relative reference to a global function
+    or variable (lea [rel x], an adrp of asmsdk-gnu.inc's ADDRESS) failed to link, "relocation
+    R_AARCH64_ADR_PREL_PG_HI21 cannot be used against symbol; recompile with -fPIC" (measured
+    on linux-arm64), and every call between the library's own functions went through its PLT.
+    Windows and macOS libraries bind this way already. A library that wants interposition back
+    adds the LinkerArg -Bno-symbolic, which comes later on the line and wins.
     Executable: freestanding links -static with the entry _start (or StartupObject); libc
     links a PIE with glibc's dynamic loader and the SDK's crt1.o in front.
     Static library: llvm-ar "rcsD" = replace, create, write the symbol index the linker needs,
@@ -564,7 +579,7 @@
 
     <!-- Linux (ELF) -->
     <Exec Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmOutputKind)' == 'SharedLibrary'"
-          Command="$(_AsmLinker) -shared -soname $(TargetFileName) -z relro -z now --hash-style=gnu -o $(_AsmTargetPathArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmLibcArguments) $(_AsmCommonLinkArguments)" />
+          Command="$(_AsmLinker) -shared -soname $(TargetFileName) -Bsymbolic -z relro -z now --hash-style=gnu -o $(_AsmTargetPathArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmLibcArguments) $(_AsmCommonLinkArguments)" />
 
     <Exec Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmOutputKind)' == 'Executable' and '$(_AsmRuntime)' != 'Libc'"
           Command="$(_AsmLinker) -static $(_AsmEntryArgument) -o $(_AsmTargetPathArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmCommonLinkArguments)" />

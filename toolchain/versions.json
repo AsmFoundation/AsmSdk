@@ -1,5 +1,5 @@
 {
-  "packageVersion": "0.1.0",
+  "packageVersion": "0.2.0",
   "nasm": {
     "version": "3.02",
     "sources": {
@@ -13,7 +13,7 @@
   },
   "llvm": {
     "version": "23.1.5",
-    "tools": ["lld", "llvm-ar", "llvm-readobj"],
+    "tools": ["lld", "llvm-ar", "llvm-mc", "llvm-readobj"],
     "license": {
       "url": "https://raw.githubusercontent.com/llvm/llvm-project/llvmorg-23.1.5/llvm/LICENSE.TXT",
       "sha256": "8d85c1057d742e597985c7d4e6320b015a9139385cff4cbae06ffc0ebe89afee"
@@ -22,9 +22,17 @@
       "url": "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.5/clang%2Bllvm-23.1.5-x86_64-pc-windows-msvc.tar.xz",
       "sha256": "62fdada7f6fa2b73856486dfbbdba3d2c1882991621615bcb55c60207611c6d4"
     },
+    "win-arm64": {
+      "url": "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.5/clang%2Bllvm-23.1.5-aarch64-pc-windows-msvc.tar.xz",
+      "sha256": "f06382f2c99c68a4e80f7044446df1fcf52bc3cc05158626bd0b966d51a5369a"
+    },
     "linux-x64": {
       "url": "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.5/LLVM-23.1.5-Linux-X64.tar.xz",
       "sha256": "f72edb0b36580ece7f52e23858f00c18fad4e87395ea7ad05d7e55c39f8fc78a"
+    },
+    "linux-arm64": {
+      "url": "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.5/LLVM-23.1.5-Linux-ARM64.tar.xz",
+      "sha256": "44f1e4b7a125b2763d56386a199928dd57ec32e151cc6042dce2f7b0da7bb651"
     },
     "osx-arm64": {
       "url": "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.5/LLVM-23.1.5-macOS-ARM64.tar.xz",
