@@ -181,7 +181,11 @@
     <_AsmDeclaredRuntimeIdentifiers>$(RuntimeIdentifiers)</_AsmDeclaredRuntimeIdentifiers>
     <_AsmDeclaredRuntimeIdentifiers Condition="'$(_AsmDeclaredRuntimeIdentifiers)' == '' and '$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</_AsmDeclaredRuntimeIdentifiers>
     <!-- What the RID outer build builds: a referencing project's request, else the list. -->
-    <_AsmBuildRuntimeIdentifiers Condition="'$(AsmRequestedRuntimeIdentifiers)' != ''">$(AsmRequestedRuntimeIdentifiers)</_AsmBuildRuntimeIdentifiers>
+    <!-- Commas or semicolons: the consumer targets pass commas, which need no escaping on the
+         way through an MSBuild task's AdditionalProperties (a ";" there separates properties).
+         Unescape: MSBuild escapes what a property function returns, so the ";" of Replace
+         would be "%3B" and the list one item (measured: 1 item instead of 3). -->
+    <_AsmBuildRuntimeIdentifiers Condition="'$(AsmRequestedRuntimeIdentifiers)' != ''">$([MSBuild]::Unescape($(AsmRequestedRuntimeIdentifiers.Replace(',', ';'))))</_AsmBuildRuntimeIdentifiers>
     <_AsmBuildRuntimeIdentifiers Condition="'$(_AsmBuildRuntimeIdentifiers)' == ''">$(_AsmDeclaredRuntimeIdentifiers)</_AsmBuildRuntimeIdentifiers>
 
     <!-- Every RID AsmSdk supports, for messages and for restore. -->
@@ -359,6 +363,27 @@
     <AsmToolchainPackageId>AsmFoundation.Toolchain.$(AsmHostRid)</AsmToolchainPackageId>
     <_AsmExe Condition="$([MSBuild]::IsOSPlatform('Windows'))">.exe</_AsmExe>
   </PropertyGroup>
+
+  <!--
+    The implicit reference to this SDK's own package: how a .NET project that references an
+    .asmproj gets the consumer targets (buildTransitive/AsmFoundation.Sdk.targets) that copy the
+    right native library and list it in deps.json. NuGet carries a referenced project's package
+    references to the referencing project, and a package's buildTransitive/ targets with them,
+    so the .NET project needs no setup. The package is already in the NuGet cache: the SDK
+    resolver put it there to load this very file.
+    - The asm project imports the same targets (NuGet imports buildTransitive/ for a direct
+      reference too); they do nothing where UsingAsmFoundationSdk is true.
+    - Packing removes the dependency again (AsmFoundation.Pack.targets): it would tie every
+      consumer of the package to this SDK version (NU1605 on an older one).
+    - No version, no reference: an SDK used from a source folder rather than its package has no
+      generated version props, and then .NET consumers get no consumer targets.
+    - DisableAsmConsumerTargets=true leaves the reference out, for a project whose .NET
+      consumers wire the native files themselves; they then get the 0.2.0 behavior back only
+      for RID-specific builds (the flat copy), and nothing in deps.json.
+  -->
+  <ItemGroup Condition="'$(AsmFoundationSdkVersion)' != '' and '$(DisableAsmConsumerTargets)' != 'true'">
+    <PackageReference Include="AsmFoundation.Sdk" Version="$(AsmFoundationSdkVersion)" IsImplicitlyDefined="true" />
+  </ItemGroup>
 
   <!-- Restore downloads the toolchain for this build machine. PackageDownload (not
        PackageReference) because the tools are not a dependency of the project's output. -->

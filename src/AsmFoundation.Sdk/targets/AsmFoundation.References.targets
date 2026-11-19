@@ -95,25 +95,101 @@
     </ItemGroup>
   </Target>
 
+  <!-- ===================================================================================== -->
+  <!-- .NET projects that reference this one                                                  -->
+  <!-- ===================================================================================== -->
+
   <!--
-    GetCopyToOutputDirectoryItems: the shared library, for a referencing .csproj to copy next to
-    its own output (so [DllImport("libfoo")] finds it). Replaces the common target, which would
-    look for managed content this project never has.
+    A .NET project that references an .asmproj gets the native library of the RID it runs on,
+    the way a PackageReference gets a package's runtimes/ folder. The work is shared between
+    this file (what the asm project offers) and the consumer targets in the SDK package's
+    buildTransitive/ folder (what the .NET project does with it), which reach the .NET project
+    through the implicit AsmFoundation.Sdk PackageReference of every .asmproj (see
+    Properties.targets):
+      RID-specific .NET build (-r linux-arm64, a RuntimeIdentifier in the .csproj): the consumer
+        targets ask GetAsmRuntimeIdentifiers what this project builds, pick the best RID for
+        theirs by NuGet's fallback order, and build that RID here; GetCopyToOutputDirectoryItems
+        of that inner build hands over the library, flat, next to the app.
+      Portable .NET build (no RuntimeIdentifier): this project's RID outer build builds every RID
+        it lists (or the ProjectReference's RuntimeIdentifiers metadata asks for);
+        GetCopyToOutputDirectoryItems hands over each RID's library as
+        runtimes/<rid>/native/<file>, and the consumer targets add them to the app's deps.json
+        (GetAsmNativeRuntimeAssets), so the .NET host loads the one for the machine it runs on.
   -->
-  <Target Name="GetCopyToOutputDirectoryItems" Returns="@(_AsmCopyToOutputItem)">
+
+  <!--
+    GetAsmRuntimeIdentifiers: the RIDs this project declares, empty when it declares none (it
+    then builds whatever RID it is asked for). The caller removes its own global
+    RuntimeIdentifier first: a lone RuntimeIdentifier counts as the declared list, and the
+    caller's must not be mistaken for it.
+  -->
+  <Target Name="GetAsmRuntimeIdentifiers" Returns="@(_AsmDeclaredRuntimeIdentifier)">
     <ItemGroup>
-      <_AsmCopyToOutputItem Include="$(AsmSharedLibraryPath)" Condition="'$(AsmSharedLibraryPath)' != ''">
-        <TargetPath>$(TargetFileName)</TargetPath>
+      <_AsmDeclaredRuntimeIdentifier Include="$(_AsmDeclaredRuntimeIdentifiers)" />
+    </ItemGroup>
+  </Target>
+
+  <!--
+    GetAsmNativeRuntimeAssets: the shared library of every RID this build covers, each with
+      RelativePath       runtimes/<rid>/native/<file>: where a portable .NET app keeps it
+      RuntimeIdentifier  the RID, as deps.json's runtimeTargets name it
+      AsmLibraryName,    the library's name and version in deps.json: the project's PackageId
+      AsmLibraryVersion  and PackageVersion, the names NuGet's assets file gives this project
+    An inner build returns its own RID's library; the RID outer build asks each inner build.
+    Nothing for a project that produces no shared library (a static library or an executable
+    is nothing a .NET app can load). On Windows the PDB goes along when there is one, as .NET
+    copies a referenced project's PDB.
+  -->
+  <Target Name="GetAsmNativeRuntimeAssets" Returns="@(_AsmNativeRuntimeAsset)">
+    <PropertyGroup>
+      <_AsmPdbPath Condition="'$(_AsmOs)' == 'Windows' and '$(AsmSharedLibraryPath)' != ''">$(TargetDir)$(TargetName).pdb</_AsmPdbPath>
+      <_AsmNativeLibraryName>$([MSBuild]::ValueOrDefault('$(PackageId)', '$(AssemblyName)'))</_AsmNativeLibraryName>
+      <_AsmNativeLibraryVersion>$([MSBuild]::ValueOrDefault('$(PackageVersion)', '$(Version)'))</_AsmNativeLibraryVersion>
+    </PropertyGroup>
+    <ItemGroup Condition="'$(_AsmRid)' != '' and '$(AsmSharedLibraryPath)' != ''">
+      <_AsmNativeRuntimeAsset Include="$(AsmSharedLibraryPath)" RelativePath="runtimes/$(RuntimeIdentifier)/native/$(TargetFileName)" />
+      <_AsmNativeRuntimeAsset Include="$(_AsmPdbPath)" Condition="'$(_AsmPdbPath)' != '' and Exists('$(_AsmPdbPath)')" RelativePath="runtimes/$(RuntimeIdentifier)/native/$(TargetName).pdb" AsmSymbols="true" />
+      <_AsmNativeRuntimeAsset RuntimeIdentifier="$(RuntimeIdentifier)" AsmLibraryName="$(_AsmNativeLibraryName)" AsmLibraryVersion="$(_AsmNativeLibraryVersion)" AsmProject="$(MSBuildProjectFullPath)" />
+    </ItemGroup>
+
+    <!-- The RID outer build: each inner build, with the same global properties as the
+         dispatch, so MSBuild returns the results of the builds it already ran. -->
+    <ItemGroup Condition="'$(_AsmRid)' == ''">
+      <_AsmRidToQuery Include="$(_AsmBuildRuntimeIdentifiers)" />
+      <_AsmRidQueryProject Include="$(MSBuildProjectFullPath)" Condition="'@(_AsmRidToQuery)' != ''">
+        <AdditionalProperties>RuntimeIdentifier=%(_AsmRidToQuery.Identity)</AdditionalProperties>
+      </_AsmRidQueryProject>
+    </ItemGroup>
+    <MSBuild Condition="'@(_AsmRidQueryProject)' != ''" Projects="@(_AsmRidQueryProject)" Targets="GetAsmNativeRuntimeAssets" BuildInParallel="$(BuildInParallel)">
+      <Output TaskParameter="TargetOutputs" ItemName="_AsmNativeRuntimeAsset" />
+    </MSBuild>
+  </Target>
+
+  <!--
+    GetCopyToOutputDirectoryItems: the shared library for a referencing .NET project to copy.
+    Replaces the common target, which would look for managed content this project never has.
+      Inner build (one RID): flat, next to the app's own files, so [DllImport("foo")] finds it in
+        the app folder (foo.dll, libfoo.so or libfoo.dylib: the names of different OSes never
+        collide, those of one OS's RIDs would).
+      RID outer build: every RID's library under runtimes/<rid>/native/, the layout NuGet gives
+        a package's native files; the consumer targets list them in deps.json.
+  -->
+  <Target Name="GetCopyToOutputDirectoryItems" DependsOnTargets="GetAsmNativeRuntimeAssets" Returns="@(_AsmCopyToOutputItem)">
+    <ItemGroup>
+      <_AsmCopyToOutputItem Include="@(_AsmNativeRuntimeAsset)">
+        <TargetPath Condition="'$(_AsmRid)' != ''">%(Filename)%(Extension)</TargetPath>
+        <TargetPath Condition="'$(_AsmRid)' == ''">%(RelativePath)</TargetPath>
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </_AsmCopyToOutputItem>
     </ItemGroup>
   </Target>
 
   <!-- The same for dotnet publish of a referencing project. -->
-  <Target Name="GetCopyToPublishDirectoryItems" Returns="@(_AsmCopyToPublishItem)">
+  <Target Name="GetCopyToPublishDirectoryItems" DependsOnTargets="GetAsmNativeRuntimeAssets" Returns="@(_AsmCopyToPublishItem)">
     <ItemGroup>
-      <_AsmCopyToPublishItem Include="$(AsmSharedLibraryPath)" Condition="'$(AsmSharedLibraryPath)' != ''">
-        <TargetPath>$(TargetFileName)</TargetPath>
+      <_AsmCopyToPublishItem Include="@(_AsmNativeRuntimeAsset)">
+        <TargetPath Condition="'$(_AsmRid)' != ''">%(Filename)%(Extension)</TargetPath>
+        <TargetPath Condition="'$(_AsmRid)' == ''">%(RelativePath)</TargetPath>
         <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
       </_AsmCopyToPublishItem>
     </ItemGroup>

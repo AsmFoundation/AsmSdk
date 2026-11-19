@@ -1,0 +1,157 @@
+<Project>
+  <!--
+    AsmFoundation.Sdk - the consumer targets: imported into a .NET project that references an
+    .asmproj (directly, or through another project), through the implicit AsmFoundation.Sdk
+    PackageReference that every .asmproj carries (see the SDK's Properties.targets). NuGet
+    imports them into the .asmproj itself too; everything here is off where
+    UsingAsmFoundationSdk is true.
+
+    What they do, so that the referenced asm project behaves like a package with a runtimes/
+    folder, the RID inferred by NuGet's own rules:
+      RID-specific build of the .NET project (dotnet build/publish -r <rid>, or a
+      RuntimeIdentifier in the project): each asm reference is built for the RID that serves
+        this one best, by the .NET SDK's runtime identifier graph (the RID itself when the asm
+        project builds it; linux-arm64 for linux-musl-arm64 when it builds only that one), and
+        its library lands next to the app, flat. ASM0040 when none of its RIDs fits.
+      Portable build (no RuntimeIdentifier): each asm reference builds every RID it lists, or
+        the RIDs of the ProjectReference's RuntimeIdentifiers metadata
+        (<ProjectReference Include="..." RuntimeIdentifiers="linux-x64;win-x64" />), each library
+        lands in runtimes/<rid>/native/, and deps.json lists them as the runtimeTargets of a
+        project library, so the .NET host loads the one for the machine it runs on. The same
+        for dotnet publish.
+
+    Global properties that only make sense for the .NET app (self-contained, AOT, trimming,
+    single file) are not passed on to the asm project: it builds native code either way, and
+    Microsoft.NET.Sdk would act on them for its netstandard target framework.
+  -->
+
+  <PropertyGroup Condition="'$(UsingAsmFoundationSdk)' != 'true'">
+    <_AsmConsumerTasksAssembly>$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', '..', 'tasks', 'netstandard2.0', 'AsmFoundation.Sdk.Tasks.dll'))</_AsmConsumerTasksAssembly>
+    <!-- Every RID AsmSdk builds: what a RID-less asm project can be built for. -->
+    <_AsmConsumerSupportedRuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;osx-x64;osx-arm64</_AsmConsumerSupportedRuntimeIdentifiers>
+    <_AsmConsumerPropertiesToRemove>SelfContained;PublishAot;PublishTrimmed;PublishSingleFile;PublishReadyToRun;_IsPublishing</_AsmConsumerPropertiesToRemove>
+  </PropertyGroup>
+  <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmSelectRuntimeIdentifier" AssemblyFile="$(_AsmConsumerTasksAssembly)" Condition="'$(UsingAsmFoundationSdk)' != 'true'" />
+  <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmAddNativeAssetsToDepsFile" AssemblyFile="$(_AsmConsumerTasksAssembly)" Condition="'$(UsingAsmFoundationSdk)' != 'true'" />
+
+  <!--
+    _AsmConfigureAsmProjectReferences: runs right after the common targets have decided each
+    reference's target framework (_GetProjectReferenceTargetFrameworkProperties), before any of
+    them is built, and rewrites the .asmproj ones in _MSBuildProjectReferenceExistent, the list
+    that ResolveProjectReferences, the copy-to-output step and the consumer targets below all
+    call. Each reference is handled alone (target batching), because each asm project lists
+    its own RIDs.
+  -->
+  <!-- DependsOnTargets, not CallTarget: a target called with CallTarget does not see the items
+       its caller created, and the batching below needs them. -->
+  <Target Name="_AsmConfigureAsmProjectReferences"
+          AfterTargets="_GetProjectReferenceTargetFrameworkProperties"
+          DependsOnTargets="_AsmFindAsmProjectReferences;_AsmConfigureEachAsmProjectReference"
+          Condition="'$(UsingAsmFoundationSdk)' != 'true'" />
+
+  <Target Name="_AsmFindAsmProjectReferences">
+    <ItemGroup>
+      <_AsmProjectReference Include="@(_MSBuildProjectReferenceExistent)" Condition="'%(Extension)' == '.asmproj'" />
+    </ItemGroup>
+  </Target>
+
+  <!-- One batch per asm reference. Conditioned on there being one: batching over an empty list
+       still runs a target or task once (measured for item batching), with empty metadata. -->
+  <Target Name="_AsmConfigureEachAsmProjectReference" Outputs="%(_AsmProjectReference.Identity)" Condition="'@(_AsmProjectReference)' != ''">
+    <!-- Properties keep their values from one batch to the next: start each one empty. -->
+    <PropertyGroup>
+      <_AsmSelectedRid />
+      <_AsmReferenceProperties />
+    </PropertyGroup>
+
+    <!-- What the asm project declares, asked without this project's RID (see
+         GetAsmRuntimeIdentifiers); empty for one that declares none. -->
+    <MSBuild Condition="'$(RuntimeIdentifier)' != ''"
+             Projects="@(_AsmProjectReference)"
+             Targets="GetAsmRuntimeIdentifiers"
+             Properties="%(_AsmProjectReference.SetConfiguration);%(_AsmProjectReference.SetPlatform);%(_AsmProjectReference.SetTargetFramework)"
+             RemoveProperties="RuntimeIdentifier;$(_AsmConsumerPropertiesToRemove);%(_AsmProjectReference.GlobalPropertiesToRemove)">
+      <Output TaskParameter="TargetOutputs" ItemName="_AsmReferenceDeclaredRid" />
+    </MSBuild>
+    <ItemGroup Condition="'$(RuntimeIdentifier)' != '' and '@(_AsmReferenceDeclaredRid)' == ''">
+      <_AsmReferenceDeclaredRid Include="$(_AsmConsumerSupportedRuntimeIdentifiers)" />
+    </ItemGroup>
+    <AsmSelectRuntimeIdentifier Condition="'$(RuntimeIdentifier)' != ''"
+                                RuntimeIdentifier="$(RuntimeIdentifier)"
+                                AvailableRuntimeIdentifiers="@(_AsmReferenceDeclaredRid)"
+                                RuntimeIdentifierGraphPath="$(RuntimeIdentifierGraphPath)"
+                                ProjectName="%(_AsmProjectReference.Filename)%(_AsmProjectReference.Extension)">
+      <Output TaskParameter="Selected" PropertyName="_AsmSelectedRid" />
+    </AsmSelectRuntimeIdentifier>
+
+    <PropertyGroup>
+      <!-- RID-specific: build the selected RID (the .NET project's own RID would flow there
+           otherwise, asm projects not being RID-agnostic). Portable: the RIDs the
+           ProjectReference asks for, with commas (see AsmRequestedRuntimeIdentifiers). -->
+      <_AsmReferenceProperties Condition="'$(RuntimeIdentifier)' != ''">RuntimeIdentifier=$(_AsmSelectedRid)</_AsmReferenceProperties>
+      <_AsmReferenceProperties Condition="'$(RuntimeIdentifier)' == '' and '%(_AsmProjectReference.RuntimeIdentifiers)' != ''">AsmRequestedRuntimeIdentifiers=$([System.String]::Copy('%(_AsmProjectReference.RuntimeIdentifiers)').Replace(';', ',').Replace(' ', ''))</_AsmReferenceProperties>
+      <_AsmReferenceAdditionalProperties>%(_AsmProjectReference.AdditionalProperties)</_AsmReferenceAdditionalProperties>
+      <_AsmReferenceAdditionalProperties Condition="'$(_AsmReferenceProperties)' != '' and '$(_AsmReferenceAdditionalProperties)' != ''">$(_AsmReferenceAdditionalProperties);$(_AsmReferenceProperties)</_AsmReferenceAdditionalProperties>
+      <_AsmReferenceAdditionalProperties Condition="'$(_AsmReferenceProperties)' != '' and '%(_AsmProjectReference.AdditionalProperties)' == ''">$(_AsmReferenceProperties)</_AsmReferenceAdditionalProperties>
+      <_AsmReferenceGlobalPropertiesToRemove>%(_AsmProjectReference.GlobalPropertiesToRemove);$(_AsmConsumerPropertiesToRemove)</_AsmReferenceGlobalPropertiesToRemove>
+    </PropertyGroup>
+
+    <!-- Replaced, not modified: the item goes back with the new metadata (at the end of the
+         list, which changes nothing but the order references are visited in). -->
+    <ItemGroup>
+      <_AsmConfiguredReference Include="@(_AsmProjectReference)">
+        <AdditionalProperties>$(_AsmReferenceAdditionalProperties)</AdditionalProperties>
+        <GlobalPropertiesToRemove>$(_AsmReferenceGlobalPropertiesToRemove)</GlobalPropertiesToRemove>
+      </_AsmConfiguredReference>
+      <_MSBuildProjectReferenceExistent Remove="@(_AsmProjectReference)" />
+      <_MSBuildProjectReferenceExistent Include="@(_AsmConfiguredReference)" />
+      <_AsmConfiguredReference Remove="@(_AsmConfiguredReference)" />
+      <_AsmReferenceDeclaredRid Remove="@(_AsmReferenceDeclaredRid)" />
+    </ItemGroup>
+  </Target>
+
+  <!--
+    _AsmCollectNativeRuntimeAssets: the runtimes/<rid>/native/ files of every asm reference,
+    with the RID and the library name for deps.json (GetAsmNativeRuntimeAssets), from the same
+    builds the references already ran.
+  -->
+  <Target Name="_AsmCollectNativeRuntimeAssets" Condition="'$(UsingAsmFoundationSdk)' != 'true'">
+    <ItemGroup>
+      <_AsmProjectReferenceForAssets Include="@(_MSBuildProjectReferenceExistent)" Condition="'%(Extension)' == '.asmproj'" />
+    </ItemGroup>
+    <MSBuild Condition="'@(_AsmProjectReferenceForAssets)' != ''"
+             Projects="@(_AsmProjectReferenceForAssets)"
+             Targets="GetAsmNativeRuntimeAssets"
+             BuildInParallel="$(BuildInParallel)"
+             Properties="%(_AsmProjectReferenceForAssets.SetConfiguration);%(_AsmProjectReferenceForAssets.SetPlatform);%(_AsmProjectReferenceForAssets.SetTargetFramework)"
+             RemoveProperties="%(_AsmProjectReferenceForAssets.GlobalPropertiesToRemove)$(_GlobalPropertiesToRemoveFromProjectReferences)">
+      <Output TaskParameter="TargetOutputs" ItemName="_AsmNativeRuntimeAsset" />
+    </MSBuild>
+    <ItemGroup>
+      <!-- deps.json lists libraries, not their PDBs. -->
+      <_AsmNativeRuntimeAssetForDeps Include="@(_AsmNativeRuntimeAsset)" Condition="'%(_AsmNativeRuntimeAsset.AsmSymbols)' != 'true'" />
+    </ItemGroup>
+  </Target>
+
+  <!-- The build's deps.json (bin/), for dotnet run, dotnet test and the build output itself. -->
+  <Target Name="_AsmAddNativeAssetsToBuildDepsFile"
+          AfterTargets="GenerateBuildDependencyFile"
+          DependsOnTargets="_AsmCollectNativeRuntimeAssets"
+          Condition="'$(UsingAsmFoundationSdk)' != 'true' and '$(RuntimeIdentifier)' == '' and '$(GenerateDependencyFile)' == 'true' and Exists('$(ProjectDepsFilePath)')">
+    <AsmAddNativeAssetsToDepsFile Condition="'@(_AsmNativeRuntimeAssetForDeps)' != ''"
+                                  DepsFilePath="$(ProjectDepsFilePath)"
+                                  NativeAssets="@(_AsmNativeRuntimeAssetForDeps)"
+                                  MainAssemblyFileName="$(TargetFileName)" />
+  </Target>
+
+  <!-- The publish deps.json, when publish writes its own instead of copying the build's. -->
+  <Target Name="_AsmAddNativeAssetsToPublishDepsFile"
+          AfterTargets="GeneratePublishDependencyFile"
+          DependsOnTargets="_AsmCollectNativeRuntimeAssets"
+          Condition="'$(UsingAsmFoundationSdk)' != 'true' and '$(RuntimeIdentifier)' == '' and '$(GenerateDependencyFile)' == 'true' and Exists('$(PublishDepsFilePath)')">
+    <AsmAddNativeAssetsToDepsFile Condition="'@(_AsmNativeRuntimeAssetForDeps)' != ''"
+                                  DepsFilePath="$(PublishDepsFilePath)"
+                                  NativeAssets="@(_AsmNativeRuntimeAssetForDeps)"
+                                  MainAssemblyFileName="$(TargetFileName)" />
+  </Target>
+</Project>

@@ -43,6 +43,7 @@
     <None Include="stubs/*.asm" Pack="true" PackagePath="stubs/" />
     <!-- include/: asmsdk.inc and its GNU-syntax counterpart; every asm project searches it last. -->
     <None Include="include/*.inc" Pack="true" PackagePath="include/" />
+    <None Include="buildTransitive/*.targets" Pack="true" PackagePath="buildTransitive/" />
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Include="../../LICENSE" Pack="true" PackagePath="/" />
   </ItemGroup>
