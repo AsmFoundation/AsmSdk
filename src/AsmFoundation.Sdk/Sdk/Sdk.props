@@ -59,11 +59,12 @@
     <SkipCopyBuildProduct>true</SkipCopyBuildProduct>
 
     <!--
-      Output folders follow .NET: bin/<Configuration>/<TargetFramework>/ and
-      obj/<Configuration>/<TargetFramework>/ (AppendTargetFrameworkToOutputPath and
-      AppendRuntimeIdentifierToOutputPath keep Microsoft.NET.Sdk's defaults). The target
-      framework now means something (freestanding or libc), and a multi-targeted project needs
-      one folder per framework anyway.
+      Output folders follow .NET: bin/<Configuration>/<TargetFramework>/<RuntimeIdentifier>/
+      and obj/<Configuration>/<TargetFramework>/<RuntimeIdentifier>/
+      (AppendTargetFrameworkToOutputPath and AppendRuntimeIdentifierToOutputPath keep
+      Microsoft.NET.Sdk's defaults). The target framework means something (freestanding or
+      libc), every output is built for one RID, and a project built for several needs one
+      folder per pair anyway, exactly like `dotnet build -r` of a multi-targeted .csproj.
     -->
 
     <!--

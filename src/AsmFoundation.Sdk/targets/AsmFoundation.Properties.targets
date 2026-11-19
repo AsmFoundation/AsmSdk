@@ -10,13 +10,17 @@
     An .asmproj is configured with the properties a .csproj uses. AsmSdk adds names of its own
     only where .NET has no counterpart (the toolchain, packing, AsmProduceStaticLibrary):
       TargetFramework(s)  freestanding | libc: what the code links against (see below)
+      RuntimeIdentifier(s) the platforms to build: win-x64, linux-arm64, osx-arm64, ... (below)
       OutputType          Exe | Library | StaticLibrary | Objects
-      AssemblyName        base name of the output: lib<name>.so, lib<name>.a or <name>
-      DefineConstants     NASM -D symbols; DEBUG or RELEASE, and FREESTANDING or LIBC, added
-      DebugSymbols        DWARF in the objects and the output; DebugType=none turns it off
+      AssemblyName        base name of the output, named per OS: <name>.dll, lib<name>.so,
+                          lib<name>.dylib, <name>.lib or lib<name>.a, <name>.exe or <name>
+      DefineConstants     assembler symbols; DEBUG or RELEASE, FREESTANDING or LIBC, and the
+                          platform's WINDOWS / LINUX / MACOS, MUSL, X64 / ARM64 are added
+      DebugSymbols        debug information in the objects and the output (DWARF, or CodeView
+                          and a PDB on Windows); DebugType=none turns it off
       StartupObject       the executable's entry symbol
       LinkerArg items, ExportsFile
-                          extra linker arguments and the version script (NativeAOT's names)
+                          extra linker arguments and the exports list (NativeAOT's names)
 
     One pattern recurs below, "capture, then hide": the SDK copies the project's value into an
     internal _Asm* property, then gives the managed SDK the value that keeps it out of the way.
@@ -32,14 +36,18 @@
   <PropertyGroup>
     <!--
       TargetFramework names what the code is built to run on, the way net10.0 names .NET 10:
-        freestanding - the code makes its own system calls and links no C library: a static
-                       executable entered at _start, or a shared library with no DT_NEEDED.
-                       It runs on any x86-64 Linux kernel. The default.
-        libc         - the code links the C library: a position-independent executable that
-                       the SDK's crt1 enters at main, or a shared library with DT_NEEDED
-                       libc.so.6. It needs glibc 2.34 or later where it runs.
+        freestanding - the code links no C library and imports nothing: a shared library that
+                       needs nothing where it loads (no DT_NEEDED, no DLL imports), or a static
+                       executable entered at _start that makes its own system calls (Linux),
+                       or returns its exit code (Windows). macOS has no such executables
+                       (ASM0015). The default.
+        libc         - the code links the platform's C library: on linux-x64 a
+                       position-independent executable that the SDK's crt1 enters at main,
+                       or a shared library with DT_NEEDED libc.so.6 (glibc 2.34 or later).
+                       The other RIDs' C libraries come in stage 3 of the 0.3.0 plan
+                       (ASM0016 until then).
       TargetFrameworks="freestanding;libc" builds the project once per name, into
-      bin/<Configuration>/<name>/, exactly like a multi-targeted .csproj.
+      bin/<Configuration>/<name>/<rid>/, exactly like a multi-targeted .csproj built per RID.
 
       Why the default is set here and not in Sdk.props: a TargetFramework set before the
       project body would turn the project's own TargetFrameworks into a single-target build,
@@ -135,27 +143,103 @@
          assembly consumers that link statically take the .a. -->
     <AsmProduceStaticLibrary Condition="'$(AsmProduceStaticLibrary)' == ''">false</AsmProduceStaticLibrary>
 
-    <!--
-      Linux file names: libfoo.so, libfoo.a and foo, from AssemblyName, the way a .csproj
-      names foo.dll after it. Microsoft.NET.Sdk.props has already defaulted AssemblyName to
-      the project name. Libraries get the lib prefix because that is what both "-lfoo" and
-      .NET's [DllImport("foo")] look for on Linux. TargetFileName is set explicitly because
-      an empty TargetExt would otherwise be filled with ".dll" by the common targets.
-    -->
-    <TargetName Condition="'$(TargetName)' == '' and ('$(_AsmOutputKind)' == 'SharedLibrary' or '$(_AsmOutputKind)' == 'StaticLibrary')">lib$(AssemblyName)</TargetName>
-    <TargetName Condition="'$(TargetName)' == ''">$(AssemblyName)</TargetName>
-    <TargetFileName Condition="'$(TargetFileName)' == '' and '$(_AsmOutputKind)' == 'SharedLibrary'">$(TargetName).so</TargetFileName>
-    <TargetFileName Condition="'$(TargetFileName)' == '' and '$(_AsmOutputKind)' == 'StaticLibrary'">$(TargetName).a</TargetFileName>
-    <TargetFileName Condition="'$(TargetFileName)' == ''">$(TargetName)</TargetFileName>
-
-    <!-- The machine the code runs on. Only linux-x64 (ELF64, System V ABI) exists today;
-         the property exists so that package layouts already carry the RID. -->
-    <AsmTargetRid Condition="'$(AsmTargetRid)' == ''">linux-x64</AsmTargetRid>
-    <AsmFormat Condition="'$(AsmFormat)' == ''">elf64</AsmFormat>
-
-    <!-- Default items: every *.asm is a source and every *.inc a dependency, as in a .csproj
-         every *.cs is compiled. Set EnableDefaultAsmItems=false to list them yourself. -->
+    <!-- Default items: every *.asm (NASM) and *.s (GNU syntax, llvm-mc) is a source and every
+         *.inc a dependency, as in a .csproj every *.cs is compiled. Which sources build which
+         runtime identifier is decided per RID by their file-name qualifiers (see AsmPrepare).
+         Set EnableDefaultAsmItems=false to list them yourself. -->
     <EnableDefaultAsmItems Condition="'$(EnableDefaultAsmItems)' == ''">true</EnableDefaultAsmItems>
+  </PropertyGroup>
+
+  <!-- ===================================================================================== -->
+  <!-- Runtime identifiers: the platforms (OS and CPU) the code is built for                  -->
+  <!-- ===================================================================================== -->
+
+  <!--
+    RuntimeIdentifiers and RuntimeIdentifier mean what they mean in .NET: the platforms to build
+    for, with .NET's names. AsmSdk builds these seven:
+      win-x64, win-arm64          PE/COFF (lld-link): Windows PCs and servers
+      linux-x64, linux-arm64      ELF (ld.lld), glibc: most servers and containers, Graviton
+      linux-musl-x64              ELF (ld.lld), musl: Alpine containers
+      osx-x64, osx-arm64          Mach-O (ld64.lld): Intel and Apple silicon Macs
+    x86-64 code is NASM (.asm); ARM64 code is GNU syntax (.s) for the bundled llvm-mc.
+
+    Required, the owner's choice for 0.3.0: there is no default RID. A project builds the
+    RuntimeIdentifiers it lists (or the one RuntimeIdentifier), or those a referencing project
+    asks for on its ProjectReference (RuntimeIdentifiers metadata, which arrives here as the
+    global property AsmRequestedRuntimeIdentifiers), or the one given with -r. With none of
+    these, the build stops with ASM0010, which names all three.
+
+    One build per RID, exactly like `dotnet build -r <rid>`: an inner build with the global
+    property RuntimeIdentifier, its outputs in bin/<Configuration>/<TargetFramework>/<rid>/
+    (Microsoft.NET.Sdk appends the RID), so that conditions on $(RuntimeIdentifier) work in an
+    .asmproj as in a .csproj. Without RuntimeIdentifier, the build is the "RID outer build":
+    it builds each RID in turn (see _AsmBuildEachRuntimeIdentifier) and links nothing itself.
+  -->
+  <PropertyGroup>
+    <!-- The project's own list, captured before RuntimeIdentifiers is widened for restore
+         below. A lone RuntimeIdentifier in the project counts as a list of one. -->
+    <_AsmDeclaredRuntimeIdentifiers>$(RuntimeIdentifiers)</_AsmDeclaredRuntimeIdentifiers>
+    <_AsmDeclaredRuntimeIdentifiers Condition="'$(_AsmDeclaredRuntimeIdentifiers)' == '' and '$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</_AsmDeclaredRuntimeIdentifiers>
+    <!-- What the RID outer build builds: a referencing project's request, else the list. -->
+    <_AsmBuildRuntimeIdentifiers Condition="'$(AsmRequestedRuntimeIdentifiers)' != ''">$(AsmRequestedRuntimeIdentifiers)</_AsmBuildRuntimeIdentifiers>
+    <_AsmBuildRuntimeIdentifiers Condition="'$(_AsmBuildRuntimeIdentifiers)' == ''">$(_AsmDeclaredRuntimeIdentifiers)</_AsmBuildRuntimeIdentifiers>
+
+    <!-- Every RID AsmSdk supports, for messages and for restore. -->
+    <_AsmSupportedRuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;osx-x64;osx-arm64</_AsmSupportedRuntimeIdentifiers>
+
+    <!--
+      Restore writes a target per RID into project.assets.json only for the RIDs listed in
+      RuntimeIdentifiers, and an inner build with RuntimeIdentifier=<rid> fails with NETSDK1047
+      when its target is missing. A project may name no RID and be built for whatever a
+      referencing project asks, so restore always lists all seven (it costs nothing: an .asmproj
+      has no runtime packs). The project's own list was captured above.
+    -->
+    <RuntimeIdentifiers>$(_AsmSupportedRuntimeIdentifiers)</RuntimeIdentifiers>
+
+    <!-- Tell referencing .NET projects to pass their RuntimeIdentifier on: a RID-specific
+         consumer then builds (and copies) exactly its platform's binary. -->
+    <IsRidAgnostic>false</IsRidAgnostic>
+  </PropertyGroup>
+
+  <!-- The RID of this inner build, decomposed. Lower case, as in folder names. -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <_AsmRid>$(RuntimeIdentifier.ToLowerInvariant())</_AsmRid>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(_AsmRid)' == 'win-x64'"><_AsmOs>Windows</_AsmOs><_AsmArch>x64</_AsmArch></PropertyGroup>
+  <PropertyGroup Condition="'$(_AsmRid)' == 'win-arm64'"><_AsmOs>Windows</_AsmOs><_AsmArch>arm64</_AsmArch></PropertyGroup>
+  <PropertyGroup Condition="'$(_AsmRid)' == 'linux-x64'"><_AsmOs>Linux</_AsmOs><_AsmArch>x64</_AsmArch></PropertyGroup>
+  <PropertyGroup Condition="'$(_AsmRid)' == 'linux-arm64'"><_AsmOs>Linux</_AsmOs><_AsmArch>arm64</_AsmArch></PropertyGroup>
+  <PropertyGroup Condition="'$(_AsmRid)' == 'linux-musl-x64'"><_AsmOs>Linux</_AsmOs><_AsmArch>x64</_AsmArch><_AsmMusl>true</_AsmMusl></PropertyGroup>
+  <PropertyGroup Condition="'$(_AsmRid)' == 'osx-x64'"><_AsmOs>MacOS</_AsmOs><_AsmArch>x64</_AsmArch></PropertyGroup>
+  <PropertyGroup Condition="'$(_AsmRid)' == 'osx-arm64'"><_AsmOs>MacOS</_AsmOs><_AsmArch>arm64</_AsmArch></PropertyGroup>
+
+  <PropertyGroup>
+    <!--
+      File names per OS, from AssemblyName, the way a .csproj names foo.dll after it
+      (Microsoft.NET.Sdk.props has already defaulted AssemblyName to the project name):
+        Windows  foo.dll (+ the import library foo.dll.lib), foo.lib, foo.exe
+        Linux    libfoo.so, libfoo.a, foo
+        macOS    libfoo.dylib, libfoo.a, foo
+      Unix libraries get the lib prefix because "-lfoo" and .NET's [DllImport("foo")] look for
+      it there; Windows looks for foo.dll. The import library of a DLL is foo.dll.lib, as Rust
+      names it, so that a project producing both a DLL and a static library (foo.lib) never
+      writes two files of one name. TargetFileName is set explicitly because an empty TargetExt
+      would otherwise be filled with ".dll" by the common targets. The RID outer build has no
+      OS: it gets the Linux names, which nothing there uses.
+    -->
+    <_AsmLibraryPrefix Condition="'$(_AsmOs)' != 'Windows'">lib</_AsmLibraryPrefix>
+    <_AsmSharedExtension Condition="'$(_AsmOs)' == 'Windows'">.dll</_AsmSharedExtension>
+    <_AsmSharedExtension Condition="'$(_AsmOs)' == 'MacOS'">.dylib</_AsmSharedExtension>
+    <_AsmSharedExtension Condition="'$(_AsmSharedExtension)' == ''">.so</_AsmSharedExtension>
+    <_AsmStaticExtension Condition="'$(_AsmOs)' == 'Windows'">.lib</_AsmStaticExtension>
+    <_AsmStaticExtension Condition="'$(_AsmStaticExtension)' == ''">.a</_AsmStaticExtension>
+    <_AsmExecutableExtension Condition="'$(_AsmOs)' == 'Windows'">.exe</_AsmExecutableExtension>
+
+    <TargetName Condition="'$(TargetName)' == '' and ('$(_AsmOutputKind)' == 'SharedLibrary' or '$(_AsmOutputKind)' == 'StaticLibrary')">$(_AsmLibraryPrefix)$(AssemblyName)</TargetName>
+    <TargetName Condition="'$(TargetName)' == ''">$(AssemblyName)</TargetName>
+    <TargetFileName Condition="'$(TargetFileName)' == '' and '$(_AsmOutputKind)' == 'SharedLibrary'">$(TargetName)$(_AsmSharedExtension)</TargetFileName>
+    <TargetFileName Condition="'$(TargetFileName)' == '' and '$(_AsmOutputKind)' == 'StaticLibrary'">$(TargetName)$(_AsmStaticExtension)</TargetFileName>
+    <TargetFileName Condition="'$(TargetFileName)' == ''">$(TargetName)$(_AsmExecutableExtension)</TargetFileName>
   </PropertyGroup>
 
   <!-- ===================================================================================== -->
@@ -186,6 +270,16 @@
     <_AsmImplicitFrameworkDefine Condition="'$(DisableImplicitFrameworkDefines)' != 'true' and '$(_AsmRuntime)' != ''">$(TargetFramework.ToUpperInvariant())</_AsmImplicitFrameworkDefine>
     <DefineConstants Condition="'$(_AsmImplicitFrameworkDefine)' != ''">$(DefineConstants);$(_AsmImplicitFrameworkDefine)</DefineConstants>
 
+    <!--
+      The platform symbols of the RID being built, the owner's "And Defines": WINDOWS, LINUX or
+      MACOS, MUSL on linux-musl-x64 (LINUX too), and X64 or ARM64. They are for what truly
+      differs per platform (system calls, the C library's names); the calling convention has the
+      SDK's macros instead (asmsdk.inc). The same switch as the framework symbol turns them off.
+    -->
+    <_AsmImplicitRuntimeDefines Condition="'$(DisableImplicitFrameworkDefines)' != 'true' and '$(_AsmOs)' != ''">$(_AsmOs.ToUpperInvariant());$(_AsmArch.ToUpperInvariant())</_AsmImplicitRuntimeDefines>
+    <_AsmImplicitRuntimeDefines Condition="'$(_AsmImplicitRuntimeDefines)' != '' and '$(_AsmMusl)' == 'true'">$(_AsmImplicitRuntimeDefines);MUSL</_AsmImplicitRuntimeDefines>
+    <DefineConstants Condition="'$(_AsmImplicitRuntimeDefines)' != ''">$(DefineConstants);$(_AsmImplicitRuntimeDefines)</DefineConstants>
+
     <!-- Hidden from the managed SDK: its AddImplicitDefineConstants target would append
          NETSTANDARD;NETSTANDARD2_0;... to DefineConstants during the build, and NASM would
          receive every one of them as -D. -->
@@ -197,12 +291,13 @@
   <!-- ===================================================================================== -->
   <PropertyGroup>
     <!--
-      DWARF (-g -F dwarf) in the objects and the linked output when DebugSymbols is true and
-      DebugType is not none. Microsoft.NET.Sdk.props sets DebugSymbols=true for Debug, so
-      Debug builds carry DWARF and Release builds do not, unless the project says otherwise.
-      Unlike .NET, whose Release builds still write a PDB, Release output stays free of debug
-      information by default: the sections only cost size, and a shipped binary rarely wants
-      them.
+      Debug information when DebugSymbols is true and DebugType is not none: DWARF (-g -F dwarf)
+      in ELF and Mach-O objects and output, CodeView (-g -F cv8) in Windows objects, from which
+      lld-link writes a PDB next to the DLL or EXE. Microsoft.NET.Sdk.props sets
+      DebugSymbols=true for Debug, so Debug builds carry it and Release builds do not, unless
+      the project says otherwise. Unlike .NET, whose Release builds still write a PDB, Release
+      output stays free of debug information by default: the sections only cost size, and a
+      shipped binary rarely wants them.
     -->
     <_AsmDebugSymbols Condition="'$(DebugSymbols)' == 'true' and '$(DebugType)' != 'none'">true</_AsmDebugSymbols>
     <_AsmDebugSymbols Condition="'$(_AsmDebugSymbols)' == ''">false</_AsmDebugSymbols>
@@ -219,10 +314,15 @@
   <PropertyGroup>
     <!--
       AsmToolchain:
-        Bundled - NASM, ld.lld and llvm-ar from the AsmFoundation.Toolchain.<host> package,
-                  downloaded by restore (the default; nothing to install).
-        System  - nasm, ld and ar from PATH (GNU binutils syntax). Needed only for links that
-                  require a real Linux sysroot, such as a static glibc executable.
+        Bundled - NASM, lld (all three of its linkers), llvm-ar and, from toolchain 0.2.0 on,
+                  llvm-mc, from the AsmFoundation.Toolchain.<host> package, downloaded by
+                  restore (the default; nothing to install). It builds every supported RID on
+                  every build machine.
+        System  - nasm, llvm-mc, ld and ar from PATH, or the commands AsmNasmCommand,
+                  AsmLlvmMcCommand, AsmLinkerCommand and AsmArchiverCommand name. Needed only
+                  for links that require a real sysroot, such as a static glibc executable.
+                  GNU ld links Linux output only; Windows and macOS RIDs need
+                  AsmLinkerCommand=lld-link or ld64.lld (ASM0005).
     -->
     <AsmToolchain Condition="'$(AsmToolchain)' == ''">Bundled</AsmToolchain>
 

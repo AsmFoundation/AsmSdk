@@ -4,11 +4,18 @@
     the targets defined here replace the managed ones of the same name (MSBuild keeps the last
     definition of a target).
 
-    Pipeline (all of it runs inside the standard Build, as CoreCompile):
-      _AsmResolveToolchain  -> locate nasm / lld / llvm-ar (bundled or system) and check them
-      AsmPrepare            -> object paths, include and define arguments, link inputs
-      AsmAssemble           -> one nasm run per source, skipped when the object is up to date
-      AsmLink               -> shared library, static library or executable from the objects
+    Pipeline (all of it runs inside the standard Build, as CoreCompile), once per runtime
+    identifier (an inner build with RuntimeIdentifier set; see AsmFoundation.Properties.targets):
+      _AsmResolveToolchain  -> locate nasm / llvm-mc / lld / llvm-ar (bundled or system), check them
+      AsmPrepare            -> the sources of this RID (file-name qualifiers), object paths,
+                               include and define arguments, link inputs
+      AsmAssemble           -> one assembler run per source (NASM for .asm, llvm-mc for .s),
+                               skipped when the object is up to date
+      AsmLink               -> shared library, static library or executable from the objects,
+                               with this OS's linker: ld.lld (ELF), lld-link (PE/COFF) or
+                               ld64.lld (Mach-O), all three the one bundled lld binary
+    Without RuntimeIdentifier (the RID outer build), CoreCompile builds each RID instead
+    (_AsmBuildEachRuntimeIdentifier) and links nothing itself.
 
     Path convention: every path handed to a tool is computed once, as item metadata or a
     property named *ToolPath / *Argument(s), with forward slashes. A backslash right before a
@@ -16,12 +23,22 @@
     merges two arguments; forward slashes are accepted by NASM and lld on every OS.
   -->
 
+  <!-- The SDK's compiled tasks (tasks/netstandard2.0/AsmFoundation.Sdk.Tasks.dll), for the
+       decisions plain MSBuild expresses badly. netstandard2.0 so that both the .NET SDK's
+       MSBuild and Visual Studio's load it. -->
+  <PropertyGroup>
+    <_AsmTasksAssembly>$(AsmFoundationSdkDirectory)tasks/netstandard2.0/AsmFoundation.Sdk.Tasks.dll</_AsmTasksAssembly>
+  </PropertyGroup>
+  <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmSelectSources" AssemblyFile="$(_AsmTasksAssembly)" />
+  <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmReadExports" AssemblyFile="$(_AsmTasksAssembly)" />
+
   <!-- ===================================================================================== -->
   <!-- Items                                                                                  -->
   <!-- ===================================================================================== -->
   <ItemGroup Condition="'$(EnableDefaultAsmItems)' == 'true'">
-    <!-- DefaultItemExcludes keeps bin/ and obj/ out, as for a .csproj. -->
-    <AsmSource Include="**/*.asm" Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)" />
+    <!-- DefaultItemExcludes keeps bin/ and obj/ out, as for a .csproj. Every source of either
+         language is an item; AsmPrepare picks, per RID, the ones that build it. -->
+    <AsmSource Include="**/*.asm;**/*.s" Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)" />
     <AsmInclude Include="**/*.inc" Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)" />
   </ItemGroup>
 
@@ -60,7 +77,31 @@
     <AvailableItemName Include="AsmInclude" />
     <UpToDateCheckInput Include="@(AsmSource);@(AsmInclude)" Visible="false" />
     <UpToDateCheckInput Include="$(ExportsFile)" Condition="'$(ExportsFile)' != ''" Visible="false" />
-    <UpToDateCheckBuilt Include="$(TargetPath)" Condition="'$(_AsmOutputKind)' != 'Objects'" Visible="false" />
+    <UpToDateCheckBuilt Include="$(TargetPath)" Condition="'$(_AsmRid)' != '' and '$(_AsmOutputKind)' != 'Objects'" Visible="false" />
+  </ItemGroup>
+
+  <!--
+    The RID outer build's outputs, for the IDEs' up-to-date checks: an IDE loads a project
+    without RuntimeIdentifier, so it sees the outer build, whose own TargetPath no step writes
+    (a check against it would find the project stale on every build). Each RID's output is
+    named the way Properties.targets names it in that RID's inner build, in the inner build's
+    folder (Microsoft.NET.Sdk appends the RID to OutDir). Not in the outer build of a
+    multi-targeted project, which has no TargetFramework and no output folder of its own: IDEs
+    load each framework's build for the checks.
+  -->
+  <ItemGroup Condition="'$(_AsmRid)' == '' and '$(TargetFramework)' != '' and '$(_AsmOutputKind)' != 'Objects'">
+    <_AsmRidOutput Include="$(_AsmBuildRuntimeIdentifiers)">
+      <OutputPrefix Condition="!$([System.String]::Copy('%(Identity)').StartsWith('win-'))">lib</OutputPrefix>
+      <OutputExtension Condition="'$(_AsmOutputKind)' == 'SharedLibrary' and $([System.String]::Copy('%(Identity)').StartsWith('win-'))">.dll</OutputExtension>
+      <OutputExtension Condition="'$(_AsmOutputKind)' == 'SharedLibrary' and $([System.String]::Copy('%(Identity)').StartsWith('osx-'))">.dylib</OutputExtension>
+      <OutputExtension Condition="'$(_AsmOutputKind)' == 'SharedLibrary' and $([System.String]::Copy('%(Identity)').StartsWith('linux-'))">.so</OutputExtension>
+      <OutputExtension Condition="'$(_AsmOutputKind)' == 'StaticLibrary' and $([System.String]::Copy('%(Identity)').StartsWith('win-'))">.lib</OutputExtension>
+      <OutputExtension Condition="'$(_AsmOutputKind)' == 'StaticLibrary' and !$([System.String]::Copy('%(Identity)').StartsWith('win-'))">.a</OutputExtension>
+      <OutputExtension Condition="'$(_AsmOutputKind)' == 'Executable' and $([System.String]::Copy('%(Identity)').StartsWith('win-'))">.exe</OutputExtension>
+    </_AsmRidOutput>
+    <!-- Executables carry no lib prefix on any OS. -->
+    <_AsmRidOutput Update="@(_AsmRidOutput)" OutputPrefix="" Condition="'$(_AsmOutputKind)' == 'Executable'" />
+    <UpToDateCheckBuilt Include="@(_AsmRidOutput->'$(OutDir)%(Identity)/%(OutputPrefix)$(AssemblyName)%(OutputExtension)')" Visible="false" />
   </ItemGroup>
 
   <ItemGroup>
@@ -68,20 +109,38 @@
          local file shadows one of the same name from a package or a referenced project. -->
     <AsmIncludeDirectory Include="$(MSBuildProjectDirectory)/include/" Condition="Exists('$(MSBuildProjectDirectory)/include')" />
     <AsmIncludeDirectory Include="$(MSBuildProjectDirectory)/" />
+    <!-- The SDK's own include folder, searched last: asmsdk.inc (the calling-convention macros
+         for NASM) and asmsdk-gnu.inc (the same for GNU syntax). A project's file of the same
+         name shadows it. -->
+    <AsmIncludeDirectory Include="$(AsmFoundationSdkDirectory)include/" AsmOrigin="Sdk" />
   </ItemGroup>
 
   <PropertyGroup>
-    <!-- Objects and generated files live under obj/<Configuration>/asm/. -->
+    <!-- Objects and generated files live under obj/<Configuration>/<tfm>/<rid>/asm/
+         (IntermediateOutputPath carries the RID in an inner build). -->
     <AsmIntermediateDirectory Condition="'$(AsmIntermediateDirectory)' == ''">$(IntermediateOutputPath)asm/</AsmIntermediateDirectory>
-    <AsmStaticLibraryPath Condition="'$(AsmStaticLibraryPath)' == '' and '$(_AsmOutputKind)' == 'StaticLibrary'">$(TargetPath)</AsmStaticLibraryPath>
-    <AsmStaticLibraryPath Condition="'$(AsmStaticLibraryPath)' == '' and '$(AsmProduceStaticLibrary)' == 'true'">$(TargetDir)lib$(AssemblyName).a</AsmStaticLibraryPath>
-    <AsmSharedLibraryPath Condition="'$(_AsmOutputKind)' == 'SharedLibrary'">$(TargetPath)</AsmSharedLibraryPath>
-    <!-- glibc's dynamic loader, recorded as PT_INTERP in libc executables. -->
+    <!-- The outputs exist per RID only: the RID outer build has a TargetPath (with Linux
+         names, see Properties.targets) that no step writes, so it names no library, and a
+         referencing project that asked it for one would copy or link a file that is not there. -->
+    <AsmStaticLibraryPath Condition="'$(AsmStaticLibraryPath)' == '' and '$(_AsmRid)' != '' and '$(_AsmOutputKind)' == 'StaticLibrary'">$(TargetPath)</AsmStaticLibraryPath>
+    <AsmStaticLibraryPath Condition="'$(AsmStaticLibraryPath)' == '' and '$(_AsmRid)' != '' and '$(AsmProduceStaticLibrary)' == 'true'">$(TargetDir)$(_AsmLibraryPrefix)$(AssemblyName)$(_AsmStaticExtension)</AsmStaticLibraryPath>
+    <AsmSharedLibraryPath Condition="'$(_AsmRid)' != '' and '$(_AsmOutputKind)' == 'SharedLibrary'">$(TargetPath)</AsmSharedLibraryPath>
+    <!-- A Windows DLL is linked against through its import library, never the DLL itself:
+         lld-link writes it next to the DLL as foo.dll.lib (see Properties.targets for the name). -->
+    <AsmImportLibraryPath Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmOutputKind)' == 'SharedLibrary'">$(TargetDir)$(AssemblyName).dll.lib</AsmImportLibraryPath>
+    <!-- The dynamic loader each Linux C library installs, recorded as PT_INTERP in libc
+         executables: glibc on x64 and ARM64, musl on x64. -->
+    <AsmDynamicLinker Condition="'$(AsmDynamicLinker)' == '' and '$(_AsmMusl)' == 'true'">/lib/ld-musl-x86_64.so.1</AsmDynamicLinker>
+    <AsmDynamicLinker Condition="'$(AsmDynamicLinker)' == '' and '$(_AsmOs)' == 'Linux' and '$(_AsmArch)' == 'arm64'">/lib/ld-linux-aarch64.so.1</AsmDynamicLinker>
     <AsmDynamicLinker Condition="'$(AsmDynamicLinker)' == ''">/lib64/ld-linux-x86-64.so.2</AsmDynamicLinker>
+    <!-- The oldest macOS the Mach-O files claim to run on (LC_BUILD_VERSION). 11.0 is the
+         first with Apple silicon, so one value serves osx-x64 and osx-arm64. -->
+    <AsmMacOSMinimumVersion Condition="'$(AsmMacOSMinimumVersion)' == ''">11.0</AsmMacOSMinimumVersion>
     <!-- libc executables start in the SDK's crt1.o unless the project names its own entry
-         symbol with StartupObject. -->
-    <_AsmUsesCrt Condition="'$(_AsmRuntime)' == 'Libc' and '$(_AsmOutputKind)' == 'Executable' and '$(StartupObject)' == ''">true</_AsmUsesCrt>
-    <_AsmUsesLibcStub Condition="'$(_AsmRuntime)' == 'Libc' and ('$(_AsmOutputKind)' == 'SharedLibrary' or '$(_AsmOutputKind)' == 'Executable')">true</_AsmUsesLibcStub>
+         symbol with StartupObject. The stub and crt1 exist for glibc on x64 so far (stage 3 of
+         the 0.3.0 plan adds the other C libraries); other RIDs stop at ASM0016 in AsmLink. -->
+    <_AsmUsesCrt Condition="'$(_AsmRuntime)' == 'Libc' and '$(_AsmRid)' == 'linux-x64' and '$(_AsmOutputKind)' == 'Executable' and '$(StartupObject)' == ''">true</_AsmUsesCrt>
+    <_AsmUsesLibcStub Condition="'$(_AsmRuntime)' == 'Libc' and '$(_AsmRid)' == 'linux-x64' and ('$(_AsmOutputKind)' == 'SharedLibrary' or '$(_AsmOutputKind)' == 'Executable')">true</_AsmUsesLibcStub>
   </PropertyGroup>
 
   <!-- ===================================================================================== -->
@@ -89,24 +148,37 @@
   <!-- ===================================================================================== -->
 
   <!--
-    _AsmResolveToolchain: sets _AsmNasm, _AsmLinker and _AsmArchiver to complete command
-    prefixes and fails early, with the fix, when a tool is missing.
-    Errors: ASM0001 (bundled toolchain not restored), ASM0002 (unknown AsmToolchain value).
+    _AsmResolveToolchain: sets _AsmNasm, _AsmLlvmMc, _AsmLinker and _AsmArchiver to complete
+    command prefixes and fails early, with the fix, when a tool is missing.
+    lld is one binary for every linker: "-flavor gnu" is ld.lld (ELF, Linux), "-flavor link" is
+    lld-link (PE/COFF, Windows) and "-flavor darwin" is ld64.lld (Mach-O, macOS); the RID being
+    built picks the flavor. llvm-mc assembles GNU-syntax sources (.s), the language of ARM64
+    code; it is checked only when such a source builds this RID (see AsmAssemble), so a
+    toolchain package older than llvm-mc still builds NASM-only projects.
+    Errors: ASM0001 (bundled toolchain not restored), ASM0002 (unknown AsmToolchain value),
+    ASM0005 (the System toolchain asked to link Windows or macOS output with GNU ld).
   -->
   <Target Name="_AsmResolveToolchain">
+    <PropertyGroup>
+      <_AsmLinkerFlavor Condition="'$(_AsmOs)' == 'Windows'">link</_AsmLinkerFlavor>
+      <_AsmLinkerFlavor Condition="'$(_AsmOs)' == 'MacOS'">darwin</_AsmLinkerFlavor>
+      <_AsmLinkerFlavor Condition="'$(_AsmLinkerFlavor)' == ''">gnu</_AsmLinkerFlavor>
+    </PropertyGroup>
     <PropertyGroup Condition="'$(AsmToolchain)' == 'Bundled'">
       <!-- NuGetPackageRoot comes from obj/*.nuget.g.props, written by restore. -->
       <AsmToolchainDirectory Condition="'$(AsmToolchainDirectory)' == ''">$([MSBuild]::NormalizeDirectory('$(NuGetPackageRoot)', '$(AsmToolchainPackageId.ToLowerInvariant())', '$(AsmToolchainVersion)', 'tools'))</AsmToolchainDirectory>
       <_AsmNasmPath>$(AsmToolchainDirectory)nasm$(_AsmExe)</_AsmNasmPath>
+      <_AsmLlvmMcPath>$(AsmToolchainDirectory)llvm-mc$(_AsmExe)</_AsmLlvmMcPath>
       <_AsmLldPath>$(AsmToolchainDirectory)lld$(_AsmExe)</_AsmLldPath>
       <_AsmArPath>$(AsmToolchainDirectory)llvm-ar$(_AsmExe)</_AsmArPath>
       <_AsmNasm>&quot;$(_AsmNasmPath.Replace('\','/'))&quot;</_AsmNasm>
-      <!-- lld is one binary for every linker flavor; -flavor gnu selects ld.lld (ELF). -->
-      <_AsmLinker>&quot;$(_AsmLldPath.Replace('\','/'))&quot; -flavor gnu</_AsmLinker>
+      <_AsmLlvmMc>&quot;$(_AsmLlvmMcPath.Replace('\','/'))&quot;</_AsmLlvmMc>
+      <_AsmLinker>&quot;$(_AsmLldPath.Replace('\','/'))&quot; -flavor $(_AsmLinkerFlavor)</_AsmLinker>
       <_AsmArchiver>&quot;$(_AsmArPath.Replace('\','/'))&quot;</_AsmArchiver>
     </PropertyGroup>
     <PropertyGroup Condition="'$(AsmToolchain)' == 'System'">
       <_AsmNasm>$([MSBuild]::ValueOrDefault('$(AsmNasmCommand)', 'nasm'))</_AsmNasm>
+      <_AsmLlvmMc>$([MSBuild]::ValueOrDefault('$(AsmLlvmMcCommand)', 'llvm-mc'))</_AsmLlvmMc>
       <_AsmLinker>$([MSBuild]::ValueOrDefault('$(AsmLinkerCommand)', 'ld'))</_AsmLinker>
       <_AsmArchiver>$([MSBuild]::ValueOrDefault('$(AsmArchiverCommand)', 'ar'))</_AsmArchiver>
     </PropertyGroup>
@@ -115,14 +187,22 @@
            Text="AsmToolchain must be 'Bundled' or 'System', not '$(AsmToolchain)'." />
     <Error Code="ASM0001" Condition="'$(AsmToolchain)' == 'Bundled' and (!Exists('$(_AsmNasmPath)') or !Exists('$(_AsmLldPath)') or !Exists('$(_AsmArPath)'))"
            Text="The bundled toolchain was not found in '$(AsmToolchainDirectory)'. Run 'dotnet restore' (it downloads $(AsmToolchainPackageId) $(AsmToolchainVersion)), or set AsmToolchain=System to use nasm, ld and ar from PATH." />
+    <!-- The System toolchain's default linker is GNU ld, which links ELF only, while the link
+         lines of Windows and macOS are lld-link's and ld64.lld's: a project that cross-links
+         with its own tools must name a linker that speaks them. -->
+    <Error Code="ASM0005" Condition="'$(AsmToolchain)' == 'System' and ('$(_AsmOs)' == 'Windows' or '$(_AsmOs)' == 'MacOS') and '$(AsmLinkerCommand)' == ''"
+           Text="AsmToolchain=System links $(_AsmRid) with the command in AsmLinkerCommand, and its default, ld, is GNU ld, which links Linux (ELF) files only. Set AsmLinkerCommand to lld-link (Windows) or ld64.lld (macOS), or build $(_AsmRid) with the bundled toolchain." />
 
     <!--
       NuGet does not keep the Unix execute bit when it extracts a package, so the tools come
       out as plain files on Linux and macOS. Restoring the bit on every build costs one
-      process start and is idempotent.
+      process start and is idempotent. llvm-mc is included only when the package has it.
     -->
+    <PropertyGroup Condition="'$(AsmToolchain)' == 'Bundled' and Exists('$(_AsmLlvmMcPath)')">
+      <_AsmChmodLlvmMc>$(_AsmLlvmMc)</_AsmChmodLlvmMc>
+    </PropertyGroup>
     <Exec Condition="'$(AsmToolchain)' == 'Bundled' and !$([MSBuild]::IsOSPlatform('Windows'))"
-          Command="chmod +x $(_AsmNasm) &quot;$(_AsmLldPath)&quot; $(_AsmArchiver)" StandardOutputImportance="low" />
+          Command="chmod +x $(_AsmNasm) $(_AsmChmodLlvmMc) &quot;$(_AsmLldPath)&quot; $(_AsmArchiver)" StandardOutputImportance="low" />
   </Target>
 
   <!-- ===================================================================================== -->
@@ -133,23 +213,54 @@
     AsmPrepare: computes everything the assemble and link steps need, so those two targets can
     be pure "inputs -> outputs" steps that MSBuild skips when nothing changed.
   -->
-  <Target Name="AsmPrepare" DependsOnTargets="_AsmResolveToolchain;_AsmResolveProjectReferences">
+  <!-- The RID check comes first, explicitly: a BeforeTargets hook would run only after the
+       DependsOnTargets, that is after the referenced projects were built for a RID that this
+       project may not even list. -->
+  <Target Name="AsmPrepare" DependsOnTargets="_AsmCheckRuntimeIdentifiers;_AsmResolveToolchain;_AsmResolveProjectReferences">
+    <!--
+      The sources of this RID: AsmSelectSources reads each file's qualifier and language
+      (crc32c.asm for every x64 RID, crc32c.linux.asm for Linux only, crc32c.s for ARM64; the
+      most specific file of a name wins) and adds AsmLanguage (Nasm or Gnu). The RID outer
+      build assembles nothing, so it selects nothing. The task's errors: ASM0020 (two files of
+      one name tie), ASM0021 (a .asm qualified for ARM64 only), ASM0022 (a RID it does not
+      know), ASM0024 (a file listed twice).
+    -->
+    <AsmSelectSources Condition="'$(_AsmRid)' != '' and '@(AsmSource)' != ''" Sources="@(AsmSource)" RuntimeIdentifier="$(_AsmRid)">
+      <Output TaskParameter="Selected" ItemName="_AsmSelectedSource" />
+    </AsmSelectSources>
+    <!-- A project with sources, none of which builds this RID, would otherwise link an empty
+         library for it: typically NASM-only code built for an ARM64 RID. -->
+    <Error Code="ASM0023"
+           Condition="'$(_AsmRid)' != '' and '@(AsmSource)' != '' and '@(_AsmSelectedSource)' == ''"
+           Text="No source of this project builds $(_AsmRid). NASM files (.asm) build the x64 RIDs; ARM64 needs GNU-syntax files (.s). Add a source for $(_AsmRid) (for example name.$(_AsmRid).s), or remove $(_AsmRid) from RuntimeIdentifiers." />
+
+    <!--
+      ExportsFile: the linker version script, under NativeAOT's name for the same file (the
+      list of symbols to export, which NativeAOT hands to the linker as a version script on
+      Linux). A relative path is taken from the project folder. Resolved first because it
+      changes the defines below as well as the link line.
+    -->
+    <PropertyGroup>
+      <_AsmExportsFilePath Condition="'$(ExportsFile)' != ''">$([System.IO.Path]::GetFullPath($([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(ExportsFile)'))))</_AsmExportsFilePath>
+    </PropertyGroup>
     <ItemGroup>
       <!-- Each source's object keeps the source's subfolder, so a/x.asm and b/x.asm do not
-           collide. -->
-      <AsmSource>
+           collide, and its qualifier, so x.linux.asm and x.asm never share an object. -->
+      <_AsmSelectedSource>
         <ObjectFile>$(AsmIntermediateDirectory)obj/%(RecursiveDir)%(Filename).o</ObjectFile>
-      </AsmSource>
-      <AsmSource>
+      </_AsmSelectedSource>
+      <_AsmSelectedSource>
         <ObjectToolPath>$([System.IO.Path]::GetFullPath('%(ObjectFile)').Replace('\','/'))</ObjectToolPath>
         <SourceToolPath>$([System.String]::Copy('%(FullPath)').Replace('\','/'))</SourceToolPath>
-      </AsmSource>
-      <_AsmObject Include="@(AsmSource->'%(ObjectToolPath)')" />
+      </_AsmSelectedSource>
+      <_AsmObject Include="@(_AsmSelectedSource->'%(ObjectToolPath)')" />
 
       <!-- Local include directories first, then those that packages and referenced projects
-           contributed (they carry AsmOrigin), each group in the order added. -->
+           contributed (they carry AsmOrigin), each group in the order added, and the SDK's own
+           folder last, so that any of the others may shadow its files. -->
       <_AsmIncludeDirectoryOrdered Include="@(AsmIncludeDirectory)" Condition="'%(AsmIncludeDirectory.AsmOrigin)' == ''" />
-      <_AsmIncludeDirectoryOrdered Include="@(AsmIncludeDirectory)" Condition="'%(AsmIncludeDirectory.AsmOrigin)' != ''" />
+      <_AsmIncludeDirectoryOrdered Include="@(AsmIncludeDirectory)" Condition="'%(AsmIncludeDirectory.AsmOrigin)' != '' and '%(AsmIncludeDirectory.AsmOrigin)' != 'Sdk'" />
+      <_AsmIncludeDirectoryOrdered Include="@(AsmIncludeDirectory)" Condition="'%(AsmIncludeDirectory.AsmOrigin)' == 'Sdk'" />
       <_AsmIncludeDirectoryOrdered>
         <!-- NASM uses -I as a plain prefix, so the trailing separator is required. -->
         <ToolPath>$([MSBuild]::EnsureTrailingSlash('%(FullPath)').Replace('\','/'))</ToolPath>
@@ -164,6 +275,10 @@
            already appended DEBUG or RELEASE and FREESTANDING or LIBC; an item Include splits
            on ";" and drops the empty entries that a leading or doubled ";" leaves. -->
       <_AsmDefine Include="$(DefineConstants)" />
+      <!-- The exports file decides what is exported: asmsdk.inc's FUNCTION then writes no
+           Windows export directive of its own, which would export every FUNCTION whether the
+           file lists it or not (lld-link cannot drop a directive). -->
+      <_AsmDefine Include="ASMSDK_EXPORTS_FILE" Condition="'$(_AsmExportsFilePath)' != ''" />
 
       <!-- Link inputs: static libraries and shared objects from AsmLinkLibrary items,
            packages and referenced projects, in the order given. -->
@@ -221,27 +336,80 @@
       <_AsmLibcArguments Condition="'$(_AsmUsesLibcStub)' == 'true'">--no-as-needed &quot;$(_AsmStubToolDirectory)libc.so.6&quot;</_AsmLibcArguments>
 
       <!--
-        ExportsFile: the linker version script, under NativeAOT's name for the same file (the
-        list of symbols to export, which NativeAOT hands to the linker as a version script on
-        Linux). A relative path is taken from the project folder. Only the symbols it lists as
-        global stay in the dynamic symbol table, versioned by its version node. The full path
-        is also an input of AsmLink, so editing the script relinks.
+        The exports file on Linux: only the symbols it lists as global stay in the dynamic
+        symbol table, versioned by its version node. The full path is also an input of AsmLink,
+        so editing the script relinks. (Windows and macOS: see AsmReadExports below.)
       -->
-      <_AsmExportsFilePath Condition="'$(ExportsFile)' != ''">$([System.IO.Path]::GetFullPath($([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(ExportsFile)'))))</_AsmExportsFilePath>
-      <_AsmExportsFileArgument Condition="'$(_AsmExportsFilePath)' != ''">--version-script=&quot;$(_AsmExportsFilePath.Replace('\','/'))&quot;</_AsmExportsFileArgument>
+      <_AsmExportsFileArgument Condition="'$(_AsmExportsFilePath)' != '' and '$(_AsmOs)' == 'Linux'">--version-script=&quot;$(_AsmExportsFilePath.Replace('\','/'))&quot;</_AsmExportsFileArgument>
       <!-- An executable puts no symbol in its dynamic symbol table unless asked: NativeAOT
            pairs the exports file with the export-dynamic option for that reason, and so does
            the SDK, so that the script decides what a dlopen'ed plugin can call back. -->
-      <_AsmExportsFileArgument Condition="'$(_AsmExportsFilePath)' != '' and '$(_AsmOutputKind)' == 'Executable'">$(_AsmExportsFileArgument) --export-dynamic</_AsmExportsFileArgument>
+      <_AsmExportsFileArgument Condition="'$(_AsmExportsFilePath)' != '' and '$(_AsmOs)' == 'Linux' and '$(_AsmOutputKind)' == 'Executable'">$(_AsmExportsFileArgument) --export-dynamic</_AsmExportsFileArgument>
 
       <!--
         LinkerArg items: extra linker arguments, under NativeAOT's item name, appended to every
         link line in item order. One item may hold several words ("-z defs"): the items are
         joined with spaces and not quoted, so a path with spaces must carry its own quotes.
         Footgun for NativeAOT users: NativeAOT hands LinkerArg to clang, so its items are
-        written "-Wl,..."; the SDK runs ld.lld directly, so write the linker's own syntax.
+        written "-Wl,..."; the SDK runs the linker directly, so write the linker's own syntax,
+        which differs per OS (ld.lld: -z defs; lld-link: -opt:ref; ld64.lld: -dead_strip).
+        Condition an item on $(RuntimeIdentifier) when it belongs to one platform.
       -->
       <_AsmLinkerArgArguments>@(LinkerArg, ' ')</_AsmLinkerArgArguments>
+
+      <!--
+        NASM, per object format: win64 (COFF) for Windows, elf64 for Linux, macho64 for macOS.
+        Mach-O names every C symbol with a leading underscore, so on macOS NASM adds it to every
+        global and extern (NASM's gprefix option): the same source says "global crc32c" and "extern printf"
+        on every OS. DWARF for ELF and Mach-O, CodeView for COFF (lld-link writes the PDB).
+      -->
+      <_AsmNasmFormat Condition="'$(_AsmOs)' == 'Windows'">win64</_AsmNasmFormat>
+      <_AsmNasmFormat Condition="'$(_AsmOs)' == 'MacOS'">macho64</_AsmNasmFormat>
+      <_AsmNasmFormat Condition="'$(_AsmNasmFormat)' == ''">elf64</_AsmNasmFormat>
+      <_AsmNasmFormatArguments>-f $(_AsmNasmFormat)</_AsmNasmFormatArguments>
+      <_AsmNasmFormatArguments Condition="'$(_AsmOs)' == 'MacOS'">$(_AsmNasmFormatArguments) --gprefix _</_AsmNasmFormatArguments>
+      <_AsmDebugArguments Condition="'$(_AsmDebugSymbols)' == 'true' and '$(_AsmOs)' == 'Windows'">-g -F cv8</_AsmDebugArguments>
+
+      <!--
+        llvm-mc, for GNU-syntax sources: the target triple says CPU, OS and object format. The
+        macOS triples carry the minimum version (Mach-O records it). The same defines reach it
+        as llvm-mc's defsym option, which takes integers only: NAME becomes NAME=1, NAME=42 stays, and a
+        non-numeric value is llvm-mc's error. Include directories as -I, as for NASM.
+      -->
+      <_AsmLlvmMcCpu Condition="'$(_AsmArch)' == 'arm64' and '$(_AsmOs)' == 'MacOS'">arm64</_AsmLlvmMcCpu>
+      <_AsmLlvmMcCpu Condition="'$(_AsmArch)' == 'arm64' and '$(_AsmOs)' != 'MacOS'">aarch64</_AsmLlvmMcCpu>
+      <_AsmLlvmMcCpu Condition="'$(_AsmArch)' == 'x64'">x86_64</_AsmLlvmMcCpu>
+      <_AsmLlvmMcTriple Condition="'$(_AsmOs)' == 'Windows'">$(_AsmLlvmMcCpu)-pc-windows-msvc</_AsmLlvmMcTriple>
+      <_AsmLlvmMcTriple Condition="'$(_AsmOs)' == 'MacOS'">$(_AsmLlvmMcCpu)-apple-macos$(AsmMacOSMinimumVersion)</_AsmLlvmMcTriple>
+      <_AsmLlvmMcTriple Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmMusl)' == 'true'">$(_AsmLlvmMcCpu)-linux-musl</_AsmLlvmMcTriple>
+      <_AsmLlvmMcTriple Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmMusl)' != 'true'">$(_AsmLlvmMcCpu)-linux-gnu</_AsmLlvmMcTriple>
+      <_AsmLlvmMcDebugArguments Condition="'$(_AsmDebugSymbols)' == 'true'">-g</_AsmLlvmMcDebugArguments>
+      <_AsmLlvmMcIncludeArguments>@(_AsmIncludeDirectoryOrdered->'-I &quot;%(ToolPath)&quot;', ' ')</_AsmLlvmMcIncludeArguments>
+    </PropertyGroup>
+    <ItemGroup>
+      <_AsmLlvmMcDefine Include="@(_AsmDefine)" Condition="$([System.String]::Copy('%(Identity)').Contains('='))" />
+      <_AsmLlvmMcDefine Include="@(_AsmDefine->'%(Identity)=1')" Condition="!$([System.String]::Copy('%(Identity)').Contains('='))" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_AsmLlvmMcDefineArguments>@(_AsmLlvmMcDefine->'--defsym=%(Identity)', ' ')</_AsmLlvmMcDefineArguments>
+    </PropertyGroup>
+
+    <!--
+      The exports file on Windows and macOS: their linkers take names, not a version script.
+      AsmReadExports lists the script's global names. lld-link gets -export:name for each (a DLL
+      exports nothing it is not told to; functions declared with asmsdk.inc's FUNCTION also
+      export themselves through a .drectve directive). ld64.lld gets -exported_symbol _name for
+      each, which hides every other global, as the script's "local: *" does on Linux; Mach-O
+      names carry the underscore, and ld64.lld matches the script's wildcards itself.
+    -->
+    <AsmReadExports Condition="'$(_AsmExportsFilePath)' != '' and ('$(_AsmOs)' == 'Windows' or '$(_AsmOs)' == 'MacOS')"
+                    ExportsFile="$(_AsmExportsFilePath)"
+                    AllowWildcards="$([System.String]::Equals('$(_AsmOs)', 'MacOS'))">
+      <Output TaskParameter="Names" ItemName="_AsmExportedName" />
+    </AsmReadExports>
+    <PropertyGroup>
+      <_AsmExportsFileArgument Condition="'$(_AsmOs)' == 'Windows' and '@(_AsmExportedName)' != ''">@(_AsmExportedName->'-export:%(Identity)', ' ')</_AsmExportsFileArgument>
+      <_AsmExportsFileArgument Condition="'$(_AsmOs)' == 'MacOS' and '@(_AsmExportedName)' != ''">@(_AsmExportedName->'-exported_symbol _%(Identity)', ' ')</_AsmExportsFileArgument>
     </PropertyGroup>
   </Target>
 
@@ -250,18 +418,28 @@
   <!-- ===================================================================================== -->
 
   <!--
-    AsmAssemble: one NASM run per source (target batching on AsmSource). Each batch is skipped
-    when its object is newer than the source, every include file and the project file.
+    AsmAssemble: one assembler run per source of this RID (target batching on the selected
+    sources): NASM for .asm, llvm-mc for .s. Each batch is skipped when its object is newer than
+    the source, every include file and the project file. AsmFlags are NASM's extra arguments,
+    AsmLlvmMcFlags llvm-mc's.
+    Error: ASM0004 (a .s source builds this RID, and the toolchain package has no llvm-mc).
   -->
   <Target Name="AsmAssemble"
           DependsOnTargets="AsmPrepare"
-          Inputs="@(AsmSource);@(_AsmDependency);$(MSBuildProjectFullPath)"
-          Outputs="%(AsmSource.ObjectFile)">
-    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('%(AsmSource.ObjectToolPath)'))" />
-    <Exec Command="$(_AsmNasm) -f $(AsmFormat) $(_AsmDebugArguments) $(_AsmWarningArguments) $(AsmFlags) $(_AsmIncludeArguments) $(_AsmDefineArguments) -o &quot;%(AsmSource.ObjectToolPath)&quot; &quot;%(AsmSource.SourceToolPath)&quot;"
+          Inputs="@(_AsmSelectedSource);@(_AsmDependency);$(MSBuildProjectFullPath)"
+          Outputs="%(_AsmSelectedSource.ObjectFile)">
+    <Error Code="ASM0004"
+           Condition="'%(_AsmSelectedSource.AsmLanguage)' == 'Gnu' and '$(AsmToolchain)' == 'Bundled' and !Exists('$(_AsmLlvmMcPath)')"
+           Text="%(_AsmSelectedSource.Identity) is GNU-syntax assembly for llvm-mc, which $(AsmToolchainPackageId) $(AsmToolchainVersion) does not include. Use a toolchain package that has it (AsmToolchainVersion 0.2.0 or later)." />
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('%(_AsmSelectedSource.ObjectToolPath)'))" />
+    <Exec Condition="'%(_AsmSelectedSource.AsmLanguage)' == 'Nasm'"
+          Command="$(_AsmNasm) $(_AsmNasmFormatArguments) $(_AsmDebugArguments) $(_AsmWarningArguments) $(AsmFlags) $(_AsmIncludeArguments) $(_AsmDefineArguments) -o &quot;%(_AsmSelectedSource.ObjectToolPath)&quot; &quot;%(_AsmSelectedSource.SourceToolPath)&quot;"
+          WorkingDirectory="$(MSBuildProjectDirectory)" />
+    <Exec Condition="'%(_AsmSelectedSource.AsmLanguage)' == 'Gnu'"
+          Command="$(_AsmLlvmMc) --triple=$(_AsmLlvmMcTriple) --filetype=obj $(_AsmLlvmMcDebugArguments) $(AsmLlvmMcFlags) $(_AsmLlvmMcIncludeArguments) $(_AsmLlvmMcDefineArguments) -o &quot;%(_AsmSelectedSource.ObjectToolPath)&quot; &quot;%(_AsmSelectedSource.SourceToolPath)&quot;"
           WorkingDirectory="$(MSBuildProjectDirectory)" />
     <ItemGroup>
-      <FileWrites Include="%(AsmSource.ObjectFile)" />
+      <FileWrites Include="%(_AsmSelectedSource.ObjectFile)" />
     </ItemGroup>
   </Target>
 
@@ -336,31 +514,88 @@
           DependsOnTargets="AsmAssemble;_AsmBuildLibcStub;_AsmBuildCrt"
           Inputs="@(_AsmObject);@(_AsmLinkInput);$(_AsmExportsFilePath);$(MSBuildProjectFullPath)"
           Outputs="$(TargetPath);$(AsmStaticLibraryPath)">
+    <!--
+      Until each OS's C library is wired (stage 3 of the 0.3.0 plan), libc builds exist for
+      glibc on x64 only. A freestanding program cannot exist on macOS at all: Apple supports no
+      static executables, and every Mach-O program is started by dyld from libSystem.
+    -->
+    <Error Code="ASM0015" Condition="'$(_AsmOs)' == 'MacOS' and '$(_AsmOutputKind)' == 'Executable' and '$(_AsmRuntime)' != 'Libc'"
+           Text="A freestanding executable cannot be built for $(_AsmRid): macOS starts every program through dyld and libSystem, and supports no static executables. Use &lt;TargetFramework&gt;libc&lt;/TargetFramework&gt; for a macOS program, or build a library." />
+    <Error Code="ASM0016" Condition="'$(_AsmRuntime)' == 'Libc' and '$(_AsmOutputKind)' != 'StaticLibrary' and '$(_AsmRid)' != 'linux-x64'"
+           Text="TargetFramework libc is not available for $(_AsmRid) yet; this build of AsmFoundation.Sdk links the C library for linux-x64 only." />
+
     <PropertyGroup>
-      <_AsmCommonLinkArguments>-z noexecstack --build-id=sha1 $(_AsmExportsFileArgument) $(_AsmLinkerArgArguments)</_AsmCommonLinkArguments>
       <!-- StartupObject is .NET's "where the program starts"; for assembly code that is the
            entry symbol. Empty means _start: the program's own, or crt1's for libc. -->
-      <_AsmEntryArgument>-e $([MSBuild]::ValueOrDefault('$(StartupObject)', '_start'))</_AsmEntryArgument>
+      <_AsmEntrySymbol>$([MSBuild]::ValueOrDefault('$(StartupObject)', '_start'))</_AsmEntrySymbol>
+
+      <!-- ELF (ld.lld): a non-executable stack and a build id derived from the content, so
+           identical inputs give identical outputs. -->
+      <_AsmCommonLinkArguments Condition="'$(_AsmOs)' == 'Linux'">-z noexecstack --build-id=sha1 $(_AsmExportsFileArgument) $(_AsmLinkerArgArguments)</_AsmCommonLinkArguments>
+      <_AsmEntryArgument Condition="'$(_AsmOs)' == 'Linux'">-e $(_AsmEntrySymbol)</_AsmEntryArgument>
+
+      <!-- PE/COFF (lld-link): no default libraries (the SDK names every input), the machine,
+           and -Brepro, which derives the timestamp from the content, like the build id. A PDB
+           when debug symbols are on (NASM wrote CodeView into the objects). -->
+      <_AsmPeMachine Condition="'$(_AsmArch)' == 'arm64'">arm64</_AsmPeMachine>
+      <_AsmPeMachine Condition="'$(_AsmPeMachine)' == ''">x64</_AsmPeMachine>
+      <_AsmCommonLinkArguments Condition="'$(_AsmOs)' == 'Windows'">-nodefaultlib -machine:$(_AsmPeMachine) -Brepro $(_AsmExportsFileArgument) $(_AsmLinkerArgArguments)</_AsmCommonLinkArguments>
+      <_AsmCommonLinkArguments Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmDebugSymbols)' == 'true'">-debug $(_AsmCommonLinkArguments)</_AsmCommonLinkArguments>
+      <_AsmEntryArgument Condition="'$(_AsmOs)' == 'Windows'">-entry:$(_AsmEntrySymbol)</_AsmEntryArgument>
+
+      <!-- Mach-O (ld64.lld): the CPU and the macOS versions (minimum and SDK) that Mach-O
+           records; ld64.lld signs arm64 output ad hoc by itself, which Apple silicon requires
+           of every binary. -->
+      <_AsmMachOArch Condition="'$(_AsmArch)' == 'arm64'">arm64</_AsmMachOArch>
+      <_AsmMachOArch Condition="'$(_AsmMachOArch)' == ''">x86_64</_AsmMachOArch>
+      <_AsmCommonLinkArguments Condition="'$(_AsmOs)' == 'MacOS'">-arch $(_AsmMachOArch) -platform_version macos $(AsmMacOSMinimumVersion) $(AsmMacOSMinimumVersion) $(_AsmExportsFileArgument) $(_AsmLinkerArgArguments)</_AsmCommonLinkArguments>
+
+      <!-- Static archives in each OS's own format: COFF archives for lld-link, Darwin archives
+           (BSD with a sorted symbol table) for ld64.lld, GNU archives for ld.lld. The format
+           is named for the bundled llvm-ar only: GNU ar (the System toolchain's default) has
+           no such option and writes its host's format anyway. -->
+      <_AsmArchiveFormat Condition="'$(_AsmOs)' == 'Windows'">coff</_AsmArchiveFormat>
+      <_AsmArchiveFormat Condition="'$(_AsmOs)' == 'MacOS'">darwin</_AsmArchiveFormat>
+      <_AsmArchiveFormat Condition="'$(_AsmArchiveFormat)' == ''">gnu</_AsmArchiveFormat>
+      <_AsmArchiveFormatArgument Condition="'$(AsmToolchain)' == 'Bundled'">--format=$(_AsmArchiveFormat)</_AsmArchiveFormatArgument>
     </PropertyGroup>
 
     <MakeDir Directories="$(TargetDir)" />
 
-    <Exec Condition="'$(_AsmOutputKind)' == 'SharedLibrary'"
+    <!-- Linux (ELF) -->
+    <Exec Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmOutputKind)' == 'SharedLibrary'"
           Command="$(_AsmLinker) -shared -soname $(TargetFileName) -z relro -z now --hash-style=gnu -o $(_AsmTargetPathArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmLibcArguments) $(_AsmCommonLinkArguments)" />
 
-    <Exec Condition="'$(_AsmOutputKind)' == 'Executable' and '$(_AsmRuntime)' != 'Libc'"
+    <Exec Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmOutputKind)' == 'Executable' and '$(_AsmRuntime)' != 'Libc'"
           Command="$(_AsmLinker) -static $(_AsmEntryArgument) -o $(_AsmTargetPathArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmCommonLinkArguments)" />
 
-    <Exec Condition="'$(_AsmOutputKind)' == 'Executable' and '$(_AsmRuntime)' == 'Libc'"
+    <Exec Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmOutputKind)' == 'Executable' and '$(_AsmRuntime)' == 'Libc'"
           Command="$(_AsmLinker) -pie --dynamic-linker $(AsmDynamicLinker) -z relro -z now --hash-style=gnu $(_AsmEntryArgument) -o $(_AsmTargetPathArgument) $(_AsmCrtArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmLibcArguments) $(_AsmCommonLinkArguments)" />
+
+    <!-- Windows (PE/COFF). A DLL has no entry point of its own (-noentry: nothing to run when
+         it loads), and its import library goes next to it, for native consumers. -->
+    <Exec Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmOutputKind)' == 'SharedLibrary'"
+          Command="$(_AsmLinker) -dll -noentry -out:$(_AsmTargetPathArgument) -implib:&quot;$(AsmImportLibraryPath.Replace('\','/'))&quot; $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmCommonLinkArguments)" />
+
+    <Exec Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmOutputKind)' == 'Executable' and '$(_AsmRuntime)' != 'Libc'"
+          Command="$(_AsmLinker) -subsystem:console $(_AsmEntryArgument) -out:$(_AsmTargetPathArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmCommonLinkArguments)" />
+
+    <!-- macOS (Mach-O). @rpath in the install name: a program that links the dylib finds it
+         through its own run paths, the convention for libraries shipped with an app. -->
+    <Exec Condition="'$(_AsmOs)' == 'MacOS' and '$(_AsmOutputKind)' == 'SharedLibrary'"
+          Command="$(_AsmLinker) -dylib -install_name @rpath/$(TargetFileName) -o $(_AsmTargetPathArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmCommonLinkArguments)" />
 
     <Delete Condition="'$(AsmStaticLibraryPath)' != ''" Files="$(AsmStaticLibraryPath)" />
     <Exec Condition="'$(AsmStaticLibraryPath)' != ''"
-          Command="$(_AsmArchiver) rcsD &quot;$(AsmStaticLibraryPath.Replace('\','/'))&quot; $(_AsmObjectArguments)" />
+          Command="$(_AsmArchiver) rcsD $(_AsmArchiveFormatArgument) &quot;$(AsmStaticLibraryPath.Replace('\','/'))&quot; $(_AsmObjectArguments)" />
 
     <ItemGroup>
       <FileWrites Include="$(TargetPath)" />
       <FileWrites Include="$(AsmStaticLibraryPath)" Condition="'$(AsmStaticLibraryPath)' != ''" />
+      <FileWrites Include="$(AsmImportLibraryPath)" Condition="'$(AsmImportLibraryPath)' != ''" />
+      <!-- lld-link's PDB (link -debug), named after the output: without this, dotnet clean
+           left xapp.pdb behind (measured). -->
+      <FileWrites Include="$(TargetDir)$(TargetName).pdb" Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmDebugSymbols)' == 'true' and '$(_AsmOutputKind)' != 'StaticLibrary'" />
     </ItemGroup>
   </Target>
 
@@ -381,7 +616,128 @@
   -->
   <Target Name="CoreCompile"
           Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipCompilerExecution)' != 'true'"
-          DependsOnTargets="AsmAssemble;AsmLink" />
+          DependsOnTargets="$(_AsmCoreCompileDependsOn)" />
+
+  <PropertyGroup>
+    <!-- One RID: assemble and link it. The RID outer build: build each RID instead (reached
+         only when something calls CoreCompile directly; Build skips it, see below). -->
+    <_AsmCoreCompileDependsOn Condition="'$(_AsmRid)' != ''">AsmAssemble;AsmLink</_AsmCoreCompileDependsOn>
+    <_AsmCoreCompileDependsOn Condition="'$(_AsmRid)' == ''">_AsmBuildEachRuntimeIdentifier</_AsmCoreCompileDependsOn>
+
+    <!--
+      The RID outer build's Build is the dispatch alone, the way the outer build of a
+      multi-targeted project (TargetFrameworks) runs DispatchToInnerBuilds and nothing else.
+      Through CoreBuild it would also resolve this project's references with no RID, which
+      builds each referenced .asmproj's own RID outer build: every RID that reference lists
+      (most of which no inner build here asks for), and ASM0010 for a reference that lists none
+      because it is built for the RIDs its referencing projects ask for. Each inner build
+      resolves the references itself, for its own RID.
+    -->
+    <BuildDependsOn Condition="'$(_AsmRid)' == ''">BeforeBuild;_AsmBuildEachRuntimeIdentifier;AfterBuild</BuildDependsOn>
+  </PropertyGroup>
+
+  <!-- ===================================================================================== -->
+  <!-- Runtime identifiers: checks and the RID outer build                                    -->
+  <!-- ===================================================================================== -->
+
+  <!--
+    _AsmCheckRuntimeIdentifiers: fails early, with the fix, on what the RIDs of this build
+    cannot be. Runs before the RID outer build dispatches (_AsmBuildEachRuntimeIdentifier
+    depends on it) and before an inner build prepares anything (the first dependency of
+    AsmPrepare, which the link inputs a referencing project asks for also run, and which
+    builds the references), so "dotnet build", "dotnet pack" and
+    builds through references all check. Never in restore (a project that names no RID must
+    still restore inside a consumer's graph), in clean (cleaning asks for no RID: a clean
+    through a ProjectReference reaches a RID-less project with none, and must not fail), nor
+    in an IDE's design-time build (it would mark a project whose RIDs come from its consumers
+    as broken). Hooking the common targets' _CheckForInvalidConfigurationAndPlatform instead,
+    as 0.3.0's first draft did, made every Clean and Rebuild run it (measured: Rebuild of a
+    project with a RID-less reference failed with ASM0010).
+    Errors:
+      ASM0010  no RID at all: not in the project, not asked for by a referencing project, no -r
+      ASM0011  a RID AsmSdk does not build
+      ASM0012  a RID asked for by a referencing project (or -r) that the project does not list
+
+    A solution build is the one exception to ASM0010. A solution builds each of its projects
+    by itself, with no RID, besides building it again through every project that references
+    it, with theirs. A project that lists no RIDs on purpose (it builds what its referencing
+    projects ask for) has nothing to build by itself there, so it says so in a message and
+    builds nothing; the builds through its references still check what they ask for. Visual
+    Studio builds the projects of a solution one at a time, so BuildingInsideVisualStudio
+    counts as a solution build too. Footgun: the property flows to the projects a solution
+    builds, so a .NET project that references a RID-less .asmproj without naming RIDs gets
+    no binary instead of ASM0010 in a solution build (the AsmSdk consumer targets for .NET
+    projects name the RIDs for it).
+  -->
+  <PropertyGroup>
+    <_AsmNothingToBuild Condition="'$(_AsmRid)' == '' and '$(_AsmBuildRuntimeIdentifiers)' == '' and ('$(BuildingSolutionFile)' == 'true' or '$(BuildingInsideVisualStudio)' == 'true')">true</_AsmNothingToBuild>
+  </PropertyGroup>
+  <Target Name="_AsmCheckRuntimeIdentifiers"
+          Condition="'$(DesignTimeBuild)' != 'true'">
+    <Message Condition="'$(_AsmNothingToBuild)' == 'true'"
+             Importance="high"
+             Text="$(MSBuildProjectName): no runtime identifier of its own; it is built for the RIDs that its referencing projects ask for, so this solution build builds nothing for it by itself." />
+    <ItemGroup>
+      <_AsmRidToCheck Include="$(_AsmBuildRuntimeIdentifiers)" Condition="'$(_AsmRid)' == ''" />
+      <_AsmRidToCheck Include="$(_AsmRid)" Condition="'$(_AsmRid)' != ''" />
+      <_AsmSupportedRid Include="$(_AsmSupportedRuntimeIdentifiers)" />
+      <_AsmDeclaredRid Include="$(_AsmDeclaredRuntimeIdentifiers)" />
+      <_AsmUnsupportedRid Include="@(_AsmRidToCheck)" Exclude="@(_AsmSupportedRid)" />
+      <_AsmUndeclaredRid Include="@(_AsmRidToCheck)" Exclude="@(_AsmDeclaredRid)" Condition="'$(_AsmDeclaredRuntimeIdentifiers)' != ''" />
+    </ItemGroup>
+    <Error Code="ASM0010"
+           Condition="'@(_AsmRidToCheck)' == '' and '$(_AsmNothingToBuild)' != 'true'"
+           Text="This project names no runtime identifier to build. Add &lt;RuntimeIdentifiers&gt;win-x64;linux-x64;osx-arm64&lt;/RuntimeIdentifiers&gt; (any of @(_AsmSupportedRid, ', ')), let the project that references it choose: &lt;ProjectReference Include=&quot;...&quot; RuntimeIdentifiers=&quot;linux-x64;win-x64&quot; /&gt;, or build one with -r &lt;rid&gt;." />
+    <Error Code="ASM0011"
+           Condition="'@(_AsmUnsupportedRid)' != ''"
+           Text="AsmSdk does not build for @(_AsmUnsupportedRid, ', '). Supported runtime identifiers: @(_AsmSupportedRid, ', ')." />
+    <Error Code="ASM0012"
+           Condition="'@(_AsmUndeclaredRid)' != ''"
+           Text="@(_AsmUndeclaredRid, ', ') was asked for (by a referencing project or -r), but this project's RuntimeIdentifiers are @(_AsmDeclaredRid, ', '). Add it there if the code supports it." />
+  </Target>
+
+  <!--
+    _AsmBuildEachRuntimeIdentifier: the RID outer build. Builds this project once per RID, each
+    as an inner build with the global property RuntimeIdentifier (what -r sets), in parallel
+    when the build is. The caller's other global properties (Configuration, a TargetFramework
+    of a multi-targeted build) are inherited by the MSBuild task.
+
+    Both steps are conditioned on having a RID to build (a solution build of a project that
+    lists none, see _AsmCheckRuntimeIdentifiers). Metadata batching over an EMPTY item list
+    still adds the item once, with an empty %(Identity) (measured with MSBuild 18): the
+    project would call itself with an empty RuntimeIdentifier, which is a RID outer build
+    again, and that build would call itself with the same properties, which MSBuild stops as
+    MSB4006, a circular dependency (what a solution build showed before the conditions).
+  -->
+  <Target Name="_AsmBuildEachRuntimeIdentifier" DependsOnTargets="_AsmCheckRuntimeIdentifiers">
+    <ItemGroup>
+      <_AsmRidToBuild Include="$(_AsmBuildRuntimeIdentifiers)" />
+      <_AsmRidProject Include="$(MSBuildProjectFullPath)" Condition="'@(_AsmRidToBuild)' != ''">
+        <AdditionalProperties>RuntimeIdentifier=%(_AsmRidToBuild.Identity)</AdditionalProperties>
+      </_AsmRidProject>
+    </ItemGroup>
+    <MSBuild Condition="'@(_AsmRidProject)' != ''" Projects="@(_AsmRidProject)" Targets="Build" BuildInParallel="$(BuildInParallel)" />
+  </Target>
+
+  <!--
+    dotnet clean of the RID outer build cleans every inner build too: each keeps its own list
+    of written files in obj/<Configuration>/<tfm>/<rid>/.
+    Only in a build that has a TargetFramework: the outer build of a multi-targeted project
+    (TargetFrameworks) dispatches Clean to each framework, and each of those cleans its RIDs.
+    Run in that outer build as well, this target would call the project with a RuntimeIdentifier
+    but no TargetFramework, which is the multi-targeted outer build again, and it would pass the
+    RID on to EVERY framework, including one whose RuntimeIdentifiers do not list it (measured:
+    "dotnet clean" of a freestanding;libc project failed with ASM0012 for libc and win-x64).
+  -->
+  <Target Name="_AsmCleanEachRuntimeIdentifier" AfterTargets="Clean" Condition="'$(_AsmRid)' == '' and '$(TargetFramework)' != '' and '$(_AsmBuildRuntimeIdentifiers)' != ''">
+    <ItemGroup>
+      <_AsmRidToClean Include="$(_AsmBuildRuntimeIdentifiers)" />
+      <_AsmRidCleanProject Include="$(MSBuildProjectFullPath)">
+        <AdditionalProperties>RuntimeIdentifier=%(_AsmRidToClean.Identity)</AdditionalProperties>
+      </_AsmRidCleanProject>
+    </ItemGroup>
+    <MSBuild Projects="@(_AsmRidCleanProject)" Targets="Clean" BuildInParallel="$(BuildInParallel)" />
+  </Target>
 
   <!-- An unknown project extension gets no language targets, and the common targets call
        this one unconditionally; there are no resources to name. -->

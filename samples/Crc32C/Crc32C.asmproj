@@ -1,7 +1,7 @@
 <Project Sdk="AsmFoundation.Sdk">
   <!--
     Crc32C: CRC-32C (Castagnoli) in assembly, shipped the way a .NET team ships a hot routine
-    in native code: a freestanding shared library, bin/<Configuration>/freestanding/libcrc32c.so,
+    in native code: a freestanding shared library, bin/<Configuration>/freestanding/linux-x64/libcrc32c.so,
     with no DT_NEEDED at all, so it loads into any Linux x64 process.
 
     What it shows:
@@ -14,6 +14,8 @@
         runtimes/linux-x64/native/, where .NET finds it; Crc32C.Net wraps it for C#.
   -->
   <PropertyGroup>
+    <!-- Linux x64 only: the code makes Linux system calls (or links glibc). -->
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
     <AssemblyName>crc32c</AssemblyName>
     <ExportsFile>crc32c.map</ExportsFile>
     <PackageId>Samples.Crc32C</PackageId>

@@ -1,12 +1,14 @@
 <Project Sdk="AsmFoundation.Sdk">
   <!--
     A freestanding static library with public include files, also packed as a NuGet package
-    that Hello.Consumer references by version: bin/<Configuration>/freestanding/libhellostatic.a,
+    that Hello.Consumer references by version: bin/<Configuration>/freestanding/linux-x64/libhellostatic.a,
     and with dotnet pack, Hello.Static.1.0.0.nupkg (include/, native/linux-x64/freestanding/,
     build/netstandard1.0/, lib/netstandard1.0/_._). Freestanding code links into freestanding
     and libc projects alike, so both may reference it.
   -->
   <PropertyGroup>
+    <!-- Linux x64 only: the code makes Linux system calls (or links glibc). -->
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
     <OutputType>StaticLibrary</OutputType>
     <AssemblyName>hellostatic</AssemblyName>
     <PackageId>Hello.Static</PackageId>

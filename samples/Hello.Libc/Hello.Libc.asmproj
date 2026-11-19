@@ -4,9 +4,11 @@
     the SDK's crt1 (_start -> __libc_start_main -> main), so the program is an ordinary main()
     calling printf. Links on any build machine: the SDK links against a generated libc.so.6
     stub, and the real glibc is used at run time (glibc 2.34+).
-    Builds bin/<Configuration>/libc/hello-libc.
+    Builds bin/<Configuration>/libc/linux-x64/hello-libc.
   -->
   <PropertyGroup>
+    <!-- Linux x64 only: the code makes Linux system calls (or links glibc). -->
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
     <TargetFramework>libc</TargetFramework>
     <OutputType>Exe</OutputType>
     <AssemblyName>hello-libc</AssemblyName>

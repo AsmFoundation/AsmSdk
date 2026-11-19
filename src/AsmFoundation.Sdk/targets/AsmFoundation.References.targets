@@ -39,15 +39,25 @@
     AsmItemType metadata:
       IncludeDirectory - each public include directory;
       LinkInput        - the static library if one is produced (preferred: no run-time
-                         dependency), else the shared library, else the object files.
-    Called by _AsmResolveProjectReferences after ResolveProjectReferences has built us.
+                         dependency), else the shared library (on Windows its import library,
+                         the file a PE program links against), else the object files.
+    Called by _AsmResolveProjectReferences after ResolveProjectReferences has built us, in the
+    referencing project's RID: an inner build of one RID asks for that RID's files (the RID
+    reaches us because asm projects are not RID-agnostic; see Properties.targets).
   -->
   <Target Name="GetAsmLinkInputs" DependsOnTargets="AsmPrepare" Returns="@(_AsmExportedLinkInput)">
+    <PropertyGroup>
+      <_AsmSharedLinkInput>$(AsmSharedLibraryPath)</_AsmSharedLinkInput>
+      <_AsmSharedLinkInput Condition="'$(AsmImportLibraryPath)' != ''">$(AsmImportLibraryPath)</_AsmSharedLinkInput>
+    </PropertyGroup>
     <ItemGroup>
       <_AsmExportedLinkInput Include="@(AsmPublicIncludeDirectory->'%(FullPath)')" AsmItemType="IncludeDirectory" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" />
       <_AsmExportedLinkInput Include="$(AsmStaticLibraryPath)" Condition="'$(AsmStaticLibraryPath)' != ''" AsmItemType="LinkInput" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" />
-      <_AsmExportedLinkInput Include="$(AsmSharedLibraryPath)" Condition="'$(AsmStaticLibraryPath)' == '' and '$(AsmSharedLibraryPath)' != ''" AsmItemType="LinkInput" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" />
-      <_AsmExportedLinkInput Include="@(AsmSource->'%(ObjectFile)')" Condition="'$(_AsmOutputKind)' == 'Objects'" AsmItemType="LinkInput" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" />
+      <_AsmExportedLinkInput Include="$(_AsmSharedLinkInput)" Condition="'$(AsmStaticLibraryPath)' == '' and '$(_AsmSharedLinkInput)' != ''" AsmItemType="LinkInput" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" />
+      <!-- ObjectToolPath, the absolute path: ObjectFile is relative to THIS project's folder,
+           and a referencing project would look for it in its own (the 0.1.0 and 0.2.0 bug:
+           "cannot open <referencing project>/obj/.../x.o"). -->
+      <_AsmExportedLinkInput Include="@(_AsmSelectedSource->'%(ObjectToolPath)')" Condition="'$(_AsmOutputKind)' == 'Objects'" AsmItemType="LinkInput" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" />
     </ItemGroup>
   </Target>
 
