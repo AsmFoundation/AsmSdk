@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A .NET program that references the seven-RID Everywhere.asmproj (CrossPlatformTests). It
+    has no setup of its own: the consumer targets reach it through the asm project's implicit
+    AsmFoundation.Sdk reference.
+      Portable build: runtimes/<rid>/native/ for all seven RIDs, listed in deps.json, so the
+        same output loads the right library on every OS it runs on.
+      dotnet build -r <rid>: the asm project is built for the RID that serves <rid> best (by
+        the .NET SDK's runtime identifier graph), and its library is copied next to the app.
+    It prints "<RuntimeInformation.RuntimeIdentifier> <ew_add(40, 2)> <ew_platform()> <ew_os()>".
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- A test program: tests/projects/Directory.Build.props sends packages to the local feed,
+         which this one never is. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Everywhere/Everywhere.asmproj" />
+  </ItemGroup>
+</Project>

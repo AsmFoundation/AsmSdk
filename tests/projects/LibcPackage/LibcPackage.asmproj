@@ -7,6 +7,8 @@
     NuGet that it supports libc projects only.
   -->
   <PropertyGroup>
+    <!-- Linux x64 code (System V calls, Linux system calls or glibc), checked as ELF. -->
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
     <TargetFramework>libc</TargetFramework>
     <AssemblyName>testlibconly</AssemblyName>
     <PackageId>Test.LibcOnly</PackageId>

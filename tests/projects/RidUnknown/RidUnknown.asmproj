@@ -1,0 +1,6 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!-- Expected to FAIL with ASM0011: linux-riscv64 is a .NET RID, but not one AsmSdk builds. -->
+  <PropertyGroup>
+    <RuntimeIdentifiers>linux-x64;linux-riscv64</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

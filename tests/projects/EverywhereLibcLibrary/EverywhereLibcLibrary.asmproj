@@ -1,0 +1,12 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A libc shared library for all seven RIDs (CrossPlatformTests loads the host's build into the
+    test process): elc_len() = strlen("assembly") = 8; elc_heap() = 1 when malloc(64), memset
+    and free work. On Windows the C functions come from ucrtbase.dll, on macOS from libSystem.
+  -->
+  <PropertyGroup>
+    <TargetFramework>libc</TargetFramework>
+    <AssemblyName>everywherelibc</AssemblyName>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

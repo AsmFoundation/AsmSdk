@@ -62,6 +62,21 @@
   </Target>
 
   <!--
+    _AsmSkipAsmReferencesInRidOuterBuild: the RID outer build links nothing, so it visits no
+    referenced .asmproj; each inner build resolves them for its own RID. Build already skips
+    reference resolution there (see BuildDependsOn in Build.targets), but other entry points
+    still run ResolveReferences in the outer build, NuGet's pack among them
+    (_GetFrameworkAssemblyReferences): it built each referenced asm project with no RID, which
+    stopped a reference that names none with ASM0010 (measured). The references stay
+    ProjectReference items, so pack still turns them into package dependencies.
+  -->
+  <Target Name="_AsmSkipAsmReferencesInRidOuterBuild" AfterTargets="_SplitProjectReferencesByFileExistence" Condition="'$(_AsmRid)' == ''">
+    <ItemGroup>
+      <_MSBuildProjectReferenceExistent Remove="@(_MSBuildProjectReferenceExistent)" Condition="'%(Extension)' == '.asmproj'" />
+    </ItemGroup>
+  </Target>
+
+  <!--
     _AsmResolveProjectReferences: collects GetAsmLinkInputs from every referenced .asmproj and
     adds them to this project's AsmIncludeDirectory and AsmLinkLibrary items. ProjectReference
     items to anything else (for example a .csproj holding a generator) are left alone.
@@ -126,6 +141,20 @@
   <Target Name="GetAsmRuntimeIdentifiers" Returns="@(_AsmDeclaredRuntimeIdentifier)">
     <ItemGroup>
       <_AsmDeclaredRuntimeIdentifier Include="$(_AsmDeclaredRuntimeIdentifiers)" />
+    </ItemGroup>
+  </Target>
+
+  <!--
+    GetAsmConsumerInfo: what a referencing .NET project needs to know before it builds this
+    project, as one item (the project file) with metadata:
+      AsmOutputKind        SharedLibrary, StaticLibrary, Executable or Objects; only a shared
+                           library is something a .NET app can load
+      RuntimeIdentifiers   the declared RIDs (as GetAsmRuntimeIdentifiers), ";"-separated
+    The caller removes its own global RuntimeIdentifier first, as for GetAsmRuntimeIdentifiers.
+  -->
+  <Target Name="GetAsmConsumerInfo" Returns="@(_AsmConsumerInfo)">
+    <ItemGroup>
+      <_AsmConsumerInfo Include="$(MSBuildProjectFullPath)" AsmOutputKind="$(_AsmOutputKind)" RuntimeIdentifiers="$(_AsmDeclaredRuntimeIdentifiers)" />
     </ItemGroup>
   </Target>
 

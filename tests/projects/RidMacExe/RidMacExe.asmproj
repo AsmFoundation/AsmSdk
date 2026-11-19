@@ -1,0 +1,9 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!-- Expected to FAIL with ASM0015: a freestanding executable for macOS, which supports no
+       static executables (dyld starts every program, with libSystem). Built with -r linux-x64
+       instead, it fails with ASM0012: linux-x64 is not one of its RuntimeIdentifiers. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RuntimeIdentifiers>osx-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

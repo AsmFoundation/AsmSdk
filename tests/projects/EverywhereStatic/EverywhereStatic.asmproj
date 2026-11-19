@@ -1,0 +1,17 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A static library that names no RID: it is built for whatever RIDs the project referencing
+    it (Everywhere) is built for. Its one function, osname(), has a file per platform family,
+    picked by file-name qualifier (CrossPlatformTests checks which object each RID got):
+      osname.asm             every x64 RID without a closer match (osx-x64)    -> 10
+      osname.win.asm         Windows x64                                       -> 11
+      osname.linux.asm       Linux x64 (glibc)                                 -> 12
+      osname.linux-musl.asm  musl, closer than linux                           -> 13
+      osname.s               every ARM64 RID without a closer match            -> 20
+      osname.win-arm64.s     exactly win-arm64, the closest qualifier there is -> 21
+  -->
+  <PropertyGroup>
+    <OutputType>StaticLibrary</OutputType>
+    <AssemblyName>everywherestatic</AssemblyName>
+  </PropertyGroup>
+</Project>

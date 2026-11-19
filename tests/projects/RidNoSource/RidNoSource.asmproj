@@ -1,0 +1,7 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!-- Expected to FAIL with ASM0023: linux-arm64 is listed, but the only source is NASM (.asm),
+       which builds the x64 RIDs; ARM64 needs a GNU-syntax file (.s). -->
+  <PropertyGroup>
+    <RuntimeIdentifiers>linux-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

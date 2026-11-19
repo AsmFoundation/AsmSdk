@@ -144,6 +144,31 @@ public sealed class SdkUnderTest : IAsyncLifetime
         return Command.Run(exe, ["--elf-output-style=GNU", .. options, path]).StdOut;
     }
 
+    /// <summary>
+    /// llvm-readobj's own output style, for any object format: ELF, PE/COFF and Mach-O alike
+    /// (the GNU style of <see cref="ReadElf"/> exists for ELF only).
+    /// </summary>
+    /// <param name="path">The file to inspect.</param>
+    /// <param name="options">llvm-readobj options, such as --file-headers, --coff-exports, --dyn-syms, --symbols, --needed-libs, --coff-imports.</param>
+    /// <returns>The tool's standard output (empty when it failed, which the caller's check then reports).</returns>
+    public string ReadObj(string path, params string[] options)
+    {
+        string exe = Path.Combine(Tools, OperatingSystem.IsWindows() ? "llvm-readobj.exe" : "llvm-readobj");
+        return Command.Run(exe, [.. options, path]).StdOut;
+    }
+
+    /// <summary>
+    /// Builds a test project of tests/projects in Release with extra arguments, once per
+    /// distinct argument list.
+    /// </summary>
+    /// <param name="name">The test project's name.</param>
+    /// <param name="arguments">More dotnet build arguments (for example -r linux-arm64).</param>
+    /// <returns>The build's result.</returns>
+    public CommandResult BuildTestProject(string name, params string[] arguments) =>
+        arguments.Length == 0
+            ? BuildTestProject(name)
+            : Once($"build {name} {string.Join(' ', arguments)}", () => Dotnet(["build", Repo.TestProject(name), "-c", "Release", .. arguments]));
+
     /// <summary>The files of a package, without NuGet's own bookkeeping entries.</summary>
     /// <param name="nupkg">The .nupkg file.</param>
     /// <returns>The entry names, with forward slashes; empty when the package does not exist.</returns>

@@ -1,0 +1,7 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!-- Expected to FAIL with ASM0021: kernel.arm64.asm is a NASM file qualified for ARM64 only,
+       and NASM assembles x86-64 only. -->
+  <PropertyGroup>
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

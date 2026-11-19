@@ -14,22 +14,22 @@ namespace AsmSdk.Tests;
 public sealed class ElfOutputTests(SdkUnderTest sdk)
 {
     /// <summary>Hello.Library's freestanding build.</summary>
-    private static readonly string Library = Repo.Sample("Hello.Library", "bin", "Release", "freestanding", "libhello.so");
+    private static readonly string Library = Repo.Sample("Hello.Library", "bin", "Release", "freestanding", "linux-x64", "libhello.so");
 
     /// <summary>Hello.Library's libc build (the project is multi-targeted).</summary>
-    private static readonly string LibraryLibc = Repo.Sample("Hello.Library", "bin", "Release", "libc", "libhello.so");
+    private static readonly string LibraryLibc = Repo.Sample("Hello.Library", "bin", "Release", "libc", "linux-x64", "libhello.so");
 
     /// <summary>Hello.LibcLibrary: a libc-only shared library.</summary>
-    private static readonly string LibcLibrary = Repo.Sample("Hello.LibcLibrary", "bin", "Release", "libc", "libhellolibc.so");
+    private static readonly string LibcLibrary = Repo.Sample("Hello.LibcLibrary", "bin", "Release", "libc", "linux-x64", "libhellolibc.so");
 
     /// <summary>Hello.App: a freestanding (static) executable.</summary>
-    private static readonly string App = Repo.Sample("Hello.App", "bin", "Release", "freestanding", "hello-app");
+    private static readonly string App = Repo.Sample("Hello.App", "bin", "Release", "freestanding", "linux-x64", "hello-app");
 
     /// <summary>Hello.Libc: a libc executable (a PIE).</summary>
-    private static readonly string LibcApp = Repo.Sample("Hello.Libc", "bin", "Release", "libc", "hello-libc");
+    private static readonly string LibcApp = Repo.Sample("Hello.Libc", "bin", "Release", "libc", "linux-x64", "hello-libc");
 
     /// <summary>Hello.Static: a static library.</summary>
-    private static readonly string Archive = Repo.Sample("Hello.Static", "bin", "Release", "freestanding", "libhellostatic.a");
+    private static readonly string Archive = Repo.Sample("Hello.Static", "bin", "Release", "freestanding", "linux-x64", "libhellostatic.a");
 
     /// <summary>Hello.Net's output folder: the .NET program and the .so files it received.</summary>
     private static readonly string NetOutput = Repo.Sample("Hello.Net", "bin", "Release", "net10.0");
@@ -78,15 +78,16 @@ public sealed class ElfOutputTests(SdkUnderTest sdk)
     }
 
     /// <summary>
-    /// NASM receives the configuration and runtime symbols: -DRELEASE -DFREESTANDING for the
-    /// freestanding build of Hello.Library, -DRELEASE -DLIBC for its libc build.
+    /// NASM receives the configuration, target framework and platform symbols: -DRELEASE
+    /// -DFREESTANDING -DLINUX -DX64 for the freestanding linux-x64 build of Hello.Library,
+    /// -DRELEASE -DLIBC -DLINUX -DX64 for its libc build.
     /// </summary>
     [Fact]
     public void NASM_receives_the_configuration_and_runtime_symbols()
     {
         RequireSamples();
-        Assert.Matches(new Regex(@"-DRELEASE -DFREESTANDING -o ""[^""]*Hello\.Library/obj/Release/freestanding/"), sdk.SamplesBuild.StdOut);
-        Assert.Matches(new Regex(@"-DRELEASE -DLIBC -o ""[^""]*Hello\.Library/obj/Release/libc/"), sdk.SamplesBuild.StdOut);
+        Assert.Matches(new Regex(@"-DRELEASE -DFREESTANDING -DLINUX -DX64 -o ""[^""]*Hello\.Library/obj/Release/freestanding/linux-x64/"), sdk.SamplesBuild.StdOut);
+        Assert.Matches(new Regex(@"-DRELEASE -DLIBC -DLINUX -DX64 -o ""[^""]*Hello\.Library/obj/Release/libc/linux-x64/"), sdk.SamplesBuild.StdOut);
     }
 
     /// <summary>A libc library is linked against the stub (DT_NEEDED libc.so.6) and imports strlen from glibc.</summary>
@@ -133,13 +134,21 @@ public sealed class ElfOutputTests(SdkUnderTest sdk)
         Assert.Matches(new Regex(@"GLOBAL\s+DEFAULT\s+\d+\s+static_mul\b"), sdk.ReadElf(Archive, "-s"));
     }
 
-    /// <summary>A .NET project receives the shared libraries of its .asmproj references in its output folder.</summary>
+    /// <summary>
+    /// A portable .NET project receives the shared libraries of its .asmproj references under
+    /// runtimes/&lt;rid&gt;/native/ (linux-x64 here, the samples' one RID), each listed in its
+    /// deps.json, where the .NET host looks for them.
+    /// </summary>
     [Fact]
     public void A_dotnet_project_receives_the_libraries_of_its_references()
     {
         RequireSamples();
-        Assert.True(File.Exists(Path.Combine(NetOutput, "libhello.so")), "libhello.so missing in " + NetOutput);
-        Assert.True(File.Exists(Path.Combine(NetOutput, "libhellolibc.so")), "libhellolibc.so missing in " + NetOutput);
+        string native = Path.Combine(NetOutput, "runtimes", "linux-x64", "native");
+        Assert.True(File.Exists(Path.Combine(native, "libhello.so")), "libhello.so missing in " + native);
+        Assert.True(File.Exists(Path.Combine(native, "libhellolibc.so")), "libhellolibc.so missing in " + native);
+        string deps = File.ReadAllText(Path.Combine(NetOutput, "Hello.Net.deps.json"));
+        Assert.Contains("\"runtimes/linux-x64/native/libhello.so\"", deps);
+        Assert.Contains("\"runtimes/linux-x64/native/libhellolibc.so\"", deps);
     }
 
     /// <summary>
@@ -150,7 +159,7 @@ public sealed class ElfOutputTests(SdkUnderTest sdk)
     public void A_dotnet_project_receives_the_libc_build_of_a_multi_targeted_library()
     {
         RequireSamples();
-        Assert.Equal(File.ReadAllBytes(LibraryLibc), File.ReadAllBytes(Path.Combine(NetOutput, "libhello.so")));
+        Assert.Equal(File.ReadAllBytes(LibraryLibc), File.ReadAllBytes(Path.Combine(NetOutput, "runtimes", "linux-x64", "native", "libhello.so")));
     }
 
     /// <summary>A Debug build has DWARF: DebugSymbols=true comes from Microsoft.NET.Sdk, as in a .csproj.</summary>
@@ -160,6 +169,6 @@ public sealed class ElfOutputTests(SdkUnderTest sdk)
         CommandResult build = sdk.Once("build Hello.App Debug",
             () => sdk.Dotnet("build", "samples/Hello.App/Hello.App.asmproj", "-c", "Debug"));
         Assert.True(build.ExitCode == 0, build.Tail());
-        Assert.Contains(".debug_info", sdk.ReadElf(Repo.Sample("Hello.App", "bin", "Debug", "freestanding", "hello-app"), "-S"));
+        Assert.Contains(".debug_info", sdk.ReadElf(Repo.Sample("Hello.App", "bin", "Debug", "freestanding", "linux-x64", "hello-app"), "-S"));
     }
 }

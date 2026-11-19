@@ -89,7 +89,7 @@ public sealed class IdeIntegrationTests(SdkUnderTest sdk)
         Dictionary<string, string[]> items = Items("Exports", "libc", "UpToDateCheckInput", "UpToDateCheckBuilt");
         Assert.Equal(["exports.asm", "exports.map"], items["UpToDateCheckInput"].Order(StringComparer.Ordinal));
         string built = Assert.Single(items["UpToDateCheckBuilt"]);
-        Assert.EndsWith("bin/Debug/libc/libexports.so", built);
+        Assert.EndsWith("bin/Debug/libc/linux-x64/libexports.so", built);
     }
 
     /// <summary>
@@ -115,12 +115,12 @@ public sealed class IdeIntegrationTests(SdkUnderTest sdk)
                 "-p:SkipCompilerExecution=true", "-p:ProvideCommandLineArgs=true", "-p:BuildingProject=false"]);
             Assert.True(designTime.ExitCode == 0, designTime.Tail());
             Assert.Empty(ToolRun.Matches(designTime.StdOut).Select(m => m.Value));
-            Assert.False(Directory.Exists(Path.Combine(probeObjects, "libc", "asm")), "a design-time build wrote asm/ outputs");
+            Assert.False(Directory.Exists(Path.Combine(probeObjects, "libc", "linux-x64", "asm")), "a design-time build wrote asm/ outputs");
 
             CommandResult control = sdk.Dotnet(["msbuild", Repo.TestProject("Exports"), .. targets, "-p:Configuration=DesignTimeControl"]);
             Assert.True(control.ExitCode == 0, control.Tail());
             Assert.NotEmpty(ToolRun.Matches(control.StdOut).Select(m => m.Value));
-            Assert.True(File.Exists(Path.Combine(controlObjects, "libc", "asm", "obj", "exports.o")), "the control wrote no object");
+            Assert.True(File.Exists(Path.Combine(controlObjects, "libc", "linux-x64", "asm", "obj", "exports.o")), "the control wrote no object");
         }
         finally
         {

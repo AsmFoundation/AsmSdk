@@ -9,6 +9,8 @@
       - DebugSymbols=true puts DWARF in a Release object (the default is none in Release).
   -->
   <PropertyGroup>
+    <!-- Linux x64 code (System V calls, Linux system calls or glibc), checked as ELF. -->
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
     <OutputType>Objects</OutputType>
     <DefineConstants>ANSWER=42</DefineConstants>
     <DebugSymbols>true</DebugSymbols>

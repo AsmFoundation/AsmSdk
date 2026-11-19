@@ -22,13 +22,13 @@ public sealed class ExampleTests(SdkUnderTest sdk)
     private static readonly Regex MsBuildWarning = new("warning [A-Z]+[0-9]+");
 
     /// <summary>libcrc32c.so, Crc32C's freestanding shared library.</summary>
-    private static readonly string Crc32CLibrary = Repo.Sample("Crc32C", "bin", "Release", "freestanding", "libcrc32c.so");
+    private static readonly string Crc32CLibrary = Repo.Sample("Crc32C", "bin", "Release", "freestanding", "linux-x64", "libcrc32c.so");
 
     /// <summary>WordCount's executable (libc).</summary>
-    private static readonly string WordCount = Repo.Sample("WordCount", "bin", "Release", "libc", "wordcount");
+    private static readonly string WordCount = Repo.Sample("WordCount", "bin", "Release", "libc", "linux-x64", "wordcount");
 
     /// <summary>HexDump's executable (freestanding).</summary>
-    private static readonly string HexDump = Repo.Sample("HexDump", "bin", "Release", "freestanding", "hexdump");
+    private static readonly string HexDump = Repo.Sample("HexDump", "bin", "Release", "freestanding", "linux-x64", "hexdump");
 
     /// <summary>Where the tool runs keep their input files: under the repository, so WSL sees them at the same relative path.</summary>
     private static readonly string RunFolder = Path.Combine(Repo.Artifacts, "test-run");

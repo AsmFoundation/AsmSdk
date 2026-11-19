@@ -62,21 +62,42 @@
     <PropertyGroup>
       <_AsmSelectedRid />
       <_AsmReferenceProperties />
+      <_AsmReferenceKind />
+      <_AsmReferenceRids />
     </PropertyGroup>
 
-    <!-- What the asm project declares, asked without this project's RID (see
-         GetAsmRuntimeIdentifiers); empty for one that declares none. -->
-    <MSBuild Condition="'$(RuntimeIdentifier)' != ''"
-             Projects="@(_AsmProjectReference)"
-             Targets="GetAsmRuntimeIdentifiers"
+    <!-- What the asm project produces and declares, asked without this project's RID (see
+         GetAsmConsumerInfo); RIDs empty for one that declares none. -->
+    <MSBuild Projects="@(_AsmProjectReference)"
+             Targets="GetAsmConsumerInfo"
              Properties="%(_AsmProjectReference.SetConfiguration);%(_AsmProjectReference.SetPlatform);%(_AsmProjectReference.SetTargetFramework)"
              RemoveProperties="RuntimeIdentifier;$(_AsmConsumerPropertiesToRemove);%(_AsmProjectReference.GlobalPropertiesToRemove)">
-      <Output TaskParameter="TargetOutputs" ItemName="_AsmReferenceDeclaredRid" />
+      <Output TaskParameter="TargetOutputs" ItemName="_AsmReferenceInfo" />
     </MSBuild>
-    <ItemGroup Condition="'$(RuntimeIdentifier)' != '' and '@(_AsmReferenceDeclaredRid)' == ''">
-      <_AsmReferenceDeclaredRid Include="$(_AsmConsumerSupportedRuntimeIdentifiers)" />
+    <PropertyGroup>
+      <_AsmReferenceKind>@(_AsmReferenceInfo->'%(AsmOutputKind)')</_AsmReferenceKind>
+      <_AsmReferenceRids>@(_AsmReferenceInfo->'%(RuntimeIdentifiers)')</_AsmReferenceRids>
+    </PropertyGroup>
+
+    <!--
+      Only a shared library is something a .NET app can load. A static library, an executable
+      or object files are left to the asm projects that link them: the .NET SDK adds an asm
+      project's own asm references to this project as transitive ProjectReferences, and built
+      from here, a static library that names no RID of its own would stop with ASM0010
+      (measured: a .NET app referencing a library that links a RID-less static library).
+    -->
+    <Message Condition="'$(_AsmReferenceKind)' != 'SharedLibrary'"
+             Importance="normal"
+             Text="%(_AsmProjectReference.Filename)%(_AsmProjectReference.Extension) produces a $(_AsmReferenceKind), nothing a .NET app loads: not built or copied through $(MSBuildProjectName)." />
+    <ItemGroup Condition="'$(_AsmReferenceKind)' != 'SharedLibrary'">
+      <_MSBuildProjectReferenceExistent Remove="@(_AsmProjectReference)" />
     </ItemGroup>
-    <AsmSelectRuntimeIdentifier Condition="'$(RuntimeIdentifier)' != ''"
+
+    <ItemGroup Condition="'$(_AsmReferenceKind)' == 'SharedLibrary' and '$(RuntimeIdentifier)' != ''">
+      <_AsmReferenceDeclaredRid Include="$(_AsmReferenceRids)" />
+      <_AsmReferenceDeclaredRid Include="$(_AsmConsumerSupportedRuntimeIdentifiers)" Condition="'$(_AsmReferenceRids)' == ''" />
+    </ItemGroup>
+    <AsmSelectRuntimeIdentifier Condition="'$(_AsmReferenceKind)' == 'SharedLibrary' and '$(RuntimeIdentifier)' != ''"
                                 RuntimeIdentifier="$(RuntimeIdentifier)"
                                 AvailableRuntimeIdentifiers="@(_AsmReferenceDeclaredRid)"
                                 RuntimeIdentifierGraphPath="$(RuntimeIdentifierGraphPath)"
@@ -98,15 +119,18 @@
 
     <!-- Replaced, not modified: the item goes back with the new metadata (at the end of the
          list, which changes nothing but the order references are visited in). -->
-    <ItemGroup>
+    <ItemGroup Condition="'$(_AsmReferenceKind)' == 'SharedLibrary'">
       <_AsmConfiguredReference Include="@(_AsmProjectReference)">
         <AdditionalProperties>$(_AsmReferenceAdditionalProperties)</AdditionalProperties>
         <GlobalPropertiesToRemove>$(_AsmReferenceGlobalPropertiesToRemove)</GlobalPropertiesToRemove>
       </_AsmConfiguredReference>
       <_MSBuildProjectReferenceExistent Remove="@(_AsmProjectReference)" />
       <_MSBuildProjectReferenceExistent Include="@(_AsmConfiguredReference)" />
+    </ItemGroup>
+    <ItemGroup>
       <_AsmConfiguredReference Remove="@(_AsmConfiguredReference)" />
       <_AsmReferenceDeclaredRid Remove="@(_AsmReferenceDeclaredRid)" />
+      <_AsmReferenceInfo Remove="@(_AsmReferenceInfo)" />
     </ItemGroup>
   </Target>
 
