@@ -119,13 +119,14 @@ public sealed class Crc32CTests
 
     /// <summary>
     /// The dispatching entry agrees with the reference on both sides of its 4 KiB GC-transition
-    /// boundary, and picks the 3-way path wherever the CPU has SSE4.2 and PCLMULQDQ.
+    /// boundary, and picks the 3-way path wherever the CPU has the CRC instruction and the
+    /// carry-less multiply (SSE4.2 + PCLMULQDQ on x64, CRC32 + AES/PMULL on ARM64).
     /// </summary>
     [Fact]
     public void The_dispatcher_picks_the_fastest_path_and_agrees()
     {
-        Crc32CPath expected = Sse42.X64.IsSupported && Pclmulqdq.IsSupported ? Crc32CPath.Sse42ThreeWay
-            : Sse42.X64.IsSupported ? Crc32CPath.Sse42 : Crc32CPath.Portable;
+        Crc32CPath expected = Crc32C.IsSupported(Crc32CPath.HardwareThreeWay) ? Crc32CPath.HardwareThreeWay
+            : Crc32C.IsSupported(Crc32CPath.Hardware) ? Crc32CPath.Hardware : Crc32CPath.Portable;
         Assert.Equal(expected, Crc32C.Path);
 
         byte[] data = RandomBytes(8192, seed: 5);

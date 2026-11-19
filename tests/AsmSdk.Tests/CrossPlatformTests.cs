@@ -234,27 +234,69 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
 
     /// <summary>
     /// The linux-musl-x64 program runs on Alpine (Docker's alpine image), where glibc programs
-    /// cannot: musl's SONAME and loader are right. Skipped without Docker for amd64 containers.
+    /// cannot: musl's SONAME and loader are right. Skipped unless Docker runs Linux containers
+    /// on an x64 machine (GitHub's Windows runners run Windows containers only).
     /// </summary>
     [Fact]
     public void The_musl_program_runs_on_alpine()
     {
         CommandResult build = sdk.BuildTestProject("EverywhereLibc");
         Assert.True(build.ExitCode == 0, build.Tail());
-        if (RuntimeInformation.OSArchitecture != Architecture.X64 || !Command.OnPath("docker") || OperatingSystem.IsMacOS())
+        if (RuntimeInformation.OSArchitecture != Architecture.X64 || !Command.OnPath("docker")
+            || Command.Run("docker", ["info", "--format", "{{.OSType}}"], Repo.Root).StdOut.Trim() != "linux")
         {
-            Assert.Skip("No Docker for linux/amd64 containers on this machine");
+            Assert.Skip("No Docker running Linux containers on an x64 machine here");
         }
 
         string folder = Repo.TestProjectPath("EverywhereLibc", "bin", "Release", "libc", "linux-musl-x64");
         CommandResult run = Command.Run("docker", ["run", "--rm", "--platform", "linux/amd64", "-v", $"{folder}:/app:ro", "alpine:3", "/app/everywhere-libc"], Repo.Root);
-        if (run.Output.Contains("Cannot connect to the Docker daemon", StringComparison.Ordinal) || run.Output.Contains("docker_engine", StringComparison.Ordinal))
+        Assert.Equal(3, run.ExitCode);
+        Assert.Contains("hello from linux-musl-x64, 40 + 2 = 42", run.StdOut);
+        Assert.Contains("bye from atexit", run.StdOut);
+    }
+
+    /// <summary>
+    /// An ARM64 machine also runs the x64 build of its OS under its x64 emulation: Windows on
+    /// Arm runs win-x64 programs as they are, Apple silicon runs osx-x64 ones through Rosetta 2
+    /// (arch -x86_64). This is the only run of the osx-x64 build in CI: LLVM publishes no
+    /// Intel Mac toolchain, so there is no osx-x64 build machine. Skipped elsewhere, and on a
+    /// Mac without Rosetta ("Bad CPU type in executable").
+    /// </summary>
+    [Fact]
+    public void An_arm64_machine_runs_the_x64_build_under_emulation()
+    {
+        CommandResult build = sdk.BuildTestProject("EverywhereLibc");
+        Assert.True(build.ExitCode == 0, build.Tail());
+        string? emulated = Repo.HostRid switch
         {
-            Assert.Skip("Docker is installed but its daemon is not running");
+            "win-arm64" => "win-x64",
+            "osx-arm64" => "osx-x64",
+            _ => null,
+        };
+        if (emulated is null)
+        {
+            Assert.Skip($"{Repo.HostRid} runs no x64 build under emulation (Windows on Arm and Apple silicon do)");
+        }
+
+        string program = Repo.TestProjectPath("EverywhereLibc", "bin", "Release", "libc", emulated,
+            OperatingSystem.IsWindows() ? "everywhere-libc.exe" : "everywhere-libc");
+        CommandResult run;
+        if (OperatingSystem.IsWindows())
+        {
+            run = Command.Run(program, [], Repo.Root);
+        }
+        else
+        {
+            File.SetUnixFileMode(program, File.GetUnixFileMode(program) | UnixFileMode.UserExecute);
+            run = Command.Run("arch", ["-x86_64", program], Repo.Root);
+            if (run.Output.Contains("Bad CPU type", StringComparison.Ordinal))
+            {
+                Assert.Skip("Rosetta 2 is not installed on this Mac");
+            }
         }
 
         Assert.Equal(3, run.ExitCode);
-        Assert.Contains("hello from linux-musl-x64, 40 + 2 = 42", run.StdOut);
+        Assert.Contains($"hello from {emulated}, 40 + 2 = 42", run.StdOut);
         Assert.Contains("bye from atexit", run.StdOut);
     }
 

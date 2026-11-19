@@ -1,19 +1,25 @@
-# CI - on each build-machine OS: stage that OS's bundled toolchain, pack AsmFoundation.Sdk and
-# its toolchain package, and run the end-to-end tests (tests/AsmSdk.Tests).
+# CI - on each build machine the bundled toolchain exists for (win-x64, win-arm64, linux-x64,
+# linux-arm64, osx-arm64): stage that machine's toolchain, pack AsmFoundation.Sdk and the
+# toolchain package, and run the end-to-end tests (tests/AsmSdk.Tests).
 #
-# One job per OS, independent of the others: a slow runner of one OS (hosted macOS runners can
-# queue for many minutes) does not hold up the results of the other two. Each job:
+# One job per machine, independent of the others: a slow runner (hosted macOS and ARM runners
+# can queue for many minutes) does not hold up the other results. Each job:
 #   1. toolchain/fetch.cs (a .NET 10 file-based app) stages NASM + LLVM tools for its RID.
 #      NASM is built from source on Linux (static) and macOS (native arm64), which is why each
-#      RID needs its own OS. The staged folder is cached by the hash of the pins and the
-#      program, so the 0.9-2 GB LLVM archives are only downloaded when a pin changes.
+#      RID needs its own machine (linux-arm64 an ARM64 one); Windows on Arm gets the x64
+#      nasm.exe, which it runs under emulation. The staged folder is cached by the hash of the
+#      pins and the program, so the 0.7-2 GB LLVM archives are only downloaded when a pin
+#      changes.
 #   2. tests/AsmSdk.Tests (xunit v3, dotnet test) packs the SDK and that toolchain, builds the
-#      samples and the test projects with them, and checks the ELF outputs with the bundled
-#      llvm-readobj, the package layouts, incremental builds and IDE integration; on Ubuntu it
-#      also runs the executables and the .NET sample that P/Invokes the shared libraries
+#      samples and the test projects with them for every RID, and checks the outputs with the
+#      bundled llvm-readobj, the package layouts, incremental builds and IDE integration.
+#      CrossPlatformTests runs what the machine itself can run: its own RID's library loaded
+#      into the test process, its own libc program, the portable .NET consumer, the x64 build
+#      under the ARM machines' x64 emulation, the musl program in an Alpine container where
+#      Docker runs Linux containers. The linux-x64 samples run natively on Ubuntu x64 only
 #      (elsewhere those tests are skipped with the reason: ASMSDK_TEST_RUN=none).
 #   The only prerequisite is the .NET SDK: no Python since 0.2.0.
-#   3. The staged toolchain is kept as an artifact: release.yml packs all three from it.
+#   3. The staged toolchain is kept as an artifact: release.yml packs all five from it.
 #
 # Also called by release.yml, so a release is tested exactly like a push.
 name: CI
@@ -39,13 +45,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Only Linux can run the Linux outputs; the others build and inspect them.
+          # The samples are linux-x64 programs: only Ubuntu x64 runs them; every machine runs
+          # its own RID's builds (CrossPlatformTests).
           - rid: win-x64
             os: windows-2025
+            run: none
+          - rid: win-arm64
+            os: windows-11-arm
             run: none
           - rid: linux-x64
             os: ubuntu-24.04
             run: native
+          - rid: linux-arm64
+            os: ubuntu-24.04-arm
+            run: none
           - rid: osx-arm64
             os: macos-15
             run: none

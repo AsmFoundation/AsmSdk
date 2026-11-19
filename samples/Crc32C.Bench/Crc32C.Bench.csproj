@@ -2,7 +2,7 @@
   <!--
     Crc32C.Bench: BenchmarkDotNet timings of libcrc32c's three paths against the CRC-32C a C#
     developer writes first (BitOperations.Crc32C over 8-byte words), at 64 B, 1 KiB, 64 KiB and
-    1 MiB, with a GB/s column. Run it on Linux x64 in Release, from this folder: "dotnet run -c
+    1 MiB, with a GB/s column. Run it on any of the seven platforms in Release, from this folder: "dotnet run -c
     Release" (the docs' Crc32C example has the full commands; an XML comment cannot hold their
     double dashes). Before timing anything, it checks that every path returns the managed
     checksum; its check option does only that, for CI.

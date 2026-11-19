@@ -1,29 +1,36 @@
 <Project Sdk="AsmFoundation.Sdk">
   <!--
     Crc32C: CRC-32C (Castagnoli) in assembly, shipped the way a .NET team ships a hot routine
-    in native code: a freestanding shared library, bin/<Configuration>/freestanding/linux-x64/libcrc32c.so,
-    with no DT_NEEDED at all, so it loads into any Linux x64 process.
+    in native code: a freestanding shared library for all seven runtime identifiers AsmSdk
+    builds, with no dependency at all (no DT_NEEDED, no DLL imports), so it loads into any
+    process on Windows, Linux (glibc or musl) and macOS, x64 and ARM64:
+      bin/<Configuration>/freestanding/<rid>/crc32c.dll, libcrc32c.so or libcrc32c.dylib
 
     What it shows:
-      - ExportsFile (crc32c.map): five names leave the library, versioned CRC32C_1.0, and every
-        other label stays local;
-      - a LinkerArg item: -z defs fails the link if anything is left undefined;
-      - run-time dispatch with cpuid, constants and a table computed by NASM's preprocessor,
-        and a 3-way SSE4.2 + PCLMULQDQ kernel (crc32c.asm explains each);
-      - packing for .NET: dotnet pack gives Samples.Crc32C.1.0.0.nupkg with the library under
-        runtimes/linux-x64/native/, where .NET finds it; Crc32C.Net wraps it for C#.
+      - one project, two languages: crc32c.asm (NASM) builds the x64 RIDs through the SDK's
+        asmsdk.inc (ARG1..ARG3 are rcx, rdx, r8 on Windows and rdi, rsi, rdx elsewhere), and
+        crc32c.s (GNU syntax, llvm-mc) builds the ARM64 RIDs through asmsdk-gnu.inc;
+      - ExportsFile (crc32c.map): five names leave the library on every OS (versioned
+        CRC32C_1.0 on Linux), and every other label stays local;
+      - a LinkerArg item for one OS: -z defs fails a Linux link if anything is left undefined;
+      - run-time dispatch (cpuid on x64; ID_AA64ISAR0_EL1 on Linux ARM64, kernel32's
+        IsProcessorFeaturePresent on Windows ARM64, every Apple silicon Mac has the
+        instructions), constants and a table computed at assembly time, and a 3-way kernel
+        merged by carry-less multiplication (PCLMULQDQ on x64, PMULL on ARM64);
+      - packing for .NET: dotnet pack gives Samples.Crc32C.1.0.0.nupkg with each RID's library
+        under runtimes/<rid>/native/, where .NET finds it; Crc32C.Net wraps it for C#.
   -->
   <PropertyGroup>
-    <!-- Linux x64 only: the code makes Linux system calls (or links glibc). -->
-    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
     <AssemblyName>crc32c</AssemblyName>
     <ExportsFile>crc32c.map</ExportsFile>
     <PackageId>Samples.Crc32C</PackageId>
     <Version>1.0.0</Version>
     <Authors>AsmFoundation samples</Authors>
-    <Description>Sample: CRC-32C in x86-64 assembly (SSE4.2 + PCLMULQDQ), a freestanding shared library.</Description>
+    <Description>Sample: CRC-32C in assembly (x64: SSE4.2 + PCLMULQDQ; ARM64: CRC32 + PMULL), a freestanding shared library for Windows, Linux and macOS.</Description>
   </PropertyGroup>
   <ItemGroup>
-    <LinkerArg Include="-z defs" />
+    <!-- ld.lld's syntax, so Linux only: lld-link and ld64.lld spell their options differently. -->
+    <LinkerArg Include="-z defs" Condition="$(RuntimeIdentifier.StartsWith('linux'))" />
   </ItemGroup>
 </Project>

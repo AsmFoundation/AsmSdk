@@ -1,13 +1,17 @@
 ; =============================================================================
 ; crc32c.asm - libcrc32c: CRC-32C (Castagnoli) as a freestanding shared library
-; (Crc32C sample).
+; (Crc32C sample), the x64 half: win-x64, linux-x64, linux-musl-x64, osx-x64.
+; crc32c.s is the ARM64 half, with the same exports and the same algorithm.
 ;
-; Exports (crc32c.map, version CRC32C_1.0; System V AMD64 ABI):
+; Exports (crc32c.map: version CRC32C_1.0 on Linux, the listed names elsewhere):
 ;     uint32_t crc32c_append(uint32_t crc, const void *data, size_t length);
 ;     int      crc32c_implementation(void);
 ;     uint32_t crc32c_append_portable(uint32_t crc, const void *data, size_t length);
-;     uint32_t crc32c_append_sse42(uint32_t crc, const void *data, size_t length);
-;     uint32_t crc32c_append_sse42_3way(uint32_t crc, const void *data, size_t length);
+;     uint32_t crc32c_append_hardware(uint32_t crc, const void *data, size_t length);
+;     uint32_t crc32c_append_hardware_3way(uint32_t crc, const void *data, size_t length);
+; Each in the platform's C calling convention: asmsdk.inc's FUNCTION and ARG1..ARG3 name
+; Windows' rcx, rdx, r8 and System V's rdi, rsi, rdx. Inside, the paths share a private
+; convention instead, the same on every OS (see "Private convention" below).
 ;
 ; The convention is zlib's crc32(): pass 0 to start a checksum, and a previous
 ; result to continue it, so crc32c_append(crc32c_append(0, a), b) is the
@@ -17,24 +21,36 @@
 ; the CPU (cpuid) which ones it can run, and every later call jumps straight to
 ; the fastest:
 ;   portable    a 256-entry table, one byte per step. Any x86-64 CPU.
-;   sse42       SSE4.2's crc32 instruction, 8 bytes per step. Each step needs the
+;   hardware    SSE4.2's crc32 instruction, 8 bytes per step. Each step needs the
 ;               previous step's result, and crc32 takes 3 cycles, so the
 ;               instruction idles 2 cycles out of 3: about 8 bytes per 3 cycles.
-;   sse42_3way  splits a block into three lanes and runs three independent
+;   hardware_3way  splits a block into three lanes and runs three independent
 ;               crc32 chains, so the instruction issues every cycle (about 3x
-;               sse42 on large inputs), then merges the three partial checksums
-;               with PCLMULQDQ (carry-less multiplication). SSE4.2 + PCLMULQDQ.
+;               the one chain on large inputs), then merges the three partial
+;               checksums with PCLMULQDQ (carry-less multiplication). SSE4.2 +
+;               PCLMULQDQ.
 ; The path functions are exported so the tests can check each one and the
-; benchmark can time each one. They check nothing: calling an sse42 path on a
-; CPU without the instructions raises SIGILL. Programs call crc32c_append.
+; benchmark can time each one. They check nothing: calling a hardware path on a
+; CPU without the instructions faults (SIGILL, or an illegal-instruction
+; exception on Windows). Programs call crc32c_append.
 ;
-; Nothing here needs libc, so the library is built freestanding (no DT_NEEDED)
-; and loads into any process: a .NET program, a C program, another asm one.
+; Nothing here needs a C library, so the library is built freestanding (no
+; DT_NEEDED, no DLL imports) and loads into any process: a .NET program, a C
+; program, another asm one.
+;
+; Private convention. The kernels below came from a System V-only version and
+; keep their structure: on entry to a path, eax holds the crc to continue, r10
+; the data and r11 the length. Those three are volatile (caller-saved) in both
+; the Microsoft x64 and the System V conventions, as are every other register
+; the paths touch (rcx, rdx, r8, r9, xmm0-xmm2), so no path saves anything on
+; any OS, and the dispatcher can still jump to a path with the arguments in
+; place. Each exported function only moves its OS's argument registers there.
 ; =============================================================================
 
 default rel
 bits 64
 
+%include "asmsdk.inc"
 %define CRC32C_BUILDING                 ; we define the symbols crc32c.inc declares
 %include "crc32c.inc"
 
@@ -89,9 +105,9 @@ bits 64
 ;
 ; @param  %1      lane: bytes per lane, a multiple of 8, at least 16
 ; in/out  eax     the raw CRC register (upper half of rax zero)
-; in/out  rsi     the data; advanced past the blocks processed
-; in/out  rdx     bytes left; reduced by the blocks processed
-; Clobbers rcx, r8, r9, r10, xmm0, xmm1, xmm2.
+; in/out  r10     the data; advanced past the blocks processed
+; in/out  r11     bytes left; reduced by the blocks processed
+; Clobbers rcx, rdx, r8, r9, xmm0, xmm1, xmm2 (all volatile on every OS).
 ; -----------------------------------------------------------------------------
 %macro THREE_WAY 1
     %if (%1 % 8) != 0 || %1 < 16
@@ -111,7 +127,7 @@ bits 64
 %%k:    dq CRC32C_K_TWO_LANES, CRC32C_K_ONE_LANE
 __SECT__
 
-    cmp     rdx, 3 * %1
+    cmp     r11, 3 * %1
     jb      %%done
     movdqa  xmm0, [rel %%k]
 
@@ -121,29 +137,29 @@ __SECT__
     mov     ecx, %1 / 8 - 1         ; all but the last 8 bytes of each lane
 
 %%lanes:
-    crc32   rax, qword [rsi]                ; lane 0
-    crc32   r8, qword [rsi + %1]            ; lane 1
-    crc32   r9, qword [rsi + 2 * %1]        ; lane 2
-    add     rsi, 8
+    crc32   rax, qword [r10]                ; lane 0
+    crc32   r8, qword [r10 + %1]            ; lane 1
+    crc32   r9, qword [r10 + 2 * %1]        ; lane 2
+    add     r10, 8
     dec     ecx
     jnz     %%lanes
 
-    ; rsi = block + lane - 8: the last 8 bytes of lane 0.
-    crc32   rax, qword [rsi]                ; lane 0 complete: c0
-    crc32   r8, qword [rsi + %1]            ; lane 1 complete: c1
+    ; r10 = block + lane - 8: the last 8 bytes of lane 0.
+    crc32   rax, qword [r10]                ; lane 0 complete: c0
+    crc32   r8, qword [r10 + %1]            ; lane 1 complete: c1
     movq    xmm1, rax
     movq    xmm2, r8
     pclmulqdq xmm1, xmm0, 0x00              ; c0 * x^(8 * 2 lane - 33)
     pclmulqdq xmm2, xmm0, 0x10              ; c1 * x^(8 * lane - 33)
     pxor    xmm1, xmm2
-    movq    r10, xmm1
-    xor     r10, qword [rsi + 2 * %1]       ; folded into lane 2's last 8 bytes
-    crc32   r9, r10                         ; lane 2 complete: the block's CRC
+    movq    rdx, xmm1
+    xor     rdx, qword [r10 + 2 * %1]       ; folded into lane 2's last 8 bytes
+    crc32   r9, rdx                         ; lane 2 complete: the block's CRC
     mov     eax, r9d
 
-    add     rsi, 2 * %1 + 8                 ; to the next block
-    sub     rdx, 3 * %1
-    cmp     rdx, 3 * %1
+    add     r10, 2 * %1 + 8                 ; to the next block
+    sub     r11, 3 * %1
+    cmp     r11, 3 * %1
     jae     %%block
 %%done:
 %endmacro
@@ -154,35 +170,41 @@ section .text
 ; crc32c_append - the CRC-32C of data, continued from crc, on the fastest path
 ; this CPU supports.
 ;
-; One indirect jump through `dispatch`. Before the first call, dispatch points
-; at `resolve`, which picks the path, stores it and jumps there; afterwards it
-; points at the path itself, so the choice costs nothing per call.
-; @param  edi  crc: 0 for a new checksum, or a previous result to continue
-; @param  rsi  data (may be anything when rdx is 0)
-; @param  rdx  length in bytes
+; The arguments go to the private convention, then one indirect jump through
+; `dispatch`. Before the first call, dispatch points at `resolve`, which picks
+; the path, stores it and jumps there; afterwards it points at the path itself,
+; so the choice costs nothing per call.
+; @param  ARG1d  crc: 0 for a new checksum, or a previous result to continue
+; @param  ARG2   data (may be anything when the length is 0)
+; @param  ARG3   length in bytes
 ; @returns eax = the checksum
 ; -----------------------------------------------------------------------------
-global crc32c_append:function
-crc32c_append:
+FUNCTION crc32c_append, 3
+    mov     eax, ARG1d
+    mov     r10, ARG2
+    mov     r11, ARG3
     jmp     [rel dispatch]
+ENDFUNCTION
 
 ; -----------------------------------------------------------------------------
 ; resolve - the first call's target: picks the path, then continues as that
-; path with the caller's arguments untouched.
+; path with the private convention's registers in place (select hands the crc
+; back in r9d, since rax carries the path).
 ; Entered by a jump, so the stack holds the caller's return address and the
 ; path returns straight to the caller.
 ; -----------------------------------------------------------------------------
 resolve:
     call    select
-    jmp     rax
+    mov     rcx, rax
+    mov     eax, r9d
+    jmp     rcx
 
 ; -----------------------------------------------------------------------------
 ; crc32c_implementation - which path crc32c_append runs on this CPU.
 ; Picks it first if no call has yet, so the answer never changes afterwards.
-; @returns eax = CRC32C_PORTABLE, CRC32C_SSE42 or CRC32C_SSE42_3WAY
+; @returns eax = CRC32C_PORTABLE, CRC32C_HARDWARE or CRC32C_HARDWARE_3WAY
 ; -----------------------------------------------------------------------------
-global crc32c_implementation:function
-crc32c_implementation:
+FUNCTION crc32c_implementation
     mov     rax, [rel dispatch]
     lea     rcx, [rel resolve]
     cmp     rax, rcx
@@ -190,18 +212,19 @@ crc32c_implementation:
     call    select
 .known:
     mov     edx, CRC32C_PORTABLE
-    lea     rcx, [rel impl_sse42]
+    lea     rcx, [rel impl_hardware]
     cmp     rax, rcx
-    jne     .not_sse42
-    mov     edx, CRC32C_SSE42
-.not_sse42:
-    lea     rcx, [rel impl_sse42_3way]
+    jne     .not_hardware
+    mov     edx, CRC32C_HARDWARE
+.not_hardware:
+    lea     rcx, [rel impl_hardware_3way]
     cmp     rax, rcx
     jne     .done
-    mov     edx, CRC32C_SSE42_3WAY
+    mov     edx, CRC32C_HARDWARE_3WAY
 .done:
     mov     eax, edx
-    ret
+    RETURN
+ENDFUNCTION
 
 ; -----------------------------------------------------------------------------
 ; select - picks the fastest path this CPU supports and stores it in dispatch.
@@ -209,113 +232,127 @@ crc32c_implementation:
 ; Thread safety without a lock: threads that race through here all store the
 ; same value, and an aligned 8-byte store is atomic on x86-64, so every reader
 ; sees either `resolve` (and selects again, harmlessly) or a complete path.
-; The paths are named by local labels (impl_*), not by their exported names: a
-; shared library may not take the address of its own exported symbols
-; PC-relatively, because another library could interpose them.
-; @returns rax = the chosen path's address
-; Preserves rdi, rsi, rdx (crc32c_append's arguments) and rbx (callee-saved),
-; which cpuid would otherwise destroy. Clobbers rcx, r8, r9.
+; The paths are named by local labels (impl_*), the habit of ELF shared
+; libraries, where another library could interpose an exported symbol.
+; @returns rax = the chosen path's address, and r9d = the eax it was called
+;          with (resolve's crc: rax cannot carry both)
+; Preserves r10 and r11 (the private convention) and rbx (callee-saved on every
+; OS); cpuid writes eax, ebx, ecx and edx only. Clobbers rcx, rdx, r8, r9.
 ; -----------------------------------------------------------------------------
 select:
     mov     r8, rbx
-    mov     r9, rdx
+    mov     r9d, eax                        ; the crc, when a path is next
     mov     eax, 1
     cpuid                                   ; ecx = feature flags
     mov     rbx, r8
-    mov     rdx, r9
 
     lea     rax, [rel impl_portable]
     bt      ecx, CPUID_ECX_SSE42
     jnc     .store
-    lea     rax, [rel impl_sse42]
+    lea     rax, [rel impl_hardware]
     bt      ecx, CPUID_ECX_PCLMULQDQ
     jnc     .store
-    lea     rax, [rel impl_sse42_3way]
+    lea     rax, [rel impl_hardware_3way]
 .store:
     mov     [rel dispatch], rax
-    ret
+    ret                                     ; rax = the path, r9d = the crc
 
 ; -----------------------------------------------------------------------------
 ; crc32c_append_portable - the table path: one byte per step, any x86-64.
-; @param  edi  crc to continue (0 for a new checksum)
-; @param  rsi  data
-; @param  rdx  length in bytes
+; @param  ARG1d  crc to continue (0 for a new checksum)
+; @param  ARG2   data
+; @param  ARG3   length in bytes
 ; @returns eax = the checksum
 ; -----------------------------------------------------------------------------
-global crc32c_append_portable:function
-crc32c_append_portable:
+FUNCTION crc32c_append_portable, 3
+    mov     eax, ARG1d
+    mov     r10, ARG2
+    mov     r11, ARG3
+    jmp     impl_portable
+ENDFUNCTION
+
+; impl_portable - the table path in the private convention (eax, r10, r11).
 impl_portable:
-    mov     eax, edi
     not     eax                             ; the register runs inverted
-    test    rdx, rdx
+    test    r11, r11
     jz      .done
     lea     r8, [rel crc32c_table]
 .byte:
-    movzx   ecx, byte [rsi]
+    movzx   ecx, byte [r10]
     xor     cl, al                          ; index = (register ^ byte) & 0xFF
     shr     eax, 8
     xor     eax, [r8 + rcx * 4]
-    inc     rsi
-    dec     rdx
+    inc     r10
+    dec     r11
     jnz     .byte
 .done:
     not     eax
     ret
 
 ; -----------------------------------------------------------------------------
-; crc32c_append_sse42 - the crc32 instruction, 8 bytes per step, one chain.
+; crc32c_append_hardware - the crc32 instruction, 8 bytes per step, one chain.
 ; Needs SSE4.2 (not checked here).
-; @param  edi  crc to continue (0 for a new checksum)
-; @param  rsi  data
-; @param  rdx  length in bytes
+; @param  ARG1d  crc to continue (0 for a new checksum)
+; @param  ARG2   data
+; @param  ARG3   length in bytes
 ; @returns eax = the checksum
 ; -----------------------------------------------------------------------------
-global crc32c_append_sse42:function
-crc32c_append_sse42:
-impl_sse42:
-    mov     eax, edi
+FUNCTION crc32c_append_hardware, 3
+    mov     eax, ARG1d
+    mov     r10, ARG2
+    mov     r11, ARG3
+    jmp     impl_hardware
+ENDFUNCTION
+
+; impl_hardware - the one-chain path in the private convention.
+impl_hardware:
     not     eax
 
-; sse42_rest - the single-chain tail shared with the 3-way path.
-; in: eax = raw register, rsi = data, rdx = length. Returns the checksum.
-sse42_rest:
-    mov     rcx, rdx
+; hardware_rest - the single-chain tail shared with the 3-way path.
+; in: eax = raw register, r10 = data, r11 = length. Returns the checksum.
+hardware_rest:
+    mov     rcx, r11
     shr     rcx, 3                          ; whole quadwords
     jz      .bytes
 .qwords:
-    crc32   rax, qword [rsi]
-    add     rsi, 8
+    crc32   rax, qword [r10]
+    add     r10, 8
     dec     rcx
     jnz     .qwords
 .bytes:
-    and     edx, 7                          ; 0-7 bytes left
+    and     r11d, 7                         ; 0-7 bytes left
     jz      .done
 .byte:
-    crc32   eax, byte [rsi]
-    inc     rsi
-    dec     edx
+    crc32   eax, byte [r10]
+    inc     r10
+    dec     r11d
     jnz     .byte
 .done:
     not     eax
     ret
 
 ; -----------------------------------------------------------------------------
-; crc32c_append_sse42_3way - three crc32 chains per block, merged with
+; crc32c_append_hardware_3way - three crc32 chains per block, merged with
 ; PCLMULQDQ; inputs shorter than one block take the single chain.
 ; Needs SSE4.2 and PCLMULQDQ (not checked here).
-; @param  edi  crc to continue (0 for a new checksum)
-; @param  rsi  data
-; @param  rdx  length in bytes
+; @param  ARG1d  crc to continue (0 for a new checksum)
+; @param  ARG2   data
+; @param  ARG3   length in bytes
 ; @returns eax = the checksum
 ; -----------------------------------------------------------------------------
-global crc32c_append_sse42_3way:function
-crc32c_append_sse42_3way:
-impl_sse42_3way:
-    mov     eax, edi
+FUNCTION crc32c_append_hardware_3way, 3
+    mov     eax, ARG1d
+    mov     r10, ARG2
+    mov     r11, ARG3
+    jmp     impl_hardware_3way
+ENDFUNCTION
+
+; impl_hardware_3way - the 3-way path in the private convention.
+impl_hardware_3way:
     not     eax
     THREE_WAY 512                           ; 1,536-byte blocks
     THREE_WAY 64                            ; then 192-byte blocks
-    jmp     sse42_rest                      ; then 8 bytes, then 1 byte at a time
+    jmp     hardware_rest                   ; then 8 bytes, then 1 byte at a time
 
 section .rodata
 align 64
@@ -340,4 +377,6 @@ align 8
 ; relocation; in .rodata the link would fail (it would need a text relocation).
 dispatch:   dq resolve
 
+%ifdef LINUX
 section .note.GNU-stack noalloc noexec nowrite progbits
+%endif

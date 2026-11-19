@@ -1,15 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
-    Crc32C.Net: the C# face of libcrc32c.so. The ProjectReference builds the .asmproj first and
-    copies libcrc32c.so next to Samples.Crc32C.Net.dll (no assembly reference is added), so the
-    library's tests and benchmark run from their own output folders.
+    Crc32C.Net: the C# face of libcrc32c. The ProjectReference builds the .asmproj for its seven
+    RIDs first; a project that uses this one (the tests, the benchmark) gets every RID's library
+    under runtimes/<rid>/native/ and listed in its deps.json, through AsmSdk's consumer targets
+    (no assembly reference is added). Built with -r, it gets the one library for that RID.
 
     dotnet pack gives Samples.Crc32C.Net.1.0.0.nupkg: the managed assembly under lib/net10.0/,
     and a dependency on Samples.Crc32C 1.0.0, the package of the .asmproj, which carries the
-    native library under runtimes/linux-x64/native/. A .NET program that references
+    native library of each RID under runtimes/<rid>/native/. A .NET program that references
     Samples.Crc32C.Net by version gets both, as samples/consumers/Crc32C.App shows. This is the
     usual split for native code in NuGet (a managed package over a native one).
-    Runs on Linux x64; the native library is an ELF shared object.
+    Runs on Windows, Linux (glibc and musl) and macOS, x64 and ARM64.
   -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
