@@ -1,0 +1,15 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    HexDump: an xxd-style hex dump with no libc at all, hexdump [file]. Builds
+    bin/<Configuration>/freestanding/hexdump, a static executable of a few kilobytes: no
+    interpreter, no DT_NEEDED, nothing to install next to it.
+
+    What it shows: a freestanding program (the default TargetFramework) entered at _start, using
+    only the syscall instruction, and doing what libc would otherwise do for it: buffered
+    output, retrying interrupted system calls, finishing short writes, messages for errno values.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>hexdump</AssemblyName>
+  </PropertyGroup>
+</Project>

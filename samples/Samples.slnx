@@ -1,10 +1,24 @@
 <Solution>
   <!-- .asmproj needs an explicit project type: the generic MSBuild ("Common Project System")
-       type, which Visual Studio and Rider load like any SDK-style project. -->
-  <Project Path="Hello.Library/Hello.Library.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
-  <Project Path="Hello.Static/Hello.Static.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
-  <Project Path="Hello.App/Hello.App.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
-  <Project Path="Hello.Libc/Hello.Libc.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
-  <Project Path="Hello.LibcLibrary/Hello.LibcLibrary.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
-  <Project Path="Hello.Net/Hello.Net.csproj" />
+       type, which Visual Studio and Rider load like any SDK-style project. The projects under
+       consumers/ are not here: they use the samples' packages by version, so those must be
+       packed first. -->
+  <Folder Name="/Hello/">
+    <Project Path="Hello.Library/Hello.Library.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+    <Project Path="Hello.Static/Hello.Static.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+    <Project Path="Hello.App/Hello.App.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+    <Project Path="Hello.Libc/Hello.Libc.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+    <Project Path="Hello.LibcLibrary/Hello.LibcLibrary.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+    <Project Path="Hello.Net/Hello.Net.csproj" />
+  </Folder>
+  <Folder Name="/Crc32C/">
+    <Project Path="Crc32C/Crc32C.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+    <Project Path="Crc32C.Net/Crc32C.Net.csproj" />
+    <Project Path="Crc32C.Tests/Crc32C.Tests.csproj" />
+    <Project Path="Crc32C.Bench/Crc32C.Bench.csproj" />
+  </Folder>
+  <Folder Name="/Tools/">
+    <Project Path="WordCount/WordCount.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+    <Project Path="HexDump/HexDump.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+  </Folder>
 </Solution>

@@ -22,8 +22,11 @@ public sealed class IncrementalBuildTests(SdkUnderTest sdk)
     /// </summary>
     private static readonly Regex ToolRun = new(@"(nasm(\.exe)?"" -f|lld(\.exe)?"" -flavor|llvm-ar(\.exe)?"" rcs)");
 
-    /// <summary>A source NASM assembled, from its command line: samples/&lt;project&gt;/&lt;file&gt;.asm.</summary>
-    private static readonly Regex Assembled = new(@"samples/([A-Za-z.]+/\w+\.asm)""");
+    /// <summary>
+    /// A source NASM assembled, from its command line: samples/&lt;project&gt;/&lt;file&gt;.asm.
+    /// Project names may hold digits (Crc32C), so a stray reassembly of one could not hide.
+    /// </summary>
+    private static readonly Regex Assembled = new(@"samples/([A-Za-z0-9.]+/\w+\.asm)""");
 
     /// <summary>A rebuild without changes runs no tool.</summary>
     [Fact]

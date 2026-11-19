@@ -45,7 +45,7 @@ public sealed class RunTests(SdkUnderTest sdk)
     {
         CommandResult build = PackageTests.BuildConsumer(sdk);
         Assert.True(build.ExitCode == 0, build.Tail());
-        Expect(Repo.Sample("consumer", "bin", "Release", "freestanding", "hello-consumer"), 0, "Hello.Static package");
+        Expect(Repo.Sample("consumers", "Hello.Consumer", "bin", "Release", "freestanding", "hello-consumer"), 0, "Hello.Static package");
     }
 
     /// <summary>The program whose StartupObject is entry_here starts there: it exits 42.</summary>

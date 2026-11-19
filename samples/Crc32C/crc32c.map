@@ -1,0 +1,19 @@
+/*
+ * libcrc32c's exports: the ExportsFile of Crc32C.asmproj (ld's version script).
+ *
+ * Only the names listed under "global" stay in the dynamic symbol table, each
+ * versioned CRC32C_1.0; "local: *" hides every other label of the library, so
+ * its internals (the dispatcher, the table) cannot be called or interposed.
+ * A later release adds names under a new node, for example CRC32C_1.1 that
+ * inherits CRC32C_1.0, and programs linked against 1.0 keep working.
+ */
+CRC32C_1.0 {
+  global:
+    crc32c_append;
+    crc32c_implementation;
+    crc32c_append_portable;
+    crc32c_append_sse42;
+    crc32c_append_sse42_3way;
+  local:
+    *;
+};

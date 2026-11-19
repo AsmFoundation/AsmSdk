@@ -69,21 +69,63 @@ internal static class LinuxRunner
         return Command.Run("wsl", ["-e", "sh", "-c", $"chmod +x '{relative}' && {prefix}'./{relative}' a b"], Repo.Root);
     }
 
+    /// <summary>
+    /// Runs a shell command line on Linux, from the repository root: sh natively, or sh inside
+    /// WSL on Windows. For the tools that need their own arguments, input files or a redirected
+    /// standard input, which <see cref="RunExecutable"/> does not offer.
+    /// </summary>
+    /// <param name="commandLine">
+    /// The command line, for sh. Paths in it must be relative to the repository root and inside
+    /// it, so that they mean the same file natively and through WSL's mapping of the drive.
+    /// </param>
+    /// <returns>The command's exit status and output.</returns>
+    /// <remarks>
+    /// Skips the calling test when no Linux is available (<see cref="ExecutableMode"/> is none).
+    /// Callers prefix "chmod +x" for the executables they start, for the reason given on
+    /// <see cref="RunExecutable"/>.
+    /// </remarks>
+    public static CommandResult RunShell(string commandLine)
+    {
+        if (ExecutableMode == "none")
+        {
+            Assert.Skip("No Linux to run the executables on (ASMSDK_TEST_RUN=none, or neither Linux nor WSL)");
+        }
+
+        return ExecutableMode == "native"
+            ? Command.Run("sh", ["-c", commandLine], Repo.Root)
+            : Command.Run("wsl", ["-e", "sh", "-c", commandLine], Repo.Root);
+    }
+
     /// <summary>Runs the .NET sample's Hello.Net.dll.</summary>
     /// <param name="outputFolder">Its build output folder (holds the .dll and the .so files).</param>
     /// <returns>The program's exit status and output.</returns>
     /// <remarks>Skips the calling test when neither Linux nor Docker is available.</remarks>
-    public static CommandResult RunDotnetSample(string outputFolder)
+    public static CommandResult RunDotnetSample(string outputFolder) => RunDotnetProgram(outputFolder, "Hello.Net.dll");
+
+    /// <summary>
+    /// Runs a framework-dependent .NET program on Linux: with dotnet on a Linux host, or in the
+    /// .NET runtime container elsewhere, with its output folder mounted read-only.
+    /// </summary>
+    /// <param name="outputFolder">The program's build output folder (the .dll, its dependencies and the .so files).</param>
+    /// <param name="assembly">The program's .dll file name in that folder.</param>
+    /// <param name="arguments">The program's arguments.</param>
+    /// <returns>The program's exit status and output.</returns>
+    /// <remarks>
+    /// Skips the calling test when neither Linux nor Docker is available. An xunit v3 test
+    /// project is such a program too: started directly, it runs all its tests and returns
+    /// non-zero when any fails.
+    /// </remarks>
+    public static CommandResult RunDotnetProgram(string outputFolder, string assembly, params string[] arguments)
     {
         if (DotnetMode == "none")
         {
-            Assert.Skip("No Linux or Docker to run Hello.Net on (ASMSDK_TEST_DOTNET_RUN=none)");
+            Assert.Skip($"No Linux or Docker to run {assembly} on (ASMSDK_TEST_DOTNET_RUN=none)");
         }
 
         return DotnetMode == "native"
-            ? Command.Run("dotnet", [Path.Combine(outputFolder, "Hello.Net.dll")])
+            ? Command.Run("dotnet", [Path.Combine(outputFolder, assembly), .. arguments])
             : Command.Run("docker", ["run", "--rm", "-v", $"{outputFolder}:/app:ro", "-w", "/app",
-                "mcr.microsoft.com/dotnet/runtime:10.0", "dotnet", "Hello.Net.dll"]);
+                "mcr.microsoft.com/dotnet/runtime:10.0", "dotnet", assembly, .. arguments]);
     }
 
     /// <summary>Reads a mode variable, or decides "auto".</summary>

@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Crc32C.Net: the C# face of libcrc32c.so. The ProjectReference builds the .asmproj first and
+    copies libcrc32c.so next to Samples.Crc32C.Net.dll (no assembly reference is added), so the
+    library's tests and benchmark run from their own output folders.
+
+    dotnet pack gives Samples.Crc32C.Net.1.0.0.nupkg: the managed assembly under lib/net10.0/,
+    and a dependency on Samples.Crc32C 1.0.0, the package of the .asmproj, which carries the
+    native library under runtimes/linux-x64/native/. A .NET program that references
+    Samples.Crc32C.Net by version gets both, as samples/consumers/Crc32C.App shows. This is the
+    usual split for native code in NuGet (a managed package over a native one).
+    Runs on Linux x64; the native library is an ELF shared object.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsAotCompatible>true</IsAotCompatible>
+    <AssemblyName>Samples.Crc32C.Net</AssemblyName>
+    <RootNamespace>Samples.Hashing</RootNamespace>
+    <PackageId>Samples.Crc32C.Net</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>AsmFoundation samples</Authors>
+    <Description>Sample: CRC-32C for .NET, computed by an x86-64 assembly library (Samples.Crc32C).</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Crc32C/Crc32C.asmproj" />
+  </ItemGroup>
+</Project>

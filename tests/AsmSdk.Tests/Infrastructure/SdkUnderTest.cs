@@ -171,16 +171,21 @@ public sealed class SdkUnderTest : IAsyncLifetime
 
     /// <summary>
     /// Removes what a previous run left: the isolated NuGet cache, the test package folder,
-    /// the sample and test packages in the local feed, and every project's bin/ and obj/.
+    /// the input files of the tool runs, the sample and test packages in the local feed, and
+    /// every project's bin/ and obj/.
     /// </summary>
     private static void Clean()
     {
         DeleteDirectory(Path.Combine(Repo.Artifacts, "test-nuget"));
         DeleteDirectory(Path.Combine(Repo.Artifacts, "test-packages"));
+        DeleteDirectory(Path.Combine(Repo.Artifacts, "test-run"));
         string feed = Path.Combine(Repo.Artifacts, "packages");
         if (Directory.Exists(feed))
         {
-            foreach (string stale in Directory.GetFiles(feed, "Hello.*.nupkg").Concat(Directory.GetFiles(feed, "Test.*.nupkg")))
+            // Only the packages built from samples/ and tests/projects: the SDK and toolchain
+            // packages are repacked by InitializeAsync, under the same names.
+            foreach (string stale in new[] { "Hello.*.nupkg", "Samples.*.nupkg", "Test.*.nupkg" }
+                         .SelectMany(pattern => Directory.GetFiles(feed, pattern)))
             {
                 File.Delete(stale);
             }

@@ -1,0 +1,23 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    WordCount: a command-line tool in assembly on glibc, like wc: wordcount [-lwc] [file ...].
+    Builds bin/<Configuration>/libc/wordcount, a PIE with DT_NEEDED libc.so.6.
+
+    What it shows:
+      - an assembly program that uses libc the ordinary way: open, read, close and printf
+        through the PLT, and stderr (a libc data object) through the GOT;
+      - AsmLibcSymbol: warn and warnx are glibc functions the SDK's libc stub does not list,
+        so the link would fail with "undefined symbol" until they are added here;
+      - two source files that share a record layout through an include file (wordcount.inc);
+      - SSE2 counting, 16 bytes per step (count.asm), and a CPU check before using POPCNT.
+  -->
+  <PropertyGroup>
+    <TargetFramework>libc</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>wordcount</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <AsmLibcSymbol Include="warn" />
+    <AsmLibcSymbol Include="warnx" />
+  </ItemGroup>
+</Project>

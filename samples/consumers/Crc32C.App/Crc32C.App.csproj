@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Crc32C.App: a .NET program that uses the assembly library the way any NuGet user would, by
+    version: one PackageReference to Samples.Crc32C.Net. NuGet brings its dependency
+    Samples.Crc32C along, and with it libcrc32c.so for linux-x64, which the build copies into
+    the output folder (runtimes/linux-x64/native/); nothing in this project mentions assembly.
+
+    Kept out of Samples.slnx, like Hello.Consumer: both packages must be packed into the local
+    feed first (the end-to-end tests in tests/AsmSdk.Tests do it). Runs on Linux x64.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>crc32c-app</AssemblyName>
+    <RootNamespace>Samples.Hashing.App</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Samples.Crc32C.Net" Version="1.0.0" />
+  </ItemGroup>
+</Project>

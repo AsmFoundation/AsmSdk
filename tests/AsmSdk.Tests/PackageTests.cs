@@ -23,13 +23,13 @@ public sealed class PackageTests(SdkUnderTest sdk)
     internal static CommandResult PackHelloStatic(SdkUnderTest sdk) =>
         sdk.Once("pack Hello.Static", () => sdk.Dotnet("pack", "samples/Hello.Static/Hello.Static.asmproj", "-c", "Release"));
 
-    /// <summary>Builds samples/consumer, which references the Hello.Static 1.0.0 package by version, once.</summary>
+    /// <summary>Builds samples/consumers/Hello.Consumer, which references the Hello.Static 1.0.0 package by version, once.</summary>
     /// <param name="sdk">The SDK under test.</param>
     /// <returns>The build's result (after packing Hello.Static, which it needs).</returns>
     internal static CommandResult BuildConsumer(SdkUnderTest sdk)
     {
         PackHelloStatic(sdk);
-        return sdk.Once("build consumer", () => sdk.Dotnet("build", "samples/consumer/Hello.Consumer.asmproj", "-c", "Release"));
+        return sdk.Once("build consumer", () => sdk.Dotnet("build", "samples/consumers/Hello.Consumer/Hello.Consumer.asmproj", "-c", "Release"));
     }
 
     /// <summary>
@@ -75,7 +75,7 @@ public sealed class PackageTests(SdkUnderTest sdk)
         Assert.Equal(expected, SdkUnderTest.PackageEntries(Path.Combine(output, "hello.1.0.0.nupkg")));
     }
 
-    /// <summary>A project consumes a package by version: samples/consumer builds against Hello.Static 1.0.0.</summary>
+    /// <summary>A project consumes a package by version: samples/consumers/Hello.Consumer builds against Hello.Static 1.0.0.</summary>
     [Fact]
     public void A_project_consumes_a_package_by_version()
     {
