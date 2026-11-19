@@ -8,7 +8,9 @@ and [`samples/Crc32C.Bench`](https://github.com/AsmFoundation/AsmSdk/tree/main/s
 ## The tests
 
 The test project references the C# wrapper, which references the `.asmproj`, so building the
-tests builds the assembly too and puts `libcrc32c.so` next to the test assembly.
+tests builds the assembly too, for each of its seven RIDs, under `runtimes/<rid>/native/` next
+to the test assembly. The same test output runs on any of those platforms, with that
+platform's library.
 
 ```xml
 <PropertyGroup>
@@ -87,14 +89,18 @@ correct build passes all 21.
 An xunit v3 project is an executable, so the tests run wherever the built folder can run:
 
 ```sh
-# Linux x64: either one
+# On Windows, Linux or macOS, x64 or ARM64: either one
 dotnet test --project samples/Crc32C.Tests/Crc32C.Tests.csproj
 dotnet samples/Crc32C.Tests/bin/Release/net10.0/Crc32C.Tests.dll
 
-# Windows: build there, then run the output folder in the .NET runtime container
-dotnet build samples/Crc32C.Tests/Crc32C.Tests.csproj -c Release
+# The Linux build from Windows: run the same output folder in the .NET runtime container
 docker run --rm -v <full path of samples/Crc32C.Tests/bin/Release/net10.0>:/app:ro -w /app mcr.microsoft.com/dotnet/runtime:10.0 dotnet Crc32C.Tests.dll
 ```
+
+On ARM64 the tests check the `crc32cx` and PMULL paths. On every CPU they run only the paths
+`Crc32C.IsSupported` says it has; `Crc32C.Append(…, path)` throws
+`PlatformNotSupportedException` for the others, rather than letting an illegal instruction
+end the process.
 
 `dotnet test` needs `"test": { "runner": "Microsoft.Testing.Platform" }` in the `global.json`
 next to the project, as `samples/global.json` has.
@@ -123,7 +129,7 @@ public uint Dispatcher() => Crc32C.HashToUInt32(_data);
   checksum at every size, and `--check` does only that (CI runs it).
 
 ```sh
-# Linux x64: every benchmark
+# every benchmark, on any of the seven platforms
 dotnet run -c Release --project samples/Crc32C.Bench -- --filter '*'
 # only the check
 dotnet run -c Release --project samples/Crc32C.Bench -- --check

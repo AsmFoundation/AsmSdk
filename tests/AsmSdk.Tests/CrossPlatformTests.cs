@@ -81,17 +81,19 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
 
     /// <summary>
     /// One build, seven object formats: PE/COFF x64 and ARM64, ELF x86-64 and AArch64 (glibc and
-    /// musl), Mach-O x86-64 and arm64, each named the way its OS names libraries.
+    /// musl), Mach-O x86-64 and arm64, each named the way its OS names libraries. The build
+    /// says where each went, with .NET's "Project -> path" line per RID.
     /// </summary>
     /// <param name="rid">The runtime identifier.</param>
     [Theory]
     [MemberData(nameof(AllRids))]
     public void Each_rid_gets_its_own_object_format(string rid)
     {
-        BuildEverywhere();
+        CommandResult build = BuildEverywhere();
         string library = Repo.TestProjectPath("Everywhere", "bin", "Release", "freestanding", rid, LibraryFile(rid, "everywhere"));
         Assert.True(File.Exists(library), $"{rid}: no {library}");
         Assert.Contains($"Format: {Format[rid]}", sdk.ReadObj(library, "--file-headers"));
+        Assert.Contains($"Everywhere -> {library}", build.StdOut);
     }
 
     /// <summary>
@@ -376,6 +378,41 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
             Assert.True(build.ExitCode != 0, $"attempt {attempt} built: {build.Tail()}");
             Assert.Contains($"error {code}", build.StdOut);
             Assert.False(File.Exists(image), $"attempt {attempt} left {image}");
+        }
+    }
+
+    /// <summary>
+    /// A referenced OutputType=Objects project links into its referencing project for each of
+    /// its RIDs (0.1.0 and 0.2.0 passed the object paths relative to the wrong folder), and the
+    /// object's HIDDEN_FUNCTION stays unexported while the library's FUNCTION is exported.
+    /// </summary>
+    /// <param name="rid">The runtime identifier (one per OS).</param>
+    [Theory]
+    [InlineData("win-x64")]
+    [InlineData("linux-x64")]
+    [InlineData("osx-x64")]
+    public void An_object_file_project_links_into_its_referencing_project(string rid)
+    {
+        CommandResult build = sdk.BuildTestProject("ObjectsUser");
+        Assert.True(build.ExitCode == 0, build.Tail());
+        string library = Repo.TestProjectPath("ObjectsUser", "bin", "Release", "freestanding", rid, LibraryFile(rid, "objectsuser"));
+        if (rid.StartsWith("win-", StringComparison.Ordinal))
+        {
+            string exports = sdk.ReadObj(library, "--coff-exports");
+            Assert.Contains("Name: user_seven", exports);
+            Assert.DoesNotContain("obj_seven", exports);
+        }
+        else if (rid.StartsWith("osx-", StringComparison.Ordinal))
+        {
+            string symbols = sdk.ReadObj(library, "--symbols");
+            Assert.Matches(new Regex(@"Name: _user_seven \(\d+\)\s+Extern"), symbols);
+            Assert.DoesNotMatch(new Regex(@"Name: _obj_seven \(\d+\)\s+Extern"), symbols);
+        }
+        else
+        {
+            string dynamic = sdk.ReadObj(library, "--dyn-syms");
+            Assert.Contains("user_seven", dynamic);
+            Assert.DoesNotContain("obj_seven", dynamic);
         }
     }
 

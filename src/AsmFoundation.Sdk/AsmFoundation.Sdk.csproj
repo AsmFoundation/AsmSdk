@@ -19,8 +19,8 @@
          NU5100: the tasks assembly sits under tasks/, not lib/, on purpose: MSBuild loads it
          with UsingTask, and no project that uses the SDK may reference it. -->
     <NoWarn>$(NoWarn);NU5128;CS2008;NU5100</NoWarn>
-    <Description>Enterprise-grade project, dependency and build management for x86-64 assembly, on MSBuild and NuGet. The SDK behind .asmproj projects: NASM sources built into Linux shared libraries, static libraries and executables with dotnet build, consumed through PackageReference and ProjectReference, and packed with dotnet pack. Ships with a bundled NASM + LLVM toolchain, so no assembler or linker needs to be installed.</Description>
-    <PackageTags>assembly;nasm;asm;asmproj;msbuild;sdk;native;elf;x86-64;linux</PackageTags>
+    <Description>Enterprise-grade project, dependency and build management for assembly, on MSBuild and NuGet. The SDK behind .asmproj projects: x64 (NASM) and ARM64 (GNU syntax) assembly built into shared libraries, static libraries and programs for Windows, Linux and macOS with dotnet build, consumed through PackageReference and ProjectReference, and packed with dotnet pack. A C# project that references an .asmproj gets the binary of its platform by .NET's runtime identifier rules. Ships with a bundled NASM + LLVM toolchain, so no assembler or linker needs to be installed.</Description>
+    <PackageTags>assembly;nasm;asm;asmproj;msbuild;sdk;native;x86-64;x64;arm64;aarch64;windows;linux;macos;cross-platform</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 

@@ -6,7 +6,7 @@ action each. Building from the IDE runs the same `dotnet build` targets as the c
 
 | What the IDE shows | Item type | Default |
 |---|---|---|
-| `.asm` sources | `AsmSource` | `**/*.asm` (`EnableDefaultAsmItems`) |
+| `.asm` and `.s` sources | `AsmSource` | `**/*.asm;**/*.s` (`EnableDefaultAsmItems`) |
 | `.inc` include files | `AsmInclude` | `**/*.inc` (`EnableDefaultAsmItems`) |
 | every other file: a linker version script, a C header, a README | `None` | `**/*` minus the asm items (`EnableDefaultNoneItems`) |
 
@@ -61,7 +61,8 @@ calling MSBuild at all, Visual Studio and Rider run a *fast up-to-date check*. T
 them its inputs and outputs:
 
 - `UpToDateCheckInput`: the `AsmSource` and `AsmInclude` items and the `ExportsFile`;
-- `UpToDateCheckBuilt`: the output, `$(TargetPath)` (none for `OutputType=Objects`).
+- `UpToDateCheckBuilt`: the output of each RID the project builds (none for
+  `OutputType=Objects`).
 
 So editing a `.asm` file makes the IDE build, and an unchanged project is skipped. Both item
 types carry `Visible="false"`: they name files that are already shown.
@@ -83,15 +84,22 @@ already diagnostics.
 
 ## Running and debugging
 
-The outputs are Linux x86-64 ELF files.
+Each machine runs the outputs of its own platform, plus the x64 ones under emulation on
+Windows on Arm and on Apple silicon (Rosetta 2).
 
-- **On Linux,** run them directly.
-- **On Windows,** run them in WSL: the repository's path under `/mnt/<drive>/`, or `wsl -e`
-  from the repository folder.
-- **A .NET program that P/Invokes an asm library** runs on Linux, in WSL or in a Linux container.
+- **The build of your machine's RID** runs directly: `bin/Debug/libc/win-x64/app.exe`,
+  `bin/Debug/libc/osx-arm64/app`.
+- **Linux builds on Windows** run in WSL (the repository's path under `/mnt/<drive>/`, or
+  `wsl -e` from the repository folder) or in a container.
+- **A .NET program that P/Invokes an asm library** runs on every platform the asm project
+  lists: its output carries each one's library under `runtimes/<rid>/native/`.
 
-Debug builds carry DWARF (`DebugSymbols=true` in Debug), so `gdb` in WSL or on Linux shows
-source lines.
+Debug builds carry debug information (`DebugSymbols=true` in Debug):
+
+- **Linux and macOS:** DWARF, so `gdb` and `lldb` show source lines.
+- **Windows:** CodeView from NASM, which lld-link writes into a PDB beside the output, for
+  Visual Studio's native debugger and WinDbg. Functions from `.s` files have names but no
+  line information there, because llvm-mc writes DWARF only.
 
 ## How this is tested
 

@@ -8,42 +8,154 @@ packages. The format follows
 The toolchain packages carry their own version (`toolchain/versions.json`).
 Each SDK release names the one it was tested with.
 
-## [Unreleased]
+## [0.3.0] — unreleased
 
-The SDK itself is unchanged; the samples, the tests and the documentation grew.
+One `.asmproj` now builds for **seven runtime identifiers** from any build machine: `win-x64`,
+`win-arm64`, `linux-x64`, `linux-arm64`, `linux-musl-x64`, `osx-x64` and `osx-arm64`. x64
+code is NASM (`.asm`), ARM64 code GNU syntax (`.s`) for the bundled `llvm-mc`. A C# project
+that references an `.asmproj` gets the binary of the platform it is built or run for, chosen
+by .NET's own runtime identifier rules. Toolchain 0.2.0 comes with it: `llvm-mc`, and build
+machines for Windows on Arm and Linux ARM64. CI runs on all five build machines, each running
+its own platform's outputs.
+
+Migration from 0.2.0, without a compatibility layer:
+
+| 0.2.0 | 0.3.0 |
+|---|---|
+| no RID: Linux x64 implied | `<RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>`, or more. **Required:** a project that lists none is built for what its referencing projects ask for, or for `-r`, or stops with `ASM0010`, which names all three ways |
+| outputs in `bin/<Configuration>/<tfm>/` | outputs in `bin/<Configuration>/<tfm>/<rid>/`, as for `dotnet build -r` |
+| `AsmTargetRid`, `AsmFormat` (fixed at `linux-x64`, `elf64`) | removed: `RuntimeIdentifier` decides the format and the linker |
+| packages with `native/linux-x64/<tfm>/` and `runtimes/linux-x64/native/` | `native/<rid>/<tfm>/` and `runtimes/<rid>/native/` for every RID the project builds |
+| `global f:function`, `call f wrt ..plt`, `section .note.GNU-stack` in every source | the same in Linux-only files. A source for several OSes uses `asmsdk.inc` (`FUNCTION f`, `call f PLT`) and wraps the note in `%ifdef LINUX`: macho64 stops on all three |
+| `call helper wrt ..plt` (or a `hidden` helper) for a call within one `.so` | a plain `call helper` links: Linux shared libraries are linked `-Bsymbolic`. The PLT is for other libraries |
 
 ### Added
 
+- **Runtime identifiers, as in .NET.** `RuntimeIdentifiers` lists the platforms; each is an
+  inner build with the global `RuntimeIdentifier`, and a build without one (the RID outer
+  build) builds each, the way a multi-targeted project builds each framework. Each inner
+  build prints `<Project> -> <output>`. Errors `ASM0010` (no RID), `ASM0011` (a RID outside
+  the seven), `ASM0012` (a RID the project does not list). In a solution build, a project
+  that lists no RID builds nothing by itself, with a message.
+- **Sources per RID, by file name.** The extension is the language: `.asm` (NASM) builds the
+  x64 RIDs, `.s` (GNU syntax, llvm-mc) the ARM64 ones. A qualifier before the extension
+  narrows a file: a RID (`x.win-x64.asm`), an OS family (`win`, `linux`, `linux-musl`,
+  `osx`), `unix`, or a CPU (`x64`, `arm64`). For each RID, the most specific file of a name
+  wins. Errors `ASM0020` (a tie), `ASM0021` (a NASM file for ARM64 only), `ASM0023` (a RID
+  no source builds), `ASM0024` (a source listed twice). `AsmLlvmMcFlags` and
+  `AsmLlvmMcCommand` for llvm-mc.
+- **The platform layer, on every include path:**
+  - `asmsdk.inc` (NASM): `FUNCTION`, `LOCAL_FUNCTION` and `HIDDEN_FUNCTION` (exported,
+    file-local, global but exported from no image), `RETURN`, `ENDFUNCTION`, with exports per
+    object format and the callee-saved registers each OS expects; `ARG1`..`ARG6` (and their
+    32-, 16- and 8-bit forms), `SHADOW_SPACE`, `PLT`.
+  - `asmsdk-gnu.inc` (llvm-mc): `FUNCTION`, `LOCAL_FUNCTION`, `HIDDEN_FUNCTION`, `ENDFUNCTION`,
+    `CALL`, `TAILCALL`, `ADDRESS`, `RODATA`.
+  - Defines `WINDOWS`, `LINUX`, `MACOS`, `MUSL`, `X64`, `ARM64`; `ASMSDK_EXPORTS_FILE` with
+    an `ExportsFile`, and `ASMSDK_EXECUTABLE` in a program.
+- **`TargetFramework=libc` on every RID,** with no sysroot or platform SDK: the SDK writes the
+  stand-ins from symbol lists in `stubs/` (`AsmWriteCLibraryStub`).
+  - Linux: a stub `libc.so.6` (glibc) or `libc.musl-x86_64.so.1` (musl, with musl's loader),
+    and `libasmsdk_nonshared.a` with `atexit`, which glibc keeps out of `libc.so.6`. `crt1`
+    for x64 and ARM64.
+  - macOS: `libSystem.tbd`; dyld calls `main` (`LC_MAIN`). `AsmMacOSMinimumVersion`
+    (default 11.0).
+  - Windows: `ucrtbase.lib` (the Universal C Runtime) with `mainCRTStartup`, and
+    `asmsdk_winstdio.lib`: `printf`, `fprintf`, `sprintf`, `snprintf`, their `v` forms,
+    `sscanf` and `atexit`, which the UCRT headers define inline and `ucrtbase.dll` does not
+    export.
+  - kernel32 is linked into every Windows output, the stable way to the OS (Windows system
+    call numbers change between releases).
+  - `AsmLibcSymbol` adds names on every OS. A macOS freestanding program is `ASM0015`: Apple
+    supports no static executables.
+- **One `ExportsFile` for every OS:** a version script on Linux, `-export:` names on Windows
+  (and `FUNCTION` then writes no directive), `-exported_symbol` on macOS. `ASM0030` for what
+  only ELF can express.
+- **.NET consumers get the right binary.** Every `.asmproj` carries an implicit
+  `PackageReference` to `AsmFoundation.Sdk`, whose `buildTransitive` targets reach the .NET
+  projects that reference it:
+  - a portable build gets every RID's library under `runtimes/<rid>/native/`, listed in
+    `deps.json` (`ASM0042`), so the .NET host loads the right one;
+  - a RID-specific build gets the RID that serves it best by the .NET SDK's RID graph, copied
+    flat (`ASM0040`, `ASM0041`);
+  - `<ProjectReference … RuntimeIdentifiers="a;b" />` narrows the RIDs built;
+  - static libraries, programs and objects are skipped, and the app's publish properties
+    (`SelfContained`, `PublishAot`, …) are not passed on;
+  - `DisableAsmConsumerTargets` turns it off.
+- **Packages for every RID:** `runtimes/<rid>/native/` and `native/<rid>/<tfm>/` (static
+  libraries, and the import libraries of Windows DLLs). The generated props give an asm
+  consumer its RID's build by the RID graph, or `ASM0060`. The implicit SDK dependency is
+  removed from the `.nuspec` (`ASM0050`).
+- **Image checks** (`AsmCheckImage`), after each Windows and macOS link, for load-time fixups
+  the loader cannot apply but the linker accepts: `ASM0080` for a 32-bit absolute address in a
+  64-bit Windows image (lld-link links a DLL based at 0x180000000 with one, silently; MSVC's
+  linker refuses it), `ASM0081` for a fixup in a read-only Mach-O segment (a text relocation,
+  from the rebase or bind opcodes or the chained fixups), `ASM0082` for an unreadable image.
+  A failed check deletes the image, so the next build checks again.
+- **Toolchain 0.2.0:** `llvm-mc`; packages for `win-arm64` (native LLVM, NASM's x64 build
+  under emulation) and `linux-arm64` (NASM built from source). Intel Macs and musl hosts have
+  no package (LLVM publishes no binaries for them): `ASM0006` names `AsmToolchain=System`.
+  `ASM0004` for a `.s` source with a toolchain without `llvm-mc`, `ASM0005` for a Windows or
+  macOS RID with the System toolchain's GNU `ld`.
 - **Realistic samples,** each a complete program:
-  - `samples/Crc32C`: CRC-32C as a freestanding shared library. `ExportsFile` keeps five
-    names, versioned `CRC32C_1.0`, and `-z defs` proves nothing is undefined. The first call
-    picks one of three paths with `cpuid`: a table, the SSE4.2 `crc32` instruction, or a
-    3-way kernel that runs three `crc32` chains and merges them with PCLMULQDQ. NASM's
-    preprocessor computes the table and the merge constants (x^(8n−33) mod P).
+  - `samples/Crc32C`: CRC-32C as a freestanding shared library for all seven RIDs: x64 in
+    NASM through `asmsdk.inc`, ARM64 in GNU syntax. `ExportsFile` keeps five names (versioned
+    `CRC32C_1.0` on Linux). The first call picks one of three paths: a table, the hardware
+    CRC instruction (SSE4.2 `crc32`, ARM64 `crc32cx`), or a 3-way kernel merged with
+    PCLMULQDQ or PMULL. The assemblers compute the table and the merge constants
+    (x^(8n−33) mod P). ARM64 detection per OS: the ID registers on Linux,
+    `IsProcessorFeaturePresent` on Windows, always the 3-way path on Apple silicon.
   - `samples/Crc32C.Net`: its C# API (`[LibraryImport]`, `SuppressGCTransition` for inputs
     up to 4 KiB, `DisableRuntimeMarshalling`), packed as `Samples.Crc32C.Net`, which
     depends on the asm package `Samples.Crc32C`.
   - `samples/Crc32C.Tests` (xunit v3, 21 tests: every path against a bit-at-a-time C#
     reference) and `samples/Crc32C.Bench` (BenchmarkDotNet, against
-    `BitOperations.Crc32C`).
+    `BitOperations.Crc32C`), both on every platform.
   - `samples/consumers/Crc32C.App`: a .NET program that uses the library through the two
     packages, by version.
   - `samples/WordCount`: `wc` on glibc, with libc calls through the PLT, `stderr` through the
     GOT, `warn`/`warnx` added with `AsmLibcSymbol`, and SSE2 counting.
   - `samples/HexDump`: `xxd` without libc, in system calls alone; its output is
     byte-identical to `xxd`'s, from a static executable of about 4 KB.
-- **`ExampleTests`** (14 tests) check every fact the new documentation states about these
-  samples; AsmSdk.Tests now has 62 tests.
-- **Documentation:** an Examples section that walks through the samples, linked from the
-  guides; and, for AI tools, `llms.txt`, `llms-full.txt` and a Markdown copy of every page
-  (`page.html.md`), written after each site build by `docs/llms.cs` from the same tables of
-  contents as the navigation.
+- **Tests:** `CrossPlatformTests` (formats, exports, qualifiers, the C library of each OS,
+  programs' exports, the .NET consumer per RID, packages, the RID errors, the image checks,
+  each machine's own build run natively, the x64 build under emulation on ARM64 machines),
+  and `ExampleTests` for every fact the documentation states about the samples. AsmSdk.Tests
+  has 119 tests.
+- **Documentation:** a Platforms and runtime identifiers guide; every guide, the reference and
+  the toolchain pages for the seven RIDs; an Examples section that walks through the samples;
+  and, for AI tools, `llms.txt`, `llms-full.txt` and a Markdown copy of every page
+  (`page.html.md`), written after each site build by `docs/llms.cs`.
 
 ### Changed
 
+- **Linux shared libraries link `-Bsymbolic`:** a library's references to its own global
+  symbols bind to the library, as on Windows and macOS. `<LinkerArg Include="-Bno-symbolic" />`
+  restores ELF's interposition.
+- **Programs export nothing** without an `ExportsFile`: `FUNCTION main` made `main` an export,
+  and a Windows `.exe` then got a stray import library. A Windows program links `-noimplib`
+  unless its `ExportsFile` exports something.
+- **The default sources** are `**/*.asm` and `**/*.s`.
+- **`AsmToolchainVersion`** defaults to 0.2.0.
+- The Crc32C sample's paths are named for every CPU: `crc32c_append_hardware` and
+  `crc32c_append_hardware_3way`, and `Crc32CPath.Hardware` and `HardwareThreeWay` in C#.
 - `samples/consumer` moved to `samples/consumers/Hello.Consumer`, next to `Crc32C.App`.
 - `samples/global.json` selects Microsoft.Testing.Platform for `dotnet test`, which the
   samples' xunit v3 project needs.
+
+### Fixed
+
+- **A glibc program that called `atexit` linked but did not start:** glibc keeps `atexit` in
+  `libc_nonshared.a`, not `libc.so.6`. The SDK now links its own.
+- **A `ProjectReference` to an `OutputType=Objects` project** failed to link (`cannot open
+  <referencing project>/obj/…/x.o`): the object paths were relative to the wrong folder.
+- **A failed assembler run** could leave an empty object that later builds took as up to date.
+  The object is now deleted, and the build reports `ASM0007` with the source's name.
+
+### Removed
+
+- `AsmTargetRid` and `AsmFormat`: the RID decides the platform and the object format.
+- `stubs/libc.asm`: the C library stand-ins are written from the symbol lists.
 
 ## [0.2.0] — 2026-11-18
 

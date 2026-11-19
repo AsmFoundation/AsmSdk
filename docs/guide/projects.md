@@ -17,10 +17,27 @@ This page covers what is specific to assembly. Every setting is in the
 Hello/
   Hello.asmproj        <Project Sdk="AsmFoundation.Sdk"> ... </Project>
   include/hello.inc    public include files: referencing projects and package consumers get them
-  hello.asm            every *.asm is a source (one NASM run each)
-  util/strings.asm     subfolders too; each object keeps the subfolder: obj/Debug/freestanding/asm/obj/util/strings.o
-  bin/Debug/freestanding/libhello.so
+  hello.asm            every *.asm is an x64 source (one NASM run per RID)
+  hello.s              every *.s is a GNU-syntax source, the ARM64 code (one llvm-mc run per RID)
+  util/strings.asm     subfolders too; each object keeps the subfolder: obj/Debug/freestanding/linux-x64/asm/obj/util/strings.o
+  bin/Debug/freestanding/linux-x64/libhello.so
+  bin/Debug/freestanding/win-x64/hello.dll
 ```
+
+## Runtime identifiers
+
+A project lists the platforms its code supports with .NET's property, and `dotnet build`
+builds each one, into its own `bin/<Configuration>/<tfm>/<rid>/` folder:
+
+```xml
+<RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;osx-arm64</RuntimeIdentifiers>
+```
+
+A project that lists none is built for the RIDs its referencing projects ask for, or for
+`-r <rid>`; otherwise it fails with ASM0010. Which source builds which RID is decided by the
+file name: `.asm` is NASM for the x64 RIDs, `.s` is GNU syntax for the ARM64 ones, and a
+qualifier (`hello.linux.asm`, `hello.win-arm64.s`) narrows a file further.
+[Platforms and runtime identifiers](platforms.md) covers all of it.
 
 ## Target frameworks
 
@@ -29,16 +46,18 @@ The target framework says what the code links against, the way `net10.0` says wh
 
 | `TargetFramework` | The code | Runs on |
 |---|---|---|
-| `freestanding` (the default) | makes its own system calls; links no C library | any x86-64 Linux kernel |
-| `libc` | links glibc; an executable starts at `main` | glibc 2.34 or later |
+| `freestanding` (the default) | links no C library: Linux system calls, kernel32 on Windows | any Linux kernel of its CPU; any Windows. macOS has no freestanding programs, only libraries |
+| `libc` | links the platform's C library: glibc or musl, the Universal C Runtime, libSystem; a program starts at `main` | glibc 2.34 or later, musl, Windows 10 or later, macOS 11 or later |
 
 - **Build both** with `<TargetFrameworks>freestanding;libc</TargetFrameworks>`, exactly like
-  a multi-targeted `.csproj`. Each build has its own `bin/<Configuration>/<tfm>/` folder.
-- **One source for both:** NASM gets `-DFREESTANDING` or `-DLIBC`:
+  a multi-targeted `.csproj`. Each build has its own `bin/<Configuration>/<tfm>/<rid>/`
+  folders.
+- **One source for both:** NASM gets `-DFREESTANDING` or `-DLIBC` (llvm-mc
+  `--defsym LIBC=1`). In a Linux source:
 
   ```nasm
   %ifdef LIBC
-      call    puts wrt ..plt          ; glibc
+      call    puts PLT                ; the C library
   %else
       mov     eax, 1                  ; write(2)
       syscall
@@ -53,44 +72,48 @@ The target framework says what the code links against, the way `net10.0` says wh
 
 ## Output kinds and names
 
-| `OutputType` | Output in `bin/<Configuration>/<tfm>/` |
-|---|---|
-| `Library` (default) | `lib<name>.so` |
-| `StaticLibrary` | `lib<name>.a` |
-| `Exe` | `<name>`, with no extension |
-| `Objects` | nothing; the objects stay in `obj/` |
+| `OutputType` | Windows | Linux | macOS |
+|---|---|---|---|
+| `Library` (default) | `<name>.dll` and its import library `<name>.dll.lib` | `lib<name>.so` | `lib<name>.dylib` |
+| `StaticLibrary` | `<name>.lib` | `lib<name>.a` | `lib<name>.a` |
+| `Exe` | `<name>.exe` | `<name>`, with no extension | `<name>` (`libc` only) |
+| `Objects` | nothing; the objects stay in `obj/` | the same | the same |
+
+All of them go to `bin/<Configuration>/<tfm>/<rid>/`. A Windows output built with debug
+symbols also gets `<name>.pdb`.
 
 - **`<name>` is `AssemblyName`,** which defaults to the project name, as in a `.csproj`.
-  Libraries get Linux's `lib` prefix, which `-l<name>` and .NET's `[DllImport("<name>")]`
-  both look for.
-- **`AsmProduceStaticLibrary=true`** also writes `lib<name>.a` next to a `.so`. That suits a
-  library that ships both: programs that load it (P/Invoke, `dlopen`) take the `.so`, and
-  assembly projects that link statically take the `.a`.
-- **The target framework folder** is appended to `bin/` and `obj/`, as in .NET:
-  `bin/Debug/freestanding/`, `bin/Release/libc/`.
+  Libraries get the `lib` prefix on Linux and macOS, which `-l<name>` and .NET's
+  `[DllImport("<name>")]` both look for. On Windows, `[DllImport("<name>")]` looks for
+  `<name>.dll`.
+- **`AsmProduceStaticLibrary=true`** also writes the static library next to the shared one.
+  That suits a library that ships both: programs that load it (P/Invoke, `dlopen`) take the
+  shared library, and assembly projects that link statically take the static one.
+- **The target framework and RID folders** are appended to `bin/` and `obj/`, as in .NET:
+  `bin/Debug/freestanding/linux-x64/`, `bin/Release/libc/win-arm64/`.
 - **The SDK sets `OutputType` back to `Library`** after reading it, so that the .NET SDK never
   builds an apphost. Its internal `_AsmOutputKind` (`SharedLibrary`, `StaticLibrary`,
   `Executable`, `Objects`) keeps the kind; a target of your own can read it, but it is not a
   stable API.
 
-> [!WARNING]
-> **Known issue:** a `ProjectReference` to an `Objects` project fails to link with
-> `cannot open <referencing project>/obj/Debug/<tfm>/asm/obj/x.o`. The object paths are passed
-> relative to the wrong project. Use `StaticLibrary` instead: the linker takes only the
-> archive members it needs.
+A `ProjectReference` to an `Objects` project links its object files into the referencing
+project, for each of the referencing project's RIDs. (0.1.0 and 0.2.0 passed their paths
+relative to the wrong project, and the link failed.) A `StaticLibrary` does the same job, and
+the linker takes only the archive members it needs.
 
 ## Sources and include files
 
-- **Default items:** every `**/*.asm` is an `AsmSource`, and every `**/*.inc` is an
-  `AsmInclude`. `bin/` and `obj/` are excluded. Set `EnableDefaultAsmItems=false` to list
-  them yourself.
+- **Default items:** every `**/*.asm` and `**/*.s` is an `AsmSource`, and every `**/*.inc`
+  is an `AsmInclude`. `bin/` and `obj/` are excluded. Set `EnableDefaultAsmItems=false` to
+  list them yourself. Listing a default source again is ASM0024.
 - **Name include files `.inc`.** An `.asm` file that another file `%include`s is still a
   source, so its symbols are linked twice: `duplicate symbol`. Rename it, or remove it from
   the sources with `<AsmSource Remove="helpers.asm" />`.
 - **Where `%include "x.inc"` looks:**
   1. NASM tries the working directory first, which is the project folder.
   2. Then it tries the `-I` folders in order: the project's `include/`, the project folder,
-     then the include folders of referenced projects and packages.
+     then the include folders of referenced projects and packages, then the SDK's own
+     (`asmsdk.inc`, `asmsdk-gnu.inc`). `llvm-mc` gets the same folders.
 
   NASM does **not** look in the folder of the file that holds the `%include`. In a source
   at `src/x86/a.asm`, `%include "b.inc"` finds neither `src/x86/b.inc` nor anything else
@@ -118,10 +141,15 @@ The target framework says what the code links against, the way `net10.0` says wh
 | | Debug | Release |
 |---|---|---|
 | defined | `DEBUG`, and `FREESTANDING` or `LIBC` | `RELEASE`, and `FREESTANDING` or `LIBC` |
-| DWARF debug information (`-g -F dwarf`) | yes | no |
+| debug information (DWARF; CodeView and a PDB on Windows) | yes | no |
+
+Every build also defines its platform: `WINDOWS`, `LINUX` or `MACOS` (plus `MUSL` on
+`linux-musl-x64`), and `X64` or `ARM64`. `ASMSDK_EXPORTS_FILE` marks a project with an
+`ExportsFile`, and `ASMSDK_EXECUTABLE` a program.
 
 - **Add symbols with `DefineConstants`,** as in C#: semicolon-separated `NAME` or
-  `NAME=VALUE`, each passed to NASM as `-D`:
+  `NAME=VALUE`, each passed to NASM as `-D`, and to llvm-mc as `--defsym NAME=1` (numeric
+  values only):
 
   ```xml
   <DefineConstants>$(DefineConstants);FAST_PATH;LEVEL=3</DefineConstants>
@@ -130,8 +158,9 @@ The target framework says what the code links against, the way `net10.0` says wh
 - **The configuration and target framework symbols are never lost.** Like C#, the SDK
   appends them after reading your project, so `<DefineConstants>FAST_PATH</DefineConstants>`
   keeps `DEBUG` too. `DisableImplicitConfigurationDefines=true` drops `DEBUG`/`RELEASE`, and
-  `DisableImplicitFrameworkDefines=true` drops `FREESTANDING`/`LIBC`.
-- **Debug information follows `DebugSymbols`:** `<DebugSymbols>true</DebugSymbols>` adds DWARF
+  `DisableImplicitFrameworkDefines=true` drops `FREESTANDING`/`LIBC` and the platform
+  symbols.
+- **Debug information follows `DebugSymbols`:** `<DebugSymbols>true</DebugSymbols>` adds it
   to Release builds, and `<DebugType>none</DebugType>` removes it from Debug builds. Unlike
   .NET, whose Release builds still write a PDB, a Release build carries no debug information
   unless you ask.
@@ -146,6 +175,7 @@ triggers (`reloc-rel-dword` and `reloc-abs-qword`).
 - **`TreatWarningsAsErrors=true`** adds `-w+error`.
 - **`<AsmFlags>-w-label-orphan</AsmFlags>`** silences one warning. The name of each warning
   is printed in brackets after it.
+- **`AsmLlvmMcFlags`** passes extra arguments to llvm-mc, as `AsmFlags` does to NASM.
 
 > [!TIP]
 > By default, NASM's messages are printed as plain text above an `MSB3073: The command …
@@ -170,11 +200,11 @@ file can hold settings for both the C# and the assembly projects of a solution:
 ```xml
 <Project>
   <PropertyGroup Condition="'$(UsingAsmFoundationSdk)' == 'true'">
-    <TargetFramework>libc</TargetFramework>                <!-- every asm project links glibc -->
+    <TargetFramework>libc</TargetFramework>                <!-- every asm project links its C library -->
     <AsmFlags>-Xvc</AsmFlags>                              <!-- NASM messages become MSBuild errors -->
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
-  <ItemGroup Condition="'$(UsingAsmFoundationSdk)' == 'true'">
+  <ItemGroup Condition="'$(UsingAsmFoundationSdk)' == 'true' and $(RuntimeIdentifier.StartsWith('linux-'))">
     <LinkerArg Include="-z defs" />                        <!-- undefined symbols fail the link -->
   </ItemGroup>
 </Project>

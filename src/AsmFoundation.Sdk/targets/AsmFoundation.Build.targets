@@ -971,6 +971,14 @@
   <Target Name="CreateManifestResourceNames" />
 
   <!-- Outputs are written straight to the output folder by AsmLink; there is no managed
-       assembly in obj/ to copy. -->
-  <Target Name="CopyFilesToOutputDirectory" />
+       assembly in obj/ to copy. What the .NET SDK's version also does is kept: the
+       "Project -> path" line at normal verbosity, here once per RID (each inner build runs
+       this target; the RID outer build's Build does not), so a build of seven RIDs says where
+       each platform's output went. Objects projects write no output, and an IDE's design-time
+       build links nothing, so neither prints one. -->
+  <Target Name="CopyFilesToOutputDirectory">
+    <Message Importance="high"
+             Condition="'$(_AsmRid)' != '' and '$(_AsmOutputKind)' != 'Objects' and '$(DesignTimeBuild)' != 'true' and '$(SkipCompilerExecution)' != 'true'"
+             Text="$(MSBuildProjectName) -> $(TargetPath)" />
+  </Target>
 </Project>
