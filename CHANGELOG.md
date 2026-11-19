@@ -8,6 +8,43 @@ packages. The format follows
 The toolchain packages carry their own version (`toolchain/versions.json`).
 Each SDK release names the one it was tested with.
 
+## [Unreleased]
+
+The SDK itself is unchanged; the samples, the tests and the documentation grew.
+
+### Added
+
+- **Realistic samples,** each a complete program:
+  - `samples/Crc32C`: CRC-32C as a freestanding shared library. `ExportsFile` keeps five
+    names, versioned `CRC32C_1.0`, and `-z defs` proves nothing is undefined. The first call
+    picks one of three paths with `cpuid`: a table, the SSE4.2 `crc32` instruction, or a
+    3-way kernel that runs three `crc32` chains and merges them with PCLMULQDQ. NASM's
+    preprocessor computes the table and the merge constants (x^(8n−33) mod P).
+  - `samples/Crc32C.Net`: its C# API (`[LibraryImport]`, `SuppressGCTransition` for inputs
+    up to 4 KiB, `DisableRuntimeMarshalling`), packed as `Samples.Crc32C.Net`, which
+    depends on the asm package `Samples.Crc32C`.
+  - `samples/Crc32C.Tests` (xunit v3, 21 tests: every path against a bit-at-a-time C#
+    reference) and `samples/Crc32C.Bench` (BenchmarkDotNet, against
+    `BitOperations.Crc32C`).
+  - `samples/consumers/Crc32C.App`: a .NET program that uses the library through the two
+    packages, by version.
+  - `samples/WordCount`: `wc` on glibc, with libc calls through the PLT, `stderr` through the
+    GOT, `warn`/`warnx` added with `AsmLibcSymbol`, and SSE2 counting.
+  - `samples/HexDump`: `xxd` without libc, in system calls alone; its output is
+    byte-identical to `xxd`'s, from a static executable of about 4 KB.
+- **`ExampleTests`** (14 tests) check every fact the new documentation states about these
+  samples; AsmSdk.Tests now has 62 tests.
+- **Documentation:** an Examples section that walks through the samples, linked from the
+  guides; and, for AI tools, `llms.txt`, `llms-full.txt` and a Markdown copy of every page
+  (`page.html.md`), written after each site build by `docs/llms.cs` from the same tables of
+  contents as the navigation.
+
+### Changed
+
+- `samples/consumer` moved to `samples/consumers/Hello.Consumer`, next to `Crc32C.App`.
+- `samples/global.json` selects Microsoft.Testing.Platform for `dotnet test`, which the
+  samples' xunit v3 project needs.
+
 ## [0.2.0] — 2026-11-18
 
 An `.asmproj` now uses the .NET property of the same purpose wherever one exists, and 0.1.0's

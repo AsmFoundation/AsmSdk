@@ -4,6 +4,8 @@ The [`samples/`](https://github.com/AsmFoundation/AsmSdk/tree/main/samples) fold
 AsmSdk repository covers every kind of project. CI builds and checks all of them on Windows,
 Linux and macOS.
 
+**The small `Hello.*` samples** show one kind of project each, in a few lines:
+
 | Sample | Shows |
 |---|---|
 | [`Hello.Library`](https://github.com/AsmFoundation/AsmSdk/tree/main/samples/Hello.Library) | a shared library (`libhello.so`) with a public `include/` file, built for both target frameworks (`TargetFrameworks=freestanding;libc`): one source, `%ifdef LIBC` |
@@ -11,17 +13,28 @@ Linux and macOS.
 | [`Hello.App`](https://github.com/AsmFoundation/AsmSdk/tree/main/samples/Hello.App) | a freestanding executable that links `Hello.Static` through a `ProjectReference` |
 | [`Hello.Libc`](https://github.com/AsmFoundation/AsmSdk/tree/main/samples/Hello.Libc) | a `main()` program on glibc that calls `printf` |
 | [`Hello.LibcLibrary`](https://github.com/AsmFoundation/AsmSdk/tree/main/samples/Hello.LibcLibrary) | a shared library that calls `strlen` through its PLT |
-| [`consumer/Hello.Consumer`](https://github.com/AsmFoundation/AsmSdk/tree/main/samples/consumer) | an executable that consumes the `Hello.Static` package by version |
+| [`consumers/Hello.Consumer`](https://github.com/AsmFoundation/AsmSdk/tree/main/samples/consumers/Hello.Consumer) | an executable that consumes the `Hello.Static` package by version |
 | [`Hello.Net`](https://github.com/AsmFoundation/AsmSdk/tree/main/samples/Hello.Net) | a C# program that P/Invokes both shared libraries, and checks that it was given the `libc` build of `Hello.Library` |
 
-`Samples.slnx` holds them all. `consumer/` sits outside the solution, because its package
-must be packed first.
+**The realistic samples** are complete programs, each walked through in the
+[Examples](../examples/index.md):
+
+| Sample | Shows |
+|---|---|
+| [`Crc32C`](../examples/crc32c.md) | CRC-32C as a freestanding shared library: `ExportsFile`, `-z defs`, run-time CPU dispatch, constants computed by NASM, a 3-way SSE4.2 + PCLMULQDQ kernel |
+| [`Crc32C.Net`](../examples/crc32c.md#calling-it-from-c), [`Crc32C.Tests`](../examples/testing-and-benchmarks.md), [`Crc32C.Bench`](../examples/testing-and-benchmarks.md) | its C# API (`[LibraryImport]`, `SuppressGCTransition`), its xunit tests, its BenchmarkDotNet benchmark |
+| [`consumers/Crc32C.App`](../examples/nuget-for-dotnet.md) | a .NET program that uses the library through two NuGet packages, by version |
+| [`WordCount`](../examples/wordcount.md) | `wc` on glibc: PLT calls, a libc data object through the GOT, `AsmLibcSymbol`, SSE2 counting |
+| [`HexDump`](../examples/hexdump.md) | `xxd` with no libc: `_start`, raw system calls, a static executable of about 4 KB |
+
+`Samples.slnx` holds them all except the two under `consumers/`, which sit outside the solution
+because the packages they use must be packed first.
 
 ## How they are checked
 
 [`tests/AsmSdk.Tests`](https://github.com/AsmFoundation/AsmSdk/tree/main/tests/AsmSdk.Tests),
 an xunit v3 project, packs the SDK and the toolchain into a local feed, then builds the
-samples against it, with a fresh `NUGET_PACKAGES`. Each of its 48 tests checks one
+samples against it, with a fresh `NUGET_PACKAGES`. Each of its 62 tests checks one
 expectation:
 
 - **the ELF properties of every output:** type, SONAME, `DT_NEEDED`, interpreter, exports
@@ -37,9 +50,12 @@ expectation:
   `LinkerArg`, `DefineConstants` and `DebugSymbols`;
 - **IDE integration:** the declared item types, that every file of a project folder is one
   item, the up-to-date inputs and outputs, and that a design-time build runs no tool (see
-  [IDEs](../guide/ides.md)).
+  [IDEs](../guide/ides.md));
+- **the realistic samples** (`ExampleTests`): Crc32C's exports, constants, packages, own unit
+  tests and NuGet consumer; WordCount's imports, counts and errors; HexDump's size, output and
+  errors (see [Examples](../examples/index.md#how-they-are-checked)).
 
-On Windows, the tests run the Linux outputs through WSL and the .NET sample in Docker, when
+On Windows, the tests run the Linux outputs through WSL and the .NET programs in Docker, when
 they are available; where neither is, those tests are skipped with the reason
 (`ASMSDK_TEST_RUN` and `ASMSDK_TEST_DOTNET_RUN` choose explicitly). Only the .NET SDK is
 needed:

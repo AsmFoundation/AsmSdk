@@ -264,3 +264,5 @@ section .text
 - **`AsmPackSources=true`** lets consumers re-assemble the code with their own defines, for
   example to inline or specialize it. It also makes the package's source its contract, so
   version accordingly.
+
+**Example:** [Crc32C](../examples/crc32c.md#the-exports-file) keeps its binary interface to five versioned names with an `ExportsFile`, and [Shipping to .NET through NuGet](../examples/nuget-for-dotnet.md) splits it into a native and a managed package.

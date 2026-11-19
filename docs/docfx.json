@@ -19,7 +19,7 @@
       "_appTitle": "AsmSdk",
       "_appLogoPath": "images/logo.svg",
       "_appFaviconPath": "images/favicon.svg",
-      "_appFooter": "AsmSdk is open source under the Apache-2.0 license, and part of the <a href=\"https://github.com/AsmFoundation\">AsmFoundation</a>.",
+      "_appFooter": "AsmSdk is open source under the Apache-2.0 license, and part of the <a href=\"https://github.com/AsmFoundation\">AsmFoundation</a>. For AI tools: <a href=\"https://asmfoundation.github.io/AsmSdk/llms.txt\">llms.txt</a>.",
       "_enableSearch": true,
       "_gitContribute": {
         "repo": "https://github.com/AsmFoundation/AsmSdk",

@@ -49,6 +49,11 @@ jobs:
       - name: Build the site
         run: dotnet docfx build docs/docfx.json --warningsAsErrors
 
+      # llms.txt, llms-full.txt and a .html.md copy of every page, for AI tools (docs/llms.cs).
+      # Runs on pull requests too: it fails on a toc entry or a page link that leads nowhere.
+      - name: Write the files for AI tools
+        run: dotnet run docs/llms.cs -- docs docs/_site https://asmfoundation.github.io/AsmSdk/
+
       - name: Upload the site
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:

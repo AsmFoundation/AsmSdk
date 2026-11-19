@@ -106,7 +106,10 @@ which .NET a program runs on:
   `__libc_start_main` as glibc's `crt1.o` does.
 
 Every property, item and error is described in [docs/asmproj.md](docs/asmproj.md), and
-the guides are on the [documentation site](https://asmfoundation.github.io/AsmSdk/).
+the guides are on the [documentation site](https://asmfoundation.github.io/AsmSdk/). AI
+tools can read the whole site as Markdown: start at
+[llms.txt](https://asmfoundation.github.io/AsmSdk/llms.txt), or take
+[llms-full.txt](https://asmfoundation.github.io/AsmSdk/llms-full.txt) in one piece.
 
 ## Sharing code
 
@@ -143,8 +146,16 @@ builds and checks it on every CI run:
 | `Hello.App` | freestanding executable linking `Hello.Static` through a ProjectReference |
 | `Hello.Libc` | `main()` program calling `printf` on glibc |
 | `Hello.LibcLibrary` | shared library calling `strlen` through its PLT |
-| `consumer/Hello.Consumer` | consumes the `Hello.Static` package by version |
+| `consumers/Hello.Consumer` | consumes the `Hello.Static` package by version |
 | `Hello.Net` | C# program P/Invoking both shared libraries |
+| `Crc32C` | CRC-32C as a freestanding shared library: exports file, run-time CPU dispatch, a 3-way SSE4.2 + PCLMULQDQ kernel |
+| `Crc32C.Net`, `Crc32C.Tests`, `Crc32C.Bench` | its C# API, xunit tests and BenchmarkDotNet benchmark |
+| `consumers/Crc32C.App` | a .NET program using the library through two NuGet packages, by version |
+| `WordCount` | `wc` on glibc: libc calls through the PLT, `AsmLibcSymbol`, SSE2 counting |
+| `HexDump` | `xxd` with no libc: raw system calls, a static executable of about 4 KB |
+
+The last five are walked through in the documentation's
+[Examples](https://asmfoundation.github.io/AsmSdk/examples/index.html).
 
 ## How it works
 

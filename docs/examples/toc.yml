@@ -1,0 +1,12 @@
+- name: Overview
+  href: index.md
+- name: "Crc32C: an assembly library for .NET"
+  href: crc32c.md
+- name: Shipping to .NET through NuGet
+  href: nuget-for-dotnet.md
+- name: Testing and measuring from C#
+  href: testing-and-benchmarks.md
+- name: "WordCount: a tool on libc"
+  href: wordcount.md
+- name: "HexDump: a tool without libc"
+  href: hexdump.md

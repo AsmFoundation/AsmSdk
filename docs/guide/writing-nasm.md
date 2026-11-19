@@ -217,6 +217,8 @@ Freestanding code talks to the kernel directly:
 
 Prefer `exit_group` to `exit` (number 60), which ends only the calling thread.
 
+**Example:** [HexDump](../examples/hexdump.md) is a complete program in system calls alone: `EINTR`, short writes, buffered output and `errno` messages included.
+
 ## Warnings worth knowing
 
 The SDK assembles with `-w+all` except `reloc-rel-dword` and `reloc-abs-qword`. These are

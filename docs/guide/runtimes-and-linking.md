@@ -195,6 +195,8 @@ section .note.GNU-stack noalloc noexec nowrite progbits
   four data objects are 8-byte pointers, as in glibc. To use other glibc data, write a C
   shim, or take its address at run time with `dlsym`.
 
+**Example:** [WordCount](../examples/wordcount.md) calls `warn` and `warnx`, which the stub does not list, by adding them as `AsmLibcSymbol` items, and reads `stderr`, a libc data object, through the GOT.
+
 ## Production link options
 
 Add these as `LinkerArg` items, NativeAOT's name for extra linker arguments, globally from

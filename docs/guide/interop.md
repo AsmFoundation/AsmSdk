@@ -59,6 +59,8 @@ internal static partial class Native
   `[LibraryImport]` declarations. The pair works like `SkiaSharp` with
   `SkiaSharp.NativeAssets.Linux`.
 
+**Example:** [Shipping to .NET through NuGet](../examples/nuget-for-dotnet.md) packs an assembly library and its C# wrapper as two packages, and uses them from a program by version.
+
 ## Marshalling rules
 
 - **Blittable types cross for free:**
@@ -120,6 +122,8 @@ comparison against a C# reference implementation, and fuzzing.
   the buffer at the end of a page followed by a `PROT_NONE` page (`mmap` plus `mprotect`
   via P/Invoke to libc). A read past the end then crashes the test instead of passing
   silently.
+
+**Example:** [Testing and measuring from C#](../examples/testing-and-benchmarks.md) tests each code path of an assembly library against a C# reference with xunit, and times it with BenchmarkDotNet.
 
 ## Python
 

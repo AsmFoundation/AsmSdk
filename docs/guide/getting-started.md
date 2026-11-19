@@ -209,6 +209,8 @@ It prints `42`.
 
 ## Next steps
 
+- [Examples](../examples/index.md): complete programs built the same way: an SSE4.2 checksum
+  library called from C# and shipped through NuGet, a `wc` on glibc, an `xxd` without libc.
 - [Projects](projects.md): output kinds, include folders, defines and configurations.
 - [References and packages](references-and-packages.md): share a library between
   projects, or as a NuGet package by version.
