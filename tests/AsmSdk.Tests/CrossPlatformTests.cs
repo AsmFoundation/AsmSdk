@@ -96,7 +96,8 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
 
     /// <summary>
     /// FUNCTION exports on every OS (the .drectve directive on Windows, global symbols elsewhere,
-    /// with Mach-O's underscore), and a LOCAL_FUNCTION is exported nowhere.
+    /// with Mach-O's underscore). A LOCAL_FUNCTION is exported nowhere, and neither is the static
+    /// library's HIDDEN_FUNCTION osname, which Everywhere calls from another object.
     /// </summary>
     /// <param name="rid">The runtime identifier.</param>
     [Theory]
@@ -107,24 +108,28 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
         string library = Repo.TestProjectPath("Everywhere", "bin", "Release", "freestanding", rid, LibraryFile(rid, "everywhere"));
         if (rid.StartsWith("win-", StringComparison.Ordinal))
         {
-            // FUNCTION's .drectve export directive; a LOCAL_FUNCTION has none.
+            // FUNCTION's .drectve export directive; a LOCAL_FUNCTION and a HIDDEN_FUNCTION have none.
             string exports = sdk.ReadObj(library, "--coff-exports");
             Assert.Contains("Name: ew_add", exports);
             Assert.Contains("Name: ew_platform", exports);
             Assert.DoesNotContain("ew_hidden", exports);
+            Assert.DoesNotContain("osname", exports);
         }
         else if (rid.StartsWith("osx-", StringComparison.Ordinal))
         {
-            // Mach-O: the underscore NASM's --gprefix and asmsdk-gnu.inc add; "Extern" marks an export.
+            // Mach-O: the underscore NASM's --gprefix and asmsdk-gnu.inc add; "Extern" marks an
+            // export (private_extern became a local symbol of the dylib).
             string symbols = sdk.ReadObj(library, "--symbols");
             Assert.Matches(new Regex(@"Name: _ew_add \(\d+\)\s+Extern"), symbols);
             Assert.DoesNotMatch(new Regex(@"Name: _ew_hidden \(\d+\)\s+Extern"), symbols);
+            Assert.DoesNotMatch(new Regex(@"Name: _osname \(\d+\)\s+Extern"), symbols);
         }
         else
         {
             string dynamic = sdk.ReadObj(library, "--dyn-syms");
             Assert.Contains("ew_add", dynamic);
             Assert.DoesNotContain("ew_hidden", dynamic);
+            Assert.DoesNotContain("osname", dynamic);
         }
     }
 
@@ -185,6 +190,12 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
             string imports = sdk.ReadObj(program, "--coff-imports");
             Assert.Contains("Name: ucrtbase.dll", imports);
             Assert.Contains("__stdio_common_vfprintf", imports);
+
+            // main is a FUNCTION, but a program exports nothing without an ExportsFile, so
+            // lld-link writes no import library beside it (both happened before
+            // ASMSDK_EXECUTABLE).
+            Assert.DoesNotContain("Name: main", sdk.ReadObj(program, "--coff-exports"));
+            Assert.False(File.Exists(Path.ChangeExtension(program, ".lib")), $"{rid}: an import library beside the program");
         }
         else if (rid.StartsWith("osx-", StringComparison.Ordinal))
         {
@@ -298,6 +309,74 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
         Assert.Equal(3, run.ExitCode);
         Assert.Contains($"hello from {emulated}, 40 + 2 = 42", run.StdOut);
         Assert.Contains("bye from atexit", run.StdOut);
+    }
+
+    /// <summary>
+    /// A program exports exactly what its ExportsFile lists, on each OS (a plugin host's API):
+    /// plugin_api, and neither main nor not_listed, although all three are FUNCTIONs. On Windows
+    /// it also gets its import library, program-exports.lib, for the plugins to link against.
+    /// </summary>
+    /// <param name="rid">The runtime identifier (one per OS).</param>
+    [Theory]
+    [InlineData("win-x64")]
+    [InlineData("linux-x64")]
+    [InlineData("osx-x64")]
+    public void A_program_exports_what_its_exports_file_lists(string rid)
+    {
+        CommandResult build = sdk.BuildTestProject("ProgramExports");
+        Assert.True(build.ExitCode == 0, build.Tail());
+        string folder = Repo.TestProjectPath("ProgramExports", "bin", "Release", "libc", rid);
+        if (rid.StartsWith("win-", StringComparison.Ordinal))
+        {
+            string exports = sdk.ReadObj(Path.Combine(folder, "program-exports.exe"), "--coff-exports");
+            Assert.Contains("Name: plugin_api", exports);
+            Assert.DoesNotContain("Name: main", exports);
+            Assert.DoesNotContain("not_listed", exports);
+            Assert.True(File.Exists(Path.Combine(folder, "program-exports.lib")), "no import library for the plugins");
+        }
+        else if (rid.StartsWith("osx-", StringComparison.Ordinal))
+        {
+            // "Extern" marks an exported Mach-O symbol; the others became private extern.
+            string symbols = sdk.ReadObj(Path.Combine(folder, "program-exports"), "--symbols");
+            Assert.Matches(new Regex(@"Name: _plugin_api \(\d+\)\s+Extern"), symbols);
+            Assert.DoesNotMatch(new Regex(@"Name: _main \(\d+\)\s+Extern"), symbols);
+            Assert.DoesNotMatch(new Regex(@"Name: _not_listed \(\d+\)\s+Extern"), symbols);
+        }
+        else
+        {
+            string dynamic = sdk.ReadObj(Path.Combine(folder, "program-exports"), "--dyn-syms");
+            Assert.Contains("plugin_api@@PROGRAM_1.0", dynamic);
+            Assert.DoesNotContain("not_listed", dynamic);
+            Assert.DoesNotMatch(new Regex(@"Name: main\b"), dynamic);
+        }
+    }
+
+    /// <summary>
+    /// A fixup the loader cannot apply fails the build, although the linker accepted it: a 32-bit
+    /// absolute address in a Windows DLL (ASM0080), a fixup in read-only __TEXT on macOS from the
+    /// rebase opcodes or from chained fixups (ASM0081). The image is deleted, so a second build
+    /// links and fails again instead of finding the output up to date.
+    /// </summary>
+    /// <param name="rid">The runtime identifier.</param>
+    /// <param name="chainedFixups">Whether to link with -fixup_chains (osx-arm64 only).</param>
+    /// <param name="code">The expected error code.</param>
+    [Theory]
+    [InlineData("win-x64", false, "ASM0080")]
+    [InlineData("osx-x64", false, "ASM0081")]
+    [InlineData("osx-arm64", false, "ASM0081")]
+    [InlineData("osx-arm64", true, "ASM0081")]
+    public void A_fixup_the_loader_cannot_apply_fails_the_build(string rid, bool chainedFixups, string code)
+    {
+        string configuration = chainedFixups ? "Chained" : "Release";
+        string[] arguments = ["build", Repo.TestProject("ImageFixups"), "-c", configuration, "-r", rid, $"-p:ChainedFixups={chainedFixups}"];
+        string image = Repo.TestProjectPath("ImageFixups", "bin", configuration, "freestanding", rid, LibraryFile(rid, "imagefixups"));
+        for (int attempt = 1; attempt <= 2; attempt++)
+        {
+            CommandResult build = sdk.Dotnet(arguments);
+            Assert.True(build.ExitCode != 0, $"attempt {attempt} built: {build.Tail()}");
+            Assert.Contains($"error {code}", build.StdOut);
+            Assert.False(File.Exists(image), $"attempt {attempt} left {image}");
+        }
     }
 
     /// <summary>

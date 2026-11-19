@@ -31,7 +31,13 @@
 //                      .drectve (__declspec(dllexport)), unless the project has
 //                      an ExportsFile, which the SDK signals with
 //                      ASMSDK_EXPORTS_FILE: the file decides the exports then.
+//                      Nor in an executable (ASMSDK_EXECUTABLE): a program
+//                      exports nothing unless its ExportsFile says so.
 // LOCAL_FUNCTION name  The same, not global (callable from this file only).
+// HIDDEN_FUNCTION name The same, global but exported from no image: for what
+//                      the library's other files, or a static library's
+//                      users, call. ELF's hidden visibility on Linux, Mach-O's
+//                      private_extern on macOS, no export directive on Windows.
 // ENDFUNCTION name     Closes it (ELF records the function's size).
 // CALL name            Calls a function by its C name: bl (ARM64), or call
 //                      (x86-64; through the PLT on Linux). macOS gets the
@@ -91,12 +97,16 @@
 
 // ---- Exports on Windows -------------------------------------------------------
 // The directive lld-link reads from .drectve, then back to .text: the include
-// puts every function there, so returning to it needs no saved section.
+// puts every function there, so returning to it needs no saved section. None
+// in a program: its main would be an export, and the .exe would get an import
+// library.
 .macro ASMSDK_EXPORT name
 .ifdef WINDOWS
 .ifndef ASMSDK_EXPORTS_FILE
+.ifndef ASMSDK_EXECUTABLE
     .section .drectve,"yn"
     .ascii " -export:\name"
+.endif
 .endif
 .endif
     .text
@@ -142,6 +152,33 @@ _\name:
     .type 32
     .endef
 .else
+    .type \name, %function
+.endif
+    ASMSDK_ALIGN_FUNCTION
+\name:
+.endif
+.endm
+
+.macro HIDDEN_FUNCTION name
+    .text
+.ifdef MACOS
+    // private_extern: global while linking, a local symbol of the output.
+    .globl _\name
+    .private_extern _\name
+    ASMSDK_ALIGN_FUNCTION
+_\name:
+\name:
+.else
+    .globl \name
+.ifdef WINDOWS
+    // A plain external function symbol: without a -export: directive, no DLL
+    // exports it.
+    .def \name
+    .scl 2
+    .type 32
+    .endef
+.else
+    .hidden \name
     .type \name, %function
 .endif
     ASMSDK_ALIGN_FUNCTION

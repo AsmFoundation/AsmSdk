@@ -4,6 +4,8 @@
   href: getting-started.md
 - name: Projects
   href: projects.md
+- name: Platforms and runtime identifiers
+  href: platforms.md
 - name: Writing NASM for AsmSdk
   href: writing-nasm.md
 - name: Runtimes and linking

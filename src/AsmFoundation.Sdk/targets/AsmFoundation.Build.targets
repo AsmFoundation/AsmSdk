@@ -32,6 +32,7 @@
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmSelectSources" AssemblyFile="$(_AsmTasksAssembly)" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmReadExports" AssemblyFile="$(_AsmTasksAssembly)" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmWriteCLibraryStub" AssemblyFile="$(_AsmTasksAssembly)" />
+  <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmCheckImage" AssemblyFile="$(_AsmTasksAssembly)" />
 
   <!-- ===================================================================================== -->
   <!-- Items                                                                                  -->
@@ -303,6 +304,11 @@
            Windows export directive of its own, which would export every FUNCTION whether the
            file lists it or not (lld-link cannot drop a directive). -->
       <_AsmDefine Include="ASMSDK_EXPORTS_FILE" Condition="'$(_AsmExportsFilePath)' != ''" />
+      <!-- A program's functions are not an API: FUNCTION exports nothing from an executable
+           (on Windows its directive made main an export, and lld-link then wrote an import
+           library beside the .exe). A program that does export, a plugin host, names its
+           exports in an ExportsFile, as a library can. -->
+      <_AsmDefine Include="ASMSDK_EXECUTABLE" Condition="'$(_AsmOutputKind)' == 'Executable'" />
 
       <!-- Link inputs: static libraries and shared objects from AsmLinkLibrary items,
            packages and referenced projects, in the order given. -->
@@ -458,6 +464,18 @@
     <PropertyGroup>
       <_AsmExportsFileArgument Condition="'$(_AsmOs)' == 'Windows' and '@(_AsmExportedName)' != ''">@(_AsmExportedName->'-export:%(Identity)', ' ')</_AsmExportsFileArgument>
       <_AsmExportsFileArgument Condition="'$(_AsmOs)' == 'MacOS' and '@(_AsmExportedName)' != ''">@(_AsmExportedName->'-exported_symbol _%(Identity)', ' ')</_AsmExportsFileArgument>
+
+      <!--
+        A Windows program's import library. lld-link writes one beside any image that exports
+        something. A program with an ExportsFile gets one, named after it (plugin.exe ->
+        plugin.lib, which a plugin DLL links to call back into the program). Without one, nothing
+        should be exported, but a linked static library's FUNCTIONs still carry their
+        .drectve directives (lld-link cannot drop them). -noimplib keeps that leak from also
+        leaving a stray import library in the output folder.
+      -->
+      <_AsmProgramImportLibraryPath Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmOutputKind)' == 'Executable' and '$(_AsmExportsFilePath)' != ''">$(TargetDir)$(TargetName).lib</_AsmProgramImportLibraryPath>
+      <_AsmProgramImportLibraryArgument Condition="'$(_AsmProgramImportLibraryPath)' != ''">-implib:&quot;$(_AsmProgramImportLibraryPath.Replace('\','/'))&quot;</_AsmProgramImportLibraryArgument>
+      <_AsmProgramImportLibraryArgument Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmOutputKind)' == 'Executable' and '$(_AsmProgramImportLibraryPath)' == ''">-noimplib</_AsmProgramImportLibraryArgument>
     </PropertyGroup>
   </Target>
 
@@ -763,9 +781,10 @@
           Command="$(_AsmLinker) -dll -noentry -out:$(_AsmTargetPathArgument) -implib:&quot;$(AsmImportLibraryPath.Replace('\','/'))&quot; $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmLibcArguments) $(_AsmSystemLibraryArguments) $(_AsmCommonLinkArguments)" />
 
     <!-- A console program, freestanding (entry _start or StartupObject; kernel32 for I/O) or
-         libc (entry mainCRTStartup, from the SDK's wincrt). -->
+         libc (entry mainCRTStartup, from the SDK's wincrt). Its import library only when its
+         ExportsFile exports something (see _AsmProgramImportLibraryPath). -->
     <Exec Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmOutputKind)' == 'Executable'"
-          Command="$(_AsmLinker) -subsystem:console $(_AsmEntryArgument) -out:$(_AsmTargetPathArgument) $(_AsmCrtArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmLibcArguments) $(_AsmSystemLibraryArguments) $(_AsmCommonLinkArguments)" />
+          Command="$(_AsmLinker) -subsystem:console $(_AsmEntryArgument) -out:$(_AsmTargetPathArgument) $(_AsmProgramImportLibraryArgument) $(_AsmCrtArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmLibcArguments) $(_AsmSystemLibraryArguments) $(_AsmCommonLinkArguments)" />
 
     <!-- macOS (Mach-O). @rpath in the install name: a program that links the dylib finds it
          through its own run paths, the convention for libraries shipped with an app. -->
@@ -776,6 +795,22 @@
     <Exec Condition="'$(_AsmOs)' == 'MacOS' and '$(_AsmOutputKind)' == 'Executable'"
           Command="$(_AsmLinker) -execute $(_AsmEntryArgument) -o $(_AsmTargetPathArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmLibcArguments) $(_AsmCommonLinkArguments)" />
 
+    <!--
+      The fixups the loader must apply, checked where the linker does not (AsmCheckImage):
+      ASM0080 for a 32-bit absolute address in a 64-bit Windows image, which lld-link links
+      into a DLL based at 0x180000000 without a word (a NASM memory operand without "default
+      rel"); ASM0081 for a fixup in a read-only Mach-O segment, a text relocation ld64.lld
+      writes and Apple's ld refuses. ld.lld refuses both on Linux by itself. A failed check
+      deletes the image: kept, it would be newer than every input, and the next build would
+      skip this link and its check, leaving the broken image in place.
+    -->
+    <AsmCheckImage Condition="'$(_AsmIsLinked)' == 'true' and ('$(_AsmOs)' == 'Windows' or '$(_AsmOs)' == 'MacOS')"
+                   ImagePath="$(TargetPath)"
+                   Os="$(_AsmOs)"
+                   ContinueOnError="ErrorAndContinue" />
+    <Delete Condition="'$(_AsmIsLinked)' == 'true' and ('$(_AsmOs)' == 'Windows' or '$(_AsmOs)' == 'MacOS') and '$(MSBuildLastTaskResult)' == 'false'"
+            Files="$(TargetPath)" />
+
     <Delete Condition="'$(AsmStaticLibraryPath)' != ''" Files="$(AsmStaticLibraryPath)" />
     <Exec Condition="'$(AsmStaticLibraryPath)' != ''"
           Command="$(_AsmArchiver) rcsD $(_AsmArchiveFormatArgument) &quot;$(AsmStaticLibraryPath.Replace('\','/'))&quot; $(_AsmObjectArguments)" />
@@ -784,6 +819,7 @@
       <FileWrites Include="$(TargetPath)" />
       <FileWrites Include="$(AsmStaticLibraryPath)" Condition="'$(AsmStaticLibraryPath)' != ''" />
       <FileWrites Include="$(AsmImportLibraryPath)" Condition="'$(AsmImportLibraryPath)' != ''" />
+      <FileWrites Include="$(_AsmProgramImportLibraryPath)" Condition="'$(_AsmProgramImportLibraryPath)' != ''" />
       <!-- lld-link's PDB (link -debug), named after the output: without this, dotnet clean
            left xapp.pdb behind (measured). -->
       <FileWrites Include="$(TargetDir)$(TargetName).pdb" Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmDebugSymbols)' == 'true' and '$(_AsmOutputKind)' != 'StaticLibrary'" />

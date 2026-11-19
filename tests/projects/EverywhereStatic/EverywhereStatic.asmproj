@@ -9,6 +9,8 @@
       osname.linux-musl.asm  musl, closer than linux                           -> 13
       osname.s               every ARM64 RID without a closer match            -> 20
       osname.win-arm64.s     exactly win-arm64, the closest qualifier there is -> 21
+    osname is a HIDDEN_FUNCTION: Everywhere calls it, and exports it on no OS (a FUNCTION of a
+    static library would be exported again by every shared library that links it).
   -->
   <PropertyGroup>
     <OutputType>StaticLibrary</OutputType>

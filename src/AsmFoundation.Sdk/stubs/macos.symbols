@@ -21,7 +21,9 @@
 #     pthread spinlocks or barriers, no epoll (kqueue/kevent instead), no sigwaitinfo.
 #   - A name missing here fails the link with "undefined symbol": add it with
 #     <AsmLibcSymbol Include="name" /> (a C name; the underscore is added).
-# Not verified on a Mac yet: the CI's macOS runners run the libc tests.
+# Verified on macOS 15 (GitHub's macos-15 runner, Apple silicon, 2026-11-19): the libc program
+# (main, printf with five arguments, atexit, the exit code) and the libc library (strlen,
+# malloc, memset, free) run natively, and the osx-x64 program runs under Rosetta 2.
 
 # Process start and exit
 exit _exit abort atexit __cxa_atexit __cxa_finalize __stack_chk_fail __assert_rtn __error

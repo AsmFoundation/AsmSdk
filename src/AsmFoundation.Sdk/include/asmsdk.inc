@@ -33,7 +33,9 @@
 ;   .drectve section, which is what __declspec(dllexport) does in C.
 ;   A project with an ExportsFile gets ASMSDK_EXPORTS_FILE defined, and then
 ;   FUNCTION writes no directive: the file decides what is exported, on
-;   Windows as the version script does on Linux.
+;   Windows as the version script does on Linux. An executable gets
+;   ASMSDK_EXECUTABLE, and no directive either: a program exports nothing
+;   unless its ExportsFile says so, as a C program's main is no export.
 ;   nargs (0-6) is the number of integer arguments: on Windows, arguments 5
 ;   and 6 are loaded from the stack into ARG5 (r10) and ARG6 (r11) at entry.
 ;   The registers listed are the ones the body changes; FUNCTION saves those
@@ -42,6 +44,12 @@
 ;   Linux and keeps Windows correct.
 ; LOCAL_FUNCTION name [, nargs [, register ...]]
 ;   The same, for a function that is not exported (not global).
+; HIDDEN_FUNCTION name [, nargs [, register ...]]
+;   The same, for a function the library's other files (or a static
+;   library's users) call, but that no image exports: global, with ELF's
+;   hidden visibility on Linux and Mach-O's private_extern on macOS, and no
+;   export directive on Windows. Use it for the internals of a static
+;   library, whose FUNCTIONs every shared library that links it exports.
 ; RETURN
 ;   Restores what FUNCTION saved and returns. Use it instead of "ret"; it may
 ;   appear more than once in a function.
@@ -75,11 +83,13 @@
 ;     otherwise make an unknown section executable code (and crash with
 ;     CodeView debug information). Assembled outside AsmSdk for Windows,
 ;     write .rdata, or pass -D.rodata=.rdata yourself.
-;   - A static library's FUNCTIONs keep their export directives: a Windows
-;     DLL that links the library exports them even when its own ExportsFile
-;     does not list them (Linux and macOS hide them). lld-link has no switch
-;     that drops a directive; use LOCAL_FUNCTION for what is private to one
-;     file, and keep the library's FUNCTIONs to its public API.
+;   - A static library's FUNCTIONs are exported again by every shared library
+;     that links it: through their directives on Windows (even when the DLL's
+;     own ExportsFile does not list them: lld-link has no switch that drops a
+;     directive), as global symbols on Linux and macOS (unless an ExportsFile
+;     hides them). Keep a static library's FUNCTIONs to its public API: use
+;     LOCAL_FUNCTION for what is private to one file, and HIDDEN_FUNCTION for
+;     what its other files or its users call.
 ; =============================================================================
 
 %ifndef ASMSDK_INC
@@ -164,8 +174,10 @@
 
 ; ---- Functions ---------------------------------------------------------------
 
-; ASMSDK_FUNCTION_BEGIN exported, name [, nargs [, register ...]]
-; The body of FUNCTION and LOCAL_FUNCTION (internal: use those).
+; ASMSDK_FUNCTION_BEGIN scope, name [, nargs [, register ...]]
+; The body of FUNCTION, LOCAL_FUNCTION and HIDDEN_FUNCTION (internal: use those).
+; scope: 1 exported (FUNCTION), 0 file-local (LOCAL_FUNCTION), 2 global but
+; exported from no image (HIDDEN_FUNCTION).
 %macro ASMSDK_FUNCTION_BEGIN 2-*
     %push asmsdk_function
     %xdefine %$gprs                  ; saved general registers, in push order
@@ -178,18 +190,35 @@
         %assign %$nargs 0
     %endif
 
-    %if %1
+    %if %1 == 2
+        ; Global within the image, exported from none: no .drectve directive on
+        ; Windows (a DLL exports nothing it is not told to), private_extern on
+        ; Mach-O and hidden visibility on ELF, which the linker turns into a
+        ; local symbol of the output. A call to it from another object is a
+        ; direct call, through no PLT or stub.
+        %ifdef WINDOWS
+            global %2
+        %elifdef MACOS
+            global %2:private_extern
+        %else
+            global %2:function hidden
+        %endif
+    %elif %1 == 1
         %ifdef WINDOWS
             global %2
             %ifndef ASMSDK_EXPORTS_FILE
+              %ifndef ASMSDK_EXECUTABLE
                 ; dllexport: a linker directive in .drectve, which lld-link
                 ; reads and which never reaches the image ("info"). Left out
                 ; when the project's ExportsFile names the exports instead: a
                 ; directive would add this function to them, listed or not.
+                ; Left out of programs too, whose main would otherwise be an
+                ; export and get the .exe an import library.
                 %defstr %$export -export:%2
                 [section .drectve info]
                     db " ", %$export
                 __SECT__
+              %endif
             %endif
         %elifdef MACOS
             global %2
@@ -321,6 +350,10 @@
 
 %macro LOCAL_FUNCTION 1-*
     ASMSDK_FUNCTION_BEGIN 0, %{1:-1}
+%endmacro
+
+%macro HIDDEN_FUNCTION 1-*
+    ASMSDK_FUNCTION_BEGIN 2, %{1:-1}
 %endmacro
 
 %macro RETURN 0

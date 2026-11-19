@@ -2,7 +2,7 @@
 default rel
 %include "asmsdk.inc"
 section .text
-FUNCTION osname
+HIDDEN_FUNCTION osname
     mov     eax, 12
     RETURN
 ENDFUNCTION
