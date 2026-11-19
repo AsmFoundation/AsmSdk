@@ -70,6 +70,11 @@
 ;     integer arguments only.
 ;   - On Windows, a function with more than 4 arguments must say how many,
 ;     or ARG5 and ARG6 hold garbage.
+;   - "section .rodata" works on every OS: macho64 maps it to __TEXT,__const,
+;     and the SDK defines .rodata as .rdata for win64, whose NASM output would
+;     otherwise make an unknown section executable code (and crash with
+;     CodeView debug information). Assembled outside AsmSdk for Windows,
+;     write .rdata, or pass -D.rodata=.rdata yourself.
 ;   - A static library's FUNCTIONs keep their export directives: a Windows
 ;     DLL that links the library exports them even when its own ExportsFile
 ;     does not list them (Linux and macOS hide them). lld-link has no switch

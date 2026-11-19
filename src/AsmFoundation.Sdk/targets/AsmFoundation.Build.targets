@@ -31,6 +31,7 @@
   </PropertyGroup>
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmSelectSources" AssemblyFile="$(_AsmTasksAssembly)" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmReadExports" AssemblyFile="$(_AsmTasksAssembly)" />
+  <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmWriteCLibraryStub" AssemblyFile="$(_AsmTasksAssembly)" />
 
   <!-- ===================================================================================== -->
   <!-- Items                                                                                  -->
@@ -138,11 +139,32 @@
     <!-- The oldest macOS the Mach-O files claim to run on (LC_BUILD_VERSION). 11.0 is the
          first with Apple silicon, so one value serves osx-x64 and osx-arm64. -->
     <AsmMacOSMinimumVersion Condition="'$(AsmMacOSMinimumVersion)' == ''">11.0</AsmMacOSMinimumVersion>
-    <!-- libc executables start in the SDK's crt1.o unless the project names its own entry
-         symbol with StartupObject. The stub and crt1 exist for glibc on x64 so far (stage 3 of
-         the 0.3.0 plan adds the other C libraries); other RIDs stop at ASM0016 in AsmLink. -->
-    <_AsmUsesCrt Condition="'$(_AsmRuntime)' == 'Libc' and '$(_AsmRid)' == 'linux-x64' and '$(_AsmOutputKind)' == 'Executable' and '$(StartupObject)' == ''">true</_AsmUsesCrt>
-    <_AsmUsesLibcStub Condition="'$(_AsmRuntime)' == 'Libc' and '$(_AsmRid)' == 'linux-x64' and ('$(_AsmOutputKind)' == 'SharedLibrary' or '$(_AsmOutputKind)' == 'Executable')">true</_AsmUsesLibcStub>
+    <!--
+      The system libraries a linked output (shared library or executable) is linked against,
+      as stand-ins the SDK writes itself (_AsmBuildSystemLibraries), so that no build machine
+      needs the target's sysroot or SDK:
+        Linux libc    a stub of the C library under its SONAME: libc.so.6 (glibc, x64 and
+                      ARM64) or libc.musl-x86_64.so.1 (musl), plus libasmsdk_nonshared.a
+                      (atexit, which glibc keeps out of libc.so.6)
+        macOS libc    libSystem.tbd, a text stub of /usr/lib/libSystem.B.dylib
+        Windows       kernel32.lib, always: kernel32 is a Windows program's way to the OS, as
+                      system calls are a Linux program's (Windows system call numbers change
+                      between releases), so freestanding Windows code calls it too
+        Windows libc  ucrtbase.lib (the Universal C Runtime, part of Windows 10 and later) and
+                      asmsdk_winstdio.lib (the printf family and atexit, which the UCRT does
+                      not export)
+      libc executables start in the SDK's startup code (_AsmBuildCrt) unless the project names
+      its own entry symbol with StartupObject: crt1 on Linux (_start, then __libc_start_main),
+      mainCRTStartup on Windows. macOS needs none: dyld calls main through LC_MAIN.
+    -->
+    <_AsmIsLinked Condition="'$(_AsmRid)' != '' and ('$(_AsmOutputKind)' == 'SharedLibrary' or '$(_AsmOutputKind)' == 'Executable')">true</_AsmIsLinked>
+    <_AsmUsesLibc Condition="'$(_AsmIsLinked)' == 'true' and '$(_AsmRuntime)' == 'Libc'">true</_AsmUsesLibc>
+    <_AsmUsesCrt Condition="'$(_AsmUsesLibc)' == 'true' and '$(_AsmOutputKind)' == 'Executable' and '$(StartupObject)' == '' and '$(_AsmOs)' != 'MacOS'">true</_AsmUsesCrt>
+    <_AsmLibcStubName Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmMusl)' == 'true'">libc.musl-x86_64.so.1</_AsmLibcStubName>
+    <_AsmLibcStubName Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmMusl)' != 'true'">libc.so.6</_AsmLibcStubName>
+    <!-- The PE machine (lld-link's -machine:), for links and for import libraries alike. -->
+    <_AsmPeMachine Condition="'$(_AsmArch)' == 'arm64'">arm64</_AsmPeMachine>
+    <_AsmPeMachine Condition="'$(_AsmPeMachine)' == ''">x64</_AsmPeMachine>
   </PropertyGroup>
 
   <!-- ===================================================================================== -->
@@ -332,10 +354,19 @@
       <_AsmLinkInputArguments>@(_AsmLinkInput->'&quot;%(ToolPath)&quot;', ' ')</_AsmLinkInputArguments>
       <_AsmTargetPathArgument>&quot;$(TargetPath.Replace('\','/'))&quot;</_AsmTargetPathArgument>
       <_AsmStubToolDirectory>$([System.IO.Path]::GetFullPath('$(AsmIntermediateDirectory)stubs/').Replace('\','/'))</_AsmStubToolDirectory>
-      <_AsmCrtArgument Condition="'$(_AsmUsesCrt)' == 'true'">&quot;$(_AsmStubToolDirectory)crt1.o&quot;</_AsmCrtArgument>
-      <!-- libc: the stub comes last, after the libraries that need it; no-as-needed keeps
-           DT_NEEDED even when only a linked library, not the objects, calls into libc. -->
-      <_AsmLibcArguments Condition="'$(_AsmUsesLibcStub)' == 'true'">--no-as-needed &quot;$(_AsmStubToolDirectory)libc.so.6&quot;</_AsmLibcArguments>
+      <_AsmCrtArgument Condition="'$(_AsmUsesCrt)' == 'true' and '$(_AsmOs)' == 'Linux'">&quot;$(_AsmStubToolDirectory)crt1.o&quot;</_AsmCrtArgument>
+      <_AsmCrtArgument Condition="'$(_AsmUsesCrt)' == 'true' and '$(_AsmOs)' == 'Windows'">&quot;$(_AsmStubToolDirectory)wincrt.obj&quot;</_AsmCrtArgument>
+      <!--
+        The system libraries (see _AsmBuildSystemLibraries), after everything that needs them:
+        a linker reads an archive only for the symbols still undefined when it gets there.
+        Linux: no-as-needed keeps DT_NEEDED even when only a linked library, not the objects,
+        calls into libc; the nonshared archive comes first, its atexit calling into the stub.
+        Windows: the stdio archive before ucrtbase.lib, which its functions import from.
+      -->
+      <_AsmLibcArguments Condition="'$(_AsmUsesLibc)' == 'true' and '$(_AsmOs)' == 'Linux'">&quot;$(_AsmStubToolDirectory)libasmsdk_nonshared.a&quot; --no-as-needed &quot;$(_AsmStubToolDirectory)$(_AsmLibcStubName)&quot;</_AsmLibcArguments>
+      <_AsmLibcArguments Condition="'$(_AsmUsesLibc)' == 'true' and '$(_AsmOs)' == 'MacOS'">&quot;$(_AsmStubToolDirectory)libSystem.tbd&quot;</_AsmLibcArguments>
+      <_AsmLibcArguments Condition="'$(_AsmUsesLibc)' == 'true' and '$(_AsmOs)' == 'Windows'">&quot;$(_AsmStubToolDirectory)asmsdk_winstdio.lib&quot; &quot;$(_AsmStubToolDirectory)ucrtbase.lib&quot;</_AsmLibcArguments>
+      <_AsmSystemLibraryArguments Condition="'$(_AsmIsLinked)' == 'true' and '$(_AsmOs)' == 'Windows'">&quot;$(_AsmStubToolDirectory)kernel32.lib&quot;</_AsmSystemLibraryArguments>
 
       <!--
         The exports file on Linux: only the symbols it lists as global stay in the dynamic
@@ -370,6 +401,16 @@
       <_AsmNasmFormat Condition="'$(_AsmNasmFormat)' == ''">elf64</_AsmNasmFormat>
       <_AsmNasmFormatArguments>-f $(_AsmNasmFormat)</_AsmNasmFormatArguments>
       <_AsmNasmFormatArguments Condition="'$(_AsmOs)' == 'MacOS'">$(_AsmNasmFormatArguments) --gprefix _</_AsmNasmFormatArguments>
+      <!--
+        Windows: ".rodata" means ".rdata". NASM's win64 output knows .rdata, and puts a section
+        of any name it does not know into an EXECUTABLE CODE section (measured: .rodata came out
+        IMAGE_SCN_CNT_CODE | MEM_EXECUTE), and with CodeView debug information NASM 3.02 then
+        crashed (exit 139) when code from an include file followed such a section (reduced by
+        delta debugging to a .rodata label plus one instruction from asmsdk.inc). The macro
+        renames the section before NASM sees it, so the Linux spelling works on Windows, as it
+        already does on macOS (macho64 maps .rodata to __TEXT,__const).
+      -->
+      <_AsmNasmFormatArguments Condition="'$(_AsmOs)' == 'Windows'">$(_AsmNasmFormatArguments) -D.rodata=.rdata</_AsmNasmFormatArguments>
       <_AsmDebugArguments Condition="'$(_AsmDebugSymbols)' == 'true' and '$(_AsmOs)' == 'Windows'">-g -F cv8</_AsmDebugArguments>
 
       <!--
@@ -427,73 +468,201 @@
   <!--
     AsmAssemble: one assembler run per source of this RID (target batching on the selected
     sources): NASM for .asm, llvm-mc for .s. Each batch is skipped when its object is newer than
-    the source, every include file and the project file. AsmFlags are NASM's extra arguments,
-    AsmLlvmMcFlags llvm-mc's.
-    Error: ASM0004 (a .s source builds this RID, and the toolchain package has no llvm-mc).
+    the source, every include file, the project file and this SDK's targets (a new SDK version
+    may change the arguments). AsmFlags are NASM's extra arguments, AsmLlvmMcFlags llvm-mc's.
+    Errors: ASM0004 (a .s source builds this RID, and the toolchain package has no llvm-mc),
+    ASM0007 (an assembler run failed; after the assembler's own messages).
+
+    A failed run deletes its object. An assembler that crashes rather than reports an error
+    (NASM 3.02 did, with CodeView, before the .rodata mapping above) leaves a truncated object
+    behind, newer than its source: the next build would skip the source and fail at link time
+    with "unknown file type" (measured). ErrorAndContinue keeps the error and the failed build,
+    and lets the Delete run.
   -->
   <Target Name="AsmAssemble"
           DependsOnTargets="AsmPrepare"
-          Inputs="@(_AsmSelectedSource);@(_AsmDependency);$(MSBuildProjectFullPath)"
+          Inputs="@(_AsmSelectedSource);@(_AsmDependency);$(MSBuildProjectFullPath);$(MSBuildThisFileFullPath)"
           Outputs="%(_AsmSelectedSource.ObjectFile)">
     <Error Code="ASM0004"
            Condition="'%(_AsmSelectedSource.AsmLanguage)' == 'Gnu' and '$(AsmToolchain)' == 'Bundled' and !Exists('$(_AsmLlvmMcPath)')"
            Text="%(_AsmSelectedSource.Identity) is GNU-syntax assembly for llvm-mc, which $(AsmToolchainPackageId) $(AsmToolchainVersion) does not include. Use a toolchain package that has it (AsmToolchainVersion 0.2.0 or later)." />
     <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('%(_AsmSelectedSource.ObjectToolPath)'))" />
+    <!-- Properties keep their values from one batch to the next: each source starts at 0. -->
+    <PropertyGroup>
+      <_AsmAssemblerExitCode>0</_AsmAssemblerExitCode>
+    </PropertyGroup>
     <Exec Condition="'%(_AsmSelectedSource.AsmLanguage)' == 'Nasm'"
           Command="$(_AsmNasm) $(_AsmNasmFormatArguments) $(_AsmDebugArguments) $(_AsmWarningArguments) $(AsmFlags) $(_AsmIncludeArguments) $(_AsmDefineArguments) -o &quot;%(_AsmSelectedSource.ObjectToolPath)&quot; &quot;%(_AsmSelectedSource.SourceToolPath)&quot;"
-          WorkingDirectory="$(MSBuildProjectDirectory)" />
+          WorkingDirectory="$(MSBuildProjectDirectory)"
+          ContinueOnError="ErrorAndContinue">
+      <Output TaskParameter="ExitCode" PropertyName="_AsmAssemblerExitCode" />
+    </Exec>
     <Exec Condition="'%(_AsmSelectedSource.AsmLanguage)' == 'Gnu'"
           Command="$(_AsmLlvmMc) --triple=$(_AsmLlvmMcTriple) --filetype=obj $(_AsmLlvmMcDebugArguments) $(AsmLlvmMcFlags) $(_AsmLlvmMcIncludeArguments) $(_AsmLlvmMcDefineArguments) -o &quot;%(_AsmSelectedSource.ObjectToolPath)&quot; &quot;%(_AsmSelectedSource.SourceToolPath)&quot;"
-          WorkingDirectory="$(MSBuildProjectDirectory)" />
+          WorkingDirectory="$(MSBuildProjectDirectory)"
+          ContinueOnError="ErrorAndContinue">
+      <Output TaskParameter="ExitCode" PropertyName="_AsmAssemblerExitCode" />
+    </Exec>
+    <Delete Condition="'$(_AsmAssemblerExitCode)' != '0'" Files="%(_AsmSelectedSource.ObjectFile)" />
+    <Error Code="ASM0007"
+           Condition="'$(_AsmAssemblerExitCode)' != '0'"
+           Text="%(_AsmSelectedSource.Identity): the assembler exited with code $(_AsmAssemblerExitCode); its object file was deleted, so the next build assembles the source again." />
     <ItemGroup>
       <FileWrites Include="%(_AsmSelectedSource.ObjectFile)" />
     </ItemGroup>
   </Target>
 
   <!-- ===================================================================================== -->
-  <!-- Libc runtime support: the stub libc.so.6 and the hosted _start                         -->
+  <!-- System libraries and startup code: the C library per OS, kernel32, crt1                -->
   <!-- ===================================================================================== -->
 
   <!--
-    _AsmBuildLibcStub: builds obj/.../asm/stubs/libc.so.6 from the SDK's stubs/libc.asm (once,
-    then up to date). The stub defines the libc symbols as empty functions and carries SONAME
-    libc.so.6. Linking against it records DT_NEEDED libc.so.6 and lets the linker create the
-    PLT/GOT entries; at run time the real glibc supplies every symbol (unversioned references
-    bind to glibc's default symbol versions).
-    Symbols missing from the stub's list are added with AsmLibcSymbol items.
+    _AsmBuildSystemLibraries: writes the stand-ins for the platform's system libraries into
+    obj/.../asm/stubs/ (see the property group at the top of this file for which), from the
+    SDK's symbol lists (stubs/*.symbols) and the project's AsmLibcSymbol items:
+      Linux libc    AsmWriteCLibraryStub writes the stub's source (NASM for x64, GNU syntax for
+                    ARM64), assembled and linked as a shared object under the C library's
+                    SONAME; linking against it records DT_NEEDED and creates the PLT/GOT
+                    entries, and at run time the real glibc or musl supplies every symbol. The
+                    nonshared object (atexit) goes into libasmsdk_nonshared.a.
+      macOS libc    a TAPI text stub that ld64.lld reads directly.
+      Windows       a module-definition file per DLL, made into an import library by lld-link's
+                    library mode (-lib -def:); the libc stdio wrappers into asmsdk_winstdio.lib.
+    Skipped while every output is newer than the lists, the SDK's stub sources and the project
+    file (where AsmLibcSymbol items live); the task writes a source only when its text changes.
   -->
-  <Target Name="_AsmBuildLibcStub"
-          Condition="'$(_AsmUsesLibcStub)' == 'true'"
-          DependsOnTargets="AsmPrepare"
-          Inputs="$(AsmFoundationSdkDirectory)stubs/libc.asm;$(MSBuildProjectFullPath)"
-          Outputs="$(AsmIntermediateDirectory)stubs/libc.so.6">
-    <PropertyGroup>
-      <_AsmExtraLibcSymbols>@(AsmLibcSymbol, ',')</_AsmExtraLibcSymbols>
-      <_AsmExtraLibcArgument Condition="'$(_AsmExtraLibcSymbols)' != ''">-dEXTRA_LIBC_SYMBOLS=$(_AsmExtraLibcSymbols)</_AsmExtraLibcArgument>
-    </PropertyGroup>
+  <Target Name="_AsmBuildSystemLibraries"
+          Condition="'$(_AsmIsLinked)' == 'true' and ('$(_AsmUsesLibc)' == 'true' or '$(_AsmOs)' == 'Windows')"
+          DependsOnTargets="AsmPrepare;_AsmComputeSystemLibraries"
+          Inputs="@(_AsmSystemLibraryInput);$(MSBuildProjectFullPath)"
+          Outputs="@(_AsmSystemLibraryOutput)">
     <MakeDir Directories="$(AsmIntermediateDirectory)stubs" />
-    <Exec Command="$(_AsmNasm) -f elf64 $(_AsmSdkSourceWarningArguments) $(_AsmExtraLibcArgument) -o &quot;$(_AsmStubToolDirectory)libc.o&quot; &quot;$(AsmFoundationSdkDirectory.Replace('\','/'))stubs/libc.asm&quot;" />
-    <Exec Command="$(_AsmLinker) -shared -soname libc.so.6 -o &quot;$(_AsmStubToolDirectory)libc.so.6&quot; &quot;$(_AsmStubToolDirectory)libc.o&quot;" />
+
+    <!-- Linux: the C library stub and the nonshared archive. -->
+    <AsmWriteCLibraryStub Condition="'$(_AsmOs)' == 'Linux'"
+                          Format="$(_AsmStubFormat)"
+                          SymbolFiles="$(AsmFoundationSdkDirectory)stubs/linux.symbols"
+                          ExtraSymbols="@(AsmLibcSymbol)"
+                          OutputPath="$(_AsmStubToolDirectory)libc-stub$(_AsmStubSourceExtension)" />
+    <Exec Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmArch)' == 'x64'"
+          Command="$(_AsmNasm) -f elf64 $(_AsmSdkSourceWarningArguments) -o &quot;$(_AsmStubToolDirectory)libc-stub.o&quot; &quot;$(_AsmStubToolDirectory)libc-stub.asm&quot;" />
+    <Exec Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmArch)' == 'arm64'"
+          Command="$(_AsmLlvmMc) --triple=$(_AsmLlvmMcTriple) --filetype=obj -o &quot;$(_AsmStubToolDirectory)libc-stub.o&quot; &quot;$(_AsmStubToolDirectory)libc-stub.s&quot;" />
+    <Exec Condition="'$(_AsmOs)' == 'Linux'"
+          Command="$(_AsmLinker) -shared -soname $(_AsmLibcStubName) -o &quot;$(_AsmStubToolDirectory)$(_AsmLibcStubName)&quot; &quot;$(_AsmStubToolDirectory)libc-stub.o&quot;" />
+    <Exec Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmArch)' == 'x64'"
+          Command="$(_AsmNasm) -f elf64 $(_AsmSdkSourceWarningArguments) -o &quot;$(_AsmStubToolDirectory)nonshared.o&quot; &quot;$(_AsmSdkStubSourceDirectory)nonshared-x64.asm&quot;" />
+    <Exec Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmArch)' == 'arm64'"
+          Command="$(_AsmLlvmMc) --triple=$(_AsmLlvmMcTriple) --filetype=obj -o &quot;$(_AsmStubToolDirectory)nonshared.o&quot; &quot;$(_AsmSdkStubSourceDirectory)nonshared-arm64.s&quot;" />
+    <Delete Condition="'$(_AsmOs)' == 'Linux'" Files="$(AsmIntermediateDirectory)stubs/libasmsdk_nonshared.a" />
+    <Exec Condition="'$(_AsmOs)' == 'Linux'"
+          Command="$(_AsmArchiver) rcsD $(_AsmSystemArchiveFormatArgument) &quot;$(_AsmStubToolDirectory)libasmsdk_nonshared.a&quot; &quot;$(_AsmStubToolDirectory)nonshared.o&quot;" />
+
+    <!-- macOS: libSystem's text stub. -->
+    <AsmWriteCLibraryStub Condition="'$(_AsmOs)' == 'MacOS'"
+                          Format="Tbd"
+                          SymbolFiles="$(AsmFoundationSdkDirectory)stubs/macos.symbols"
+                          ExtraSymbols="@(AsmLibcSymbol)"
+                          LibraryName="/usr/lib/libSystem.B.dylib"
+                          Target="$(_AsmTbdTarget)"
+                          OutputPath="$(_AsmStubToolDirectory)libSystem.tbd" />
+
+    <!-- Windows: kernel32 always; for libc the UCRT and the stdio wrappers. -->
+    <AsmWriteCLibraryStub Condition="'$(_AsmOs)' == 'Windows'"
+                          Format="Def"
+                          SymbolFiles="$(AsmFoundationSdkDirectory)stubs/kernel32.symbols"
+                          LibraryName="kernel32.dll"
+                          OutputPath="$(_AsmStubToolDirectory)kernel32.def" />
+    <Exec Condition="'$(_AsmOs)' == 'Windows'"
+          Command="$(_AsmLibrarian) -def:&quot;$(_AsmStubToolDirectory)kernel32.def&quot; -machine:$(_AsmPeMachine) -out:&quot;$(_AsmStubToolDirectory)kernel32.lib&quot;" />
+    <AsmWriteCLibraryStub Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmUsesLibc)' == 'true'"
+                          Format="Def"
+                          SymbolFiles="$(AsmFoundationSdkDirectory)stubs/ucrtbase.symbols"
+                          ExtraSymbols="@(AsmLibcSymbol)"
+                          LibraryName="ucrtbase.dll"
+                          OutputPath="$(_AsmStubToolDirectory)ucrtbase.def" />
+    <Exec Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmUsesLibc)' == 'true'"
+          Command="$(_AsmLibrarian) -def:&quot;$(_AsmStubToolDirectory)ucrtbase.def&quot; -machine:$(_AsmPeMachine) -out:&quot;$(_AsmStubToolDirectory)ucrtbase.lib&quot;" />
+    <Exec Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmUsesLibc)' == 'true' and '$(_AsmArch)' == 'x64'"
+          Command="$(_AsmNasm) -f win64 $(_AsmSdkSourceWarningArguments) -o &quot;$(_AsmStubToolDirectory)winstdio.obj&quot; &quot;$(_AsmSdkStubSourceDirectory)winstdio-x64.asm&quot;" />
+    <Exec Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmUsesLibc)' == 'true' and '$(_AsmArch)' == 'arm64'"
+          Command="$(_AsmLlvmMc) --triple=$(_AsmLlvmMcTriple) --filetype=obj -o &quot;$(_AsmStubToolDirectory)winstdio.obj&quot; &quot;$(_AsmSdkStubSourceDirectory)winstdio-arm64.s&quot;" />
+    <Delete Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmUsesLibc)' == 'true'" Files="$(AsmIntermediateDirectory)stubs/asmsdk_winstdio.lib" />
+    <Exec Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmUsesLibc)' == 'true'"
+          Command="$(_AsmArchiver) rcsD $(_AsmSystemArchiveFormatArgument) &quot;$(_AsmStubToolDirectory)asmsdk_winstdio.lib&quot; &quot;$(_AsmStubToolDirectory)winstdio.obj&quot;" />
+
     <ItemGroup>
-      <FileWrites Include="$(AsmIntermediateDirectory)stubs/libc.o;$(AsmIntermediateDirectory)stubs/libc.so.6" />
+      <FileWrites Include="$(AsmIntermediateDirectory)stubs/**" />
     </ItemGroup>
   </Target>
 
   <!--
-    _AsmBuildCrt: assembles the SDK's stubs/crt1.asm, the _start of a libc executable. It calls
-    __libc_start_main(main, ...) exactly like glibc's crt1.o, so the program's entry is an
-    ordinary int main(int argc, char **argv). Skipped when StartupObject names another symbol:
-    the program then provides its own entry, and must do what crt1 does.
+    _AsmComputeSystemLibraries: the inputs and outputs of _AsmBuildSystemLibraries for this RID,
+    and the tool settings the stubs share. The SDK's own sources are always assembled with
+    llvm-mc's ARM64 triple or NASM, whichever the RID's CPU needs, so a project that has no .s
+    file still needs llvm-mc for an ARM64 libc build.
+  -->
+  <Target Name="_AsmComputeSystemLibraries" DependsOnTargets="AsmPrepare">
+    <PropertyGroup>
+      <_AsmSdkStubSourceDirectory>$(AsmFoundationSdkDirectory.Replace('\','/'))stubs/</_AsmSdkStubSourceDirectory>
+      <_AsmStubFormat Condition="'$(_AsmArch)' == 'x64'">Nasm</_AsmStubFormat>
+      <_AsmStubFormat Condition="'$(_AsmArch)' == 'arm64'">Gnu</_AsmStubFormat>
+      <_AsmStubSourceExtension Condition="'$(_AsmArch)' == 'x64'">.asm</_AsmStubSourceExtension>
+      <_AsmStubSourceExtension Condition="'$(_AsmArch)' == 'arm64'">.s</_AsmStubSourceExtension>
+      <!-- lld-link's library mode ("lib.exe"), from the same lld binary; the System toolchain
+           names it through AsmLinkerCommand, an lld-link, with -lib. -->
+      <_AsmLibrarian>$(_AsmLinker) -lib</_AsmLibrarian>
+      <!-- The archive format of this OS, for the bundled llvm-ar (see AsmLink). -->
+      <_AsmSystemArchiveFormatArgument Condition="'$(AsmToolchain)' == 'Bundled' and '$(_AsmOs)' == 'Windows'">--format=coff</_AsmSystemArchiveFormatArgument>
+      <_AsmSystemArchiveFormatArgument Condition="'$(AsmToolchain)' == 'Bundled' and '$(_AsmOs)' == 'Linux'">--format=gnu</_AsmSystemArchiveFormatArgument>
+      <!-- The macOS stub serves this RID's CPU only, as the link does. -->
+      <_AsmTbdTarget Condition="'$(_AsmArch)' == 'x64'">x86_64-macos</_AsmTbdTarget>
+      <_AsmTbdTarget Condition="'$(_AsmArch)' == 'arm64'">arm64-macos</_AsmTbdTarget>
+      <!-- The startup code of a libc executable (_AsmBuildCrt). -->
+      <_AsmCrtSource Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmArch)' == 'x64'">$(AsmFoundationSdkDirectory)stubs/crt1.asm</_AsmCrtSource>
+      <_AsmCrtSource Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmArch)' == 'arm64'">$(AsmFoundationSdkDirectory)stubs/crt1-arm64.s</_AsmCrtSource>
+      <_AsmCrtSource Condition="'$(_AsmOs)' == 'Windows'">$(AsmFoundationSdkDirectory)stubs/wincrt-$(_AsmArch)$(_AsmStubSourceExtension)</_AsmCrtSource>
+      <_AsmCrtObjectName Condition="'$(_AsmOs)' == 'Linux'">crt1.o</_AsmCrtObjectName>
+      <_AsmCrtObjectName Condition="'$(_AsmOs)' == 'Windows'">wincrt.obj</_AsmCrtObjectName>
+    </PropertyGroup>
+    <!-- The SDK's ARM64 stub and startup sources are GNU syntax: an ARM64 libc build needs
+         llvm-mc even when the project has no .s file (ASM0004, as for a project's own). -->
+    <Error Code="ASM0004"
+           Condition="'$(_AsmUsesLibc)' == 'true' and '$(_AsmArch)' == 'arm64' and '$(AsmToolchain)' == 'Bundled' and !Exists('$(_AsmLlvmMcPath)')"
+           Text="A libc build for $(_AsmRid) assembles the SDK's GNU-syntax C library stubs with llvm-mc, which $(AsmToolchainPackageId) $(AsmToolchainVersion) does not include. Use a toolchain package that has it (AsmToolchainVersion 0.2.0 or later)." />
+    <ItemGroup>
+      <_AsmSystemLibraryInput Include="$(AsmFoundationSdkDirectory)stubs/linux.symbols;$(AsmFoundationSdkDirectory)stubs/nonshared-$(_AsmArch)$(_AsmStubSourceExtension)" Condition="'$(_AsmOs)' == 'Linux'" />
+      <_AsmSystemLibraryOutput Include="$(AsmIntermediateDirectory)stubs/$(_AsmLibcStubName);$(AsmIntermediateDirectory)stubs/libasmsdk_nonshared.a" Condition="'$(_AsmOs)' == 'Linux'" />
+      <_AsmSystemLibraryInput Include="$(AsmFoundationSdkDirectory)stubs/macos.symbols" Condition="'$(_AsmOs)' == 'MacOS'" />
+      <_AsmSystemLibraryOutput Include="$(AsmIntermediateDirectory)stubs/libSystem.tbd" Condition="'$(_AsmOs)' == 'MacOS'" />
+      <_AsmSystemLibraryInput Include="$(AsmFoundationSdkDirectory)stubs/kernel32.symbols" Condition="'$(_AsmOs)' == 'Windows'" />
+      <_AsmSystemLibraryOutput Include="$(AsmIntermediateDirectory)stubs/kernel32.lib" Condition="'$(_AsmOs)' == 'Windows'" />
+      <_AsmSystemLibraryInput Include="$(AsmFoundationSdkDirectory)stubs/ucrtbase.symbols;$(AsmFoundationSdkDirectory)stubs/winstdio-$(_AsmArch)$(_AsmStubSourceExtension)" Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmUsesLibc)' == 'true'" />
+      <_AsmSystemLibraryOutput Include="$(AsmIntermediateDirectory)stubs/ucrtbase.lib;$(AsmIntermediateDirectory)stubs/asmsdk_winstdio.lib" Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmUsesLibc)' == 'true'" />
+    </ItemGroup>
+  </Target>
+
+  <!--
+    _AsmBuildCrt: assembles the startup code of a libc executable, so that the program's entry
+    is an ordinary int main(int argc, char **argv):
+      Linux    crt1.asm (x64) / crt1-arm64.s (ARM64): _start, then __libc_start_main(main, ...)
+               exactly like the C library's own crt1.o; glibc and musl take the same arguments
+      Windows  wincrt-x64.asm / wincrt-arm64.s: mainCRTStartup, over the UCRT
+    Skipped when StartupObject names another symbol: the program then provides its own entry,
+    and must do what the startup code does. macOS needs none (dyld calls main).
   -->
   <Target Name="_AsmBuildCrt"
           Condition="'$(_AsmUsesCrt)' == 'true'"
-          DependsOnTargets="AsmPrepare"
-          Inputs="$(AsmFoundationSdkDirectory)stubs/crt1.asm"
-          Outputs="$(AsmIntermediateDirectory)stubs/crt1.o">
+          DependsOnTargets="AsmPrepare;_AsmComputeSystemLibraries"
+          Inputs="$(_AsmCrtSource)"
+          Outputs="$(AsmIntermediateDirectory)stubs/$(_AsmCrtObjectName)">
     <MakeDir Directories="$(AsmIntermediateDirectory)stubs" />
-    <Exec Command="$(_AsmNasm) -f elf64 $(_AsmSdkSourceWarningArguments) -o &quot;$(_AsmStubToolDirectory)crt1.o&quot; &quot;$(AsmFoundationSdkDirectory.Replace('\','/'))stubs/crt1.asm&quot;" />
+    <Exec Condition="'$(_AsmArch)' == 'x64'"
+          Command="$(_AsmNasm) -f $(_AsmNasmFormat) $(_AsmSdkSourceWarningArguments) -o &quot;$(_AsmStubToolDirectory)$(_AsmCrtObjectName)&quot; &quot;$(_AsmCrtSource.Replace('\','/'))&quot;" />
+    <Exec Condition="'$(_AsmArch)' == 'arm64'"
+          Command="$(_AsmLlvmMc) --triple=$(_AsmLlvmMcTriple) --filetype=obj -o &quot;$(_AsmStubToolDirectory)$(_AsmCrtObjectName)&quot; &quot;$(_AsmCrtSource.Replace('\','/'))&quot;" />
     <ItemGroup>
-      <FileWrites Include="$(AsmIntermediateDirectory)stubs/crt1.o" />
+      <FileWrites Include="$(AsmIntermediateDirectory)stubs/$(_AsmCrtObjectName)" />
     </ItemGroup>
   </Target>
 
@@ -526,34 +695,32 @@
   -->
   <Target Name="AsmLink"
           Condition="'$(_AsmOutputKind)' != 'Objects'"
-          DependsOnTargets="AsmAssemble;_AsmBuildLibcStub;_AsmBuildCrt"
+          DependsOnTargets="AsmAssemble;_AsmBuildSystemLibraries;_AsmBuildCrt"
           Inputs="@(_AsmObject);@(_AsmLinkInput);$(_AsmExportsFilePath);$(MSBuildProjectFullPath)"
           Outputs="$(TargetPath);$(AsmStaticLibraryPath)">
     <!--
-      Until each OS's C library is wired (stage 3 of the 0.3.0 plan), libc builds exist for
-      glibc on x64 only. A freestanding program cannot exist on macOS at all: Apple supports no
-      static executables, and every Mach-O program is started by dyld from libSystem.
+      A freestanding program cannot exist on macOS: Apple supports no static executables, and
+      every Mach-O program is started by dyld, which requires libSystem.
     -->
     <Error Code="ASM0015" Condition="'$(_AsmOs)' == 'MacOS' and '$(_AsmOutputKind)' == 'Executable' and '$(_AsmRuntime)' != 'Libc'"
            Text="A freestanding executable cannot be built for $(_AsmRid): macOS starts every program through dyld and libSystem, and supports no static executables. Use &lt;TargetFramework&gt;libc&lt;/TargetFramework&gt; for a macOS program, or build a library." />
-    <Error Code="ASM0016" Condition="'$(_AsmRuntime)' == 'Libc' and '$(_AsmOutputKind)' != 'StaticLibrary' and '$(_AsmRid)' != 'linux-x64'"
-           Text="TargetFramework libc is not available for $(_AsmRid) yet; this build of AsmFoundation.Sdk links the C library for linux-x64 only." />
 
     <PropertyGroup>
       <!-- StartupObject is .NET's "where the program starts"; for assembly code that is the
            entry symbol. Empty means _start: the program's own, or crt1's for libc. -->
       <_AsmEntrySymbol>$([MSBuild]::ValueOrDefault('$(StartupObject)', '_start'))</_AsmEntrySymbol>
+      <!-- A Windows libc program starts in the SDK's mainCRTStartup (wincrt), which calls main. -->
+      <_AsmEntrySymbol Condition="'$(_AsmUsesCrt)' == 'true' and '$(_AsmOs)' == 'Windows'">mainCRTStartup</_AsmEntrySymbol>
 
       <!-- ELF (ld.lld): a non-executable stack and a build id derived from the content, so
            identical inputs give identical outputs. -->
       <_AsmCommonLinkArguments Condition="'$(_AsmOs)' == 'Linux'">-z noexecstack --build-id=sha1 $(_AsmExportsFileArgument) $(_AsmLinkerArgArguments)</_AsmCommonLinkArguments>
       <_AsmEntryArgument Condition="'$(_AsmOs)' == 'Linux'">-e $(_AsmEntrySymbol)</_AsmEntryArgument>
 
-      <!-- PE/COFF (lld-link): no default libraries (the SDK names every input), the machine,
-           and -Brepro, which derives the timestamp from the content, like the build id. A PDB
-           when debug symbols are on (NASM wrote CodeView into the objects). -->
-      <_AsmPeMachine Condition="'$(_AsmArch)' == 'arm64'">arm64</_AsmPeMachine>
-      <_AsmPeMachine Condition="'$(_AsmPeMachine)' == ''">x64</_AsmPeMachine>
+      <!-- PE/COFF (lld-link): no default libraries (the SDK names every input, kernel32 and the
+           UCRT included), the machine (_AsmPeMachine, set with the RID), and -Brepro, which
+           derives the timestamp from the content, like the build id. A PDB when debug symbols
+           are on (NASM wrote CodeView into the objects). -->
       <_AsmCommonLinkArguments Condition="'$(_AsmOs)' == 'Windows'">-nodefaultlib -machine:$(_AsmPeMachine) -Brepro $(_AsmExportsFileArgument) $(_AsmLinkerArgArguments)</_AsmCommonLinkArguments>
       <_AsmCommonLinkArguments Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmDebugSymbols)' == 'true'">-debug $(_AsmCommonLinkArguments)</_AsmCommonLinkArguments>
       <_AsmEntryArgument Condition="'$(_AsmOs)' == 'Windows'">-entry:$(_AsmEntrySymbol)</_AsmEntryArgument>
@@ -564,6 +731,9 @@
       <_AsmMachOArch Condition="'$(_AsmArch)' == 'arm64'">arm64</_AsmMachOArch>
       <_AsmMachOArch Condition="'$(_AsmMachOArch)' == ''">x86_64</_AsmMachOArch>
       <_AsmCommonLinkArguments Condition="'$(_AsmOs)' == 'MacOS'">-arch $(_AsmMachOArch) -platform_version macos $(AsmMacOSMinimumVersion) $(AsmMacOSMinimumVersion) $(_AsmExportsFileArgument) $(_AsmLinkerArgArguments)</_AsmCommonLinkArguments>
+      <!-- A Mach-O program starts at _main through LC_MAIN, ld64.lld's default; StartupObject
+           names another C symbol (Mach-O adds the underscore). -->
+      <_AsmEntryArgument Condition="'$(_AsmOs)' == 'MacOS' and '$(StartupObject)' != ''">-e _$(StartupObject)</_AsmEntryArgument>
 
       <!-- Static archives in each OS's own format: COFF archives for lld-link, Darwin archives
            (BSD with a sorted symbol table) for ld64.lld, GNU archives for ld.lld. The format
@@ -590,15 +760,21 @@
     <!-- Windows (PE/COFF). A DLL has no entry point of its own (-noentry: nothing to run when
          it loads), and its import library goes next to it, for native consumers. -->
     <Exec Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmOutputKind)' == 'SharedLibrary'"
-          Command="$(_AsmLinker) -dll -noentry -out:$(_AsmTargetPathArgument) -implib:&quot;$(AsmImportLibraryPath.Replace('\','/'))&quot; $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmCommonLinkArguments)" />
+          Command="$(_AsmLinker) -dll -noentry -out:$(_AsmTargetPathArgument) -implib:&quot;$(AsmImportLibraryPath.Replace('\','/'))&quot; $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmLibcArguments) $(_AsmSystemLibraryArguments) $(_AsmCommonLinkArguments)" />
 
-    <Exec Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmOutputKind)' == 'Executable' and '$(_AsmRuntime)' != 'Libc'"
-          Command="$(_AsmLinker) -subsystem:console $(_AsmEntryArgument) -out:$(_AsmTargetPathArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmCommonLinkArguments)" />
+    <!-- A console program, freestanding (entry _start or StartupObject; kernel32 for I/O) or
+         libc (entry mainCRTStartup, from the SDK's wincrt). -->
+    <Exec Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmOutputKind)' == 'Executable'"
+          Command="$(_AsmLinker) -subsystem:console $(_AsmEntryArgument) -out:$(_AsmTargetPathArgument) $(_AsmCrtArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmLibcArguments) $(_AsmSystemLibraryArguments) $(_AsmCommonLinkArguments)" />
 
     <!-- macOS (Mach-O). @rpath in the install name: a program that links the dylib finds it
          through its own run paths, the convention for libraries shipped with an app. -->
     <Exec Condition="'$(_AsmOs)' == 'MacOS' and '$(_AsmOutputKind)' == 'SharedLibrary'"
-          Command="$(_AsmLinker) -dylib -install_name @rpath/$(TargetFileName) -o $(_AsmTargetPathArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmCommonLinkArguments)" />
+          Command="$(_AsmLinker) -dylib -install_name @rpath/$(TargetFileName) -o $(_AsmTargetPathArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmLibcArguments) $(_AsmCommonLinkArguments)" />
+
+    <!-- A program (libc only, ASM0015 above): dyld loads libSystem and calls main. -->
+    <Exec Condition="'$(_AsmOs)' == 'MacOS' and '$(_AsmOutputKind)' == 'Executable'"
+          Command="$(_AsmLinker) -execute $(_AsmEntryArgument) -o $(_AsmTargetPathArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmLibcArguments) $(_AsmCommonLinkArguments)" />
 
     <Delete Condition="'$(AsmStaticLibraryPath)' != ''" Files="$(AsmStaticLibraryPath)" />
     <Exec Condition="'$(AsmStaticLibraryPath)' != ''"

@@ -40,6 +40,10 @@
 //                      function of this module, of a static library, or of
 //                      the C library.
 // TAILCALL name        The same as a jump: b (ARM64) or jmp (x86-64).
+// RODATA               Switches to read-only data, whose section each format
+//                      names differently: .rodata (ELF), .rdata (COFF),
+//                      __TEXT,__const (Mach-O, where ".section .rodata" is an
+//                      error). .data and .bss are the same on all three.
 // ADDRESS reg, label   Puts the address of a label of THIS file (a data table,
 //                      or a function declared with FUNCTION or LOCAL_FUNCTION)
 //                      in reg, position-independently: adrp + add on ARM64,
@@ -149,6 +153,20 @@ _\name:
 .ifndef WINDOWS
 .ifndef MACOS
     .size \name, . - \name
+.endif
+.endif
+.endm
+
+// ---- Sections ----------------------------------------------------------------------
+.macro RODATA
+.ifdef MACOS
+    .section __TEXT,__const
+.else
+.ifdef WINDOWS
+    // "dr": initialized data, read-only, as MSVC's .rdata.
+    .section .rdata,"dr"
+.else
+    .section .rodata
 .endif
 .endif
 .endm

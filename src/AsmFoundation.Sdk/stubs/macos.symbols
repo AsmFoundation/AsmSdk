@@ -1,0 +1,95 @@
+# macos.symbols - the C library names of the SDK's link-time stand-in for libSystem
+# (TargetFramework=libc on osx-x64 and osx-arm64).
+#
+# The SDK writes a text-based stub (a .tbd, the format of Apple's own SDK stubs) from this list,
+# install name /usr/lib/libSystem.B.dylib, with Mach-O's leading underscore added to every C
+# name, and ld64.lld links against it. At run time dyld binds each name in the real libSystem,
+# which re-exports libsystem_c, libsystem_kernel, libsystem_pthread and the rest.
+#
+# Format: one C name per line, several per line separated by spaces, "#" comments;
+# "data <name> <size>" for a data object (the size matters only to ELF stubs); "raw <name>"
+# for a symbol taken as written, without the underscore.
+#
+# Footguns (macOS's C library is not glibc):
+#   - errno is __error(), not __errno_location(); stdin/stdout/stderr are the data objects
+#     __stdinp/__stdoutp/__stderrp; assert() calls __assert_rtn; the environment of a dynamic
+#     library comes from _NSGetEnviron() (environ itself exists for executables only).
+#   - On osx-x64, stat, fstat, lstat and fstatat are the old 32-bit-inode versions: Apple's
+#     headers redirect C code to stat$INODE64 and friends, which a .s or .asm file must name
+#     itself (raw entries here would be "_stat$INODE64"). osx-arm64 has one version only.
+#   - pthread_setname_np takes one argument (the calling thread's name); there are no
+#     pthread spinlocks or barriers, no epoll (kqueue/kevent instead), no sigwaitinfo.
+#   - A name missing here fails the link with "undefined symbol": add it with
+#     <AsmLibcSymbol Include="name" /> (a C name; the underscore is added).
+# Not verified on a Mac yet: the CI's macOS runners run the libc tests.
+
+# Process start and exit
+exit _exit abort atexit __cxa_atexit __cxa_finalize __stack_chk_fail __assert_rtn __error
+data __stack_chk_guard 8
+
+# Memory
+malloc free calloc realloc reallocf aligned_alloc posix_memalign valloc malloc_size
+
+# Strings and memory blocks
+memcpy memmove memset memcmp memchr strlen strnlen strcmp strncmp strcasecmp strncasecmp
+strcpy strncpy stpcpy strlcpy strlcat strcat strncat strchr strrchr strstr strdup strndup
+strerror strerror_r strtok_r strspn strcspn strtol strtoul strtoll strtoull strtod strtof
+atoi atol atoll
+
+# Standard I/O
+printf fprintf sprintf snprintf dprintf vprintf vfprintf vsprintf vsnprintf vdprintf
+puts fputs fputc putc putchar fwrite fread fopen fdopen fclose fflush fgets fgetc getc
+getchar getline perror setvbuf fileno sscanf
+data __stdinp 8
+data __stdoutp 8
+data __stderrp 8
+
+# Environment, sorting, randomness
+getenv setenv unsetenv qsort bsearch rand srand random srandom getentropy
+arc4random arc4random_buf arc4random_uniform _NSGetEnviron _NSGetArgc _NSGetArgv
+
+# Time
+clock_gettime clock_gettime_nsec_np clock_getres nanosleep usleep sleep gettimeofday time
+localtime_r gmtime_r strftime mach_absolute_time mach_timebase_info
+
+# Threads
+pthread_create pthread_join pthread_detach pthread_self pthread_exit pthread_equal pthread_kill
+pthread_sigmask pthread_once pthread_yield_np pthread_setname_np pthread_getname_np
+pthread_threadid_np pthread_attr_init pthread_attr_destroy pthread_attr_setstacksize
+pthread_attr_setdetachstate pthread_mutex_init pthread_mutex_destroy pthread_mutex_lock
+pthread_mutex_trylock pthread_mutex_unlock pthread_mutexattr_init pthread_mutexattr_destroy
+pthread_mutexattr_settype pthread_cond_init pthread_cond_destroy pthread_cond_wait
+pthread_cond_timedwait pthread_cond_signal pthread_cond_broadcast pthread_rwlock_init
+pthread_rwlock_destroy pthread_rwlock_rdlock pthread_rwlock_wrlock pthread_rwlock_unlock
+pthread_key_create pthread_key_delete pthread_getspecific pthread_setspecific
+os_unfair_lock_lock os_unfair_lock_unlock os_unfair_lock_trylock
+
+# Signals
+signal sigaction sigemptyset sigfillset sigaddset sigdelset sigismember sigprocmask sigwait
+raise kill
+
+# Scheduling and system information
+sched_yield sysconf getpagesize uname sysctl sysctlbyname
+
+# Files and descriptors
+open openat close read write pread pwrite readv writev lseek fstat stat lstat fstatat
+ftruncate fsync unlink unlinkat mkdir rmdir rename access dup dup2 pipe fcntl ioctl isatty
+mmap munmap mprotect madvise msync mlock munlock
+
+# Sockets and name resolution
+socket socketpair bind listen accept connect shutdown send sendto sendmsg recv recvfrom
+recvmsg setsockopt getsockopt getsockname getpeername getaddrinfo freeaddrinfo gai_strerror
+inet_pton inet_ntop
+
+# Event notification
+poll select kqueue kevent kevent64
+
+# Processes and identity
+getpid getppid fork vfork execve execvp waitpid wait getuid geteuid getgid getegid
+getrlimit setrlimit getrusage
+
+# Dynamic loading
+dlopen dlsym dlclose dlerror dladdr
+
+# The lazy-binding helper ld64.lld references for x86_64 stubs (libdyld, through libSystem).
+raw dyld_stub_binder

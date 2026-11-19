@@ -1,0 +1,101 @@
+# linux.symbols - the C library names of the SDK's link-time stand-in for glibc and musl
+# (TargetFramework=libc on linux-x64, linux-arm64 and linux-musl-x64).
+#
+# The SDK writes a stub shared library from this list (AsmWriteCLibraryStub: NASM for x64,
+# GNU syntax for ARM64), named libc.so.6 for glibc or libc.musl-x86_64.so.1 for musl, and
+# links the project against it. The project gets DT_NEEDED on that name, PLT/GOT entries for
+# the functions it calls and copy relocations for the data objects it reads; nothing in the
+# stub ever runs, the real C library supplies every symbol at run time.
+#
+# Format: one function name per line, several per line separated by spaces, "#" comments;
+# "data <name> <size>" for a data object (a copy relocation copies exactly <size> bytes, so it
+# must equal the C library's: the four below are pointers in glibc and musl alike).
+#
+# One list serves both C libraries. A name only one of them has (gettid, secure_getenv and
+# the epoll family are glibc's and musl's both; get_nprocs and pthread_yield are glibc's) is
+# harmless in the other until a program calls it: the program then fails to start there,
+# with the loader naming the symbol (the SDK links with -z now). Names missing here fail the
+# link with "undefined symbol": add them with <AsmLibcSymbol Include="name" />.
+#
+# Footguns:
+#   - Symbols are unversioned. At run time an unversioned reference binds to glibc's default
+#     version of the symbol (memcpy@@GLIBC_2.14, not the old memmove-like memcpy@GLIBC_2.2.5),
+#     which is what a C program compiled today would use.
+#   - pthread_* and dl* live in libc.so.6 since glibc 2.34, so libc programs need glibc 2.34 or
+#     later (Ubuntu 22.04+, Debian 12+, RHEL 9+). musl has always had them in libc.
+
+# Process start and exit
+__libc_start_main __cxa_finalize __cxa_atexit atexit exit _exit abort __stack_chk_fail
+__assert_fail __errno_location __sched_cpucount
+
+# Memory
+malloc free calloc realloc reallocarray aligned_alloc posix_memalign memalign
+valloc malloc_usable_size
+
+# Strings and memory blocks
+memcpy memmove memset memcmp memchr memrchr mempcpy strlen
+strnlen strcmp strncmp strcasecmp strncasecmp strcpy strncpy stpcpy
+strcat strncat strchr strrchr strstr strdup strndup strerror
+strerror_r strtok_r strspn strcspn strtol strtoul strtoll strtoull
+strtod strtof atoi atol atoll
+
+# Standard I/O
+printf fprintf sprintf snprintf dprintf vprintf vfprintf vsprintf
+vsnprintf vdprintf puts fputs fputc putc putchar fwrite
+fread fopen fdopen fclose fflush fgets fgetc getc
+getchar getline perror setvbuf fileno sscanf
+
+# Environment, sorting, randomness
+getenv secure_getenv setenv unsetenv qsort bsearch rand srand
+random srandom getrandom getentropy
+
+# Time
+clock_gettime clock_getres clock_nanosleep nanosleep usleep sleep gettimeofday time
+localtime_r gmtime_r strftime
+
+# Threads (in libc.so.6 since glibc 2.34)
+pthread_create pthread_join pthread_detach pthread_self pthread_exit pthread_equal pthread_kill pthread_sigmask
+pthread_once pthread_yield pthread_setname_np pthread_getname_np pthread_attr_init pthread_attr_destroy pthread_attr_setstacksize pthread_attr_setdetachstate
+pthread_attr_setaffinity_np pthread_setaffinity_np pthread_getaffinity_np pthread_mutex_init pthread_mutex_destroy pthread_mutex_lock pthread_mutex_trylock pthread_mutex_unlock
+pthread_mutexattr_init pthread_mutexattr_destroy pthread_mutexattr_settype pthread_cond_init pthread_cond_destroy pthread_cond_wait pthread_cond_timedwait pthread_cond_signal
+pthread_cond_broadcast pthread_rwlock_init pthread_rwlock_destroy pthread_rwlock_rdlock pthread_rwlock_wrlock pthread_rwlock_unlock pthread_spin_init pthread_spin_destroy
+pthread_spin_lock pthread_spin_trylock pthread_spin_unlock pthread_key_create pthread_key_delete pthread_getspecific pthread_setspecific pthread_barrier_init
+pthread_barrier_destroy pthread_barrier_wait
+
+# Signals
+signal sigaction sigemptyset sigfillset sigaddset sigdelset sigismember sigprocmask
+sigwaitinfo sigtimedwait sigwait raise kill
+
+# Scheduling and system information
+sched_yield sched_getaffinity sched_setaffinity sched_getcpu get_nprocs get_nprocs_conf sysconf getpagesize
+uname prctl syscall
+
+# Files and descriptors
+open openat close read write pread pwrite readv
+writev lseek fstat stat lstat fstatat ftruncate fsync
+fdatasync unlink unlinkat mkdir rmdir rename access dup
+dup2 dup3 pipe pipe2 fcntl ioctl isatty mmap
+munmap mprotect madvise mremap msync mlock munlock memfd_create
+
+# Sockets and name resolution
+socket socketpair bind listen accept accept4 connect shutdown
+send sendto sendmsg sendmmsg recv recvfrom recvmsg recvmmsg
+setsockopt getsockopt getsockname getpeername getaddrinfo freeaddrinfo gai_strerror inet_pton
+inet_ntop htons ntohs htonl ntohl
+
+# Event notification
+epoll_create epoll_create1 epoll_ctl epoll_wait epoll_pwait poll ppoll select
+pselect eventfd eventfd_read eventfd_write timerfd_create timerfd_settime timerfd_gettime signalfd
+
+# Processes and identity
+getpid getppid gettid fork vfork execve execvp waitpid
+wait getuid geteuid getgid getegid getrlimit setrlimit getrusage
+
+# Dynamic loading (in libc.so.6 since glibc 2.34)
+dlopen dlsym dlclose dlerror dladdr dl_iterate_phdr
+
+# Data objects
+data stdin 8
+data stdout 8
+data stderr 8
+data environ 8

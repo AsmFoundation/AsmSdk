@@ -40,7 +40,9 @@
   <ItemGroup>
     <None Include="Sdk/Sdk.props;Sdk/Sdk.targets" Pack="true" PackagePath="Sdk/" />
     <None Include="targets/*.targets" Pack="true" PackagePath="targets/" />
-    <None Include="stubs/*.asm" Pack="true" PackagePath="stubs/" />
+    <!-- stubs/: the startup code and support sources (.asm for x64, .s for ARM64) and the symbol
+         lists the C library stand-ins are written from (*.symbols). -->
+    <None Include="stubs/*.asm;stubs/*.s;stubs/*.symbols" Pack="true" PackagePath="stubs/" />
     <!-- include/: asmsdk.inc and its GNU-syntax counterpart; every asm project searches it last. -->
     <None Include="include/*.inc" Pack="true" PackagePath="include/" />
     <None Include="buildTransitive/*.targets" Pack="true" PackagePath="buildTransitive/" />

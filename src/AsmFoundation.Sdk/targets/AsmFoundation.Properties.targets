@@ -36,16 +36,20 @@
   <PropertyGroup>
     <!--
       TargetFramework names what the code is built to run on, the way net10.0 names .NET 10:
-        freestanding - the code links no C library and imports nothing: a shared library that
-                       needs nothing where it loads (no DT_NEEDED, no DLL imports), or a static
-                       executable entered at _start that makes its own system calls (Linux),
-                       or returns its exit code (Windows). macOS has no such executables
-                       (ASM0015). The default.
-        libc         - the code links the platform's C library: on linux-x64 a
-                       position-independent executable that the SDK's crt1 enters at main,
-                       or a shared library with DT_NEEDED libc.so.6 (glibc 2.34 or later).
-                       The other RIDs' C libraries come in stage 3 of the 0.3.0 plan
-                       (ASM0016 until then).
+        freestanding - the code links no C library: a shared library that needs nothing where
+                       it loads (no DT_NEEDED; on Windows kernel32 at most), or an executable
+                       entered at _start that makes its own system calls (Linux, static) or
+                       calls kernel32 (Windows, whose system call numbers are not stable).
+                       macOS has no such executables (ASM0015). The default.
+        libc         - the code links the platform's C library, and an executable is an
+                       ordinary main(argc, argv) that the SDK's startup code enters:
+                         Linux    glibc 2.34+ (libc.so.6; x64 and ARM64) or musl
+                                  (libc.musl-x86_64.so.1), a PIE with the C library's loader
+                         macOS    libSystem, started by dyld through LC_MAIN
+                         Windows  the Universal C Runtime (ucrtbase.dll, Windows 10+), with
+                                  the printf family and atexit from the SDK's wrappers
+                       The SDK links against stand-ins it writes itself (see
+                       _AsmBuildSystemLibraries), so any build machine builds any RID.
       TargetFrameworks="freestanding;libc" builds the project once per name, into
       bin/<Configuration>/<name>/<rid>/, exactly like a multi-targeted .csproj built per RID.
 
@@ -429,7 +433,7 @@
           BeforeTargets="_CheckForInvalidConfigurationAndPlatform;Restore;CollectPackageReferences">
     <Error Code="ASM0003"
            Condition="'$(TargetFramework)' != '' and '$(_AsmRuntime)' == ''"
-           Text="TargetFramework '$(TargetFramework)' is not an AsmSdk target framework. Use freestanding (the code makes its own system calls; the default) or libc (the code links glibc), or TargetFrameworks=freestanding;libc to build both." />
+           Text="TargetFramework '$(TargetFramework)' is not an AsmSdk target framework. Use freestanding (no C library; the default) or libc (the code links the platform's C library: glibc or musl, libSystem, the UCRT), or TargetFrameworks=freestanding;libc to build both." />
     <Error Code="ASM0006"
            Condition="'$(AsmToolchain)' == 'Bundled' and '$(AsmToolchainDirectory)' == '' and '$(_AsmHostHasBundledToolchain)' != 'true'"
            Text="There is no bundled toolchain for $(AsmHostRid) build machines: LLVM publishes no release binaries for Intel Macs, and its Linux binaries need glibc. Build with &lt;AsmToolchain&gt;System&lt;/AsmToolchain&gt; and the system's nasm, llvm-mc, lld and llvm-ar (Homebrew: nasm llvm lld; Alpine: nasm llvm lld), or set AsmHostRid to a supported machine whose tools run here: win-x64, win-arm64, linux-x64, linux-arm64 or osx-arm64." />
