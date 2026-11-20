@@ -22,14 +22,36 @@
 
     Global properties that only make sense for the .NET app (self-contained, AOT, trimming,
     single file) are not passed on to the asm project: it builds native code either way, and
-    Microsoft.NET.Sdk would act on them for its netstandard target framework.
+    Microsoft.NET.Sdk would act on them for its netstandard target framework. Neither is the
+    app's output folder (dotnet build -o, -p:OutDir): the asm projects build into their own
+    bin/ folders, and the app's folder gets the copies it needs.
+
+    Two more things make the asm libraries behave like a package's native files:
+      A .NET class library between the app and the asm project (app -> library -> .asmproj)
+        is RID-agnostic, so it is built portable even for a RID-specific app, and hands every
+        RID's runtimes/<rid>/native/ copy on to the app through GetCopyToOutputDirectoryItems.
+        A RID-specific app needs none of them: the asm project reaches it as a transitive
+        ProjectReference too, built for its RID and copied flat. Those runtimes/ copies are
+        dropped from its build and publish output, as NuGet leaves out other RIDs' assets
+        (_AsmDropPortableNativeCopies, _AsmPrepareNativePublishAssets).
+      dotnet publish marks the asm libraries AssetType=native, as NuGet marks a package's
+        native files. The .NET SDK's single-file bundling decides by that metadata, which
+        GetCopyToPublishDirectoryItems does not carry over: without it a libfoo.so or
+        libfoo.dylib counted as unknown content (never bundled, even with
+        IncludeNativeLibrariesForSelfExtract), and a foo.dll as an assembly the bundler then
+        refused (NETSDK1236, and the file was neither bundled nor copied).
   -->
 
   <PropertyGroup Condition="'$(UsingAsmFoundationSdk)' != 'true'">
     <_AsmConsumerTasksAssembly>$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', '..', 'tasks', 'netstandard2.0', 'AsmFoundation.Sdk.Tasks.dll'))</_AsmConsumerTasksAssembly>
     <!-- Every RID AsmSdk builds: what a RID-less asm project can be built for. -->
     <_AsmConsumerSupportedRuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;osx-x64;osx-arm64</_AsmConsumerSupportedRuntimeIdentifiers>
-    <_AsmConsumerPropertiesToRemove>SelfContained;PublishAot;PublishTrimmed;PublishSingleFile;PublishReadyToRun;_IsPublishing</_AsmConsumerPropertiesToRemove>
+    <!-- The app's publish switches, and its output folder: OutputPath and
+         _CommandLineDefinedOutputPath from dotnet build -o, OutDir from -p:OutDir. A global
+         output folder made every RID of a portable asm build write into the app's folder, one
+         RID's static library overwriting another's ("machine type x64 conflicts with arm64",
+         measured with dotnet build -r linux-x64 -o through a .NET class library). -->
+    <_AsmConsumerPropertiesToRemove>SelfContained;PublishAot;PublishTrimmed;PublishSingleFile;PublishReadyToRun;_IsPublishing;OutputPath;OutDir;_CommandLineDefinedOutputPath</_AsmConsumerPropertiesToRemove>
   </PropertyGroup>
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmSelectRuntimeIdentifier" AssemblyFile="$(_AsmConsumerTasksAssembly)" Condition="'$(UsingAsmFoundationSdk)' != 'true'" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmAddNativeAssetsToDepsFile" AssemblyFile="$(_AsmConsumerTasksAssembly)" Condition="'$(UsingAsmFoundationSdk)' != 'true'" />
@@ -64,6 +86,7 @@
       <_AsmReferenceProperties />
       <_AsmReferenceKind />
       <_AsmReferenceRids />
+      <_AsmPortableQueryProperties />
     </PropertyGroup>
 
     <!-- What the asm project produces and declares, asked without this project's RID (see
@@ -116,6 +139,29 @@
       <_AsmReferenceAdditionalProperties Condition="'$(_AsmReferenceProperties)' != '' and '%(_AsmProjectReference.AdditionalProperties)' == ''">$(_AsmReferenceProperties)</_AsmReferenceAdditionalProperties>
       <_AsmReferenceGlobalPropertiesToRemove>%(_AsmProjectReference.GlobalPropertiesToRemove);$(_AsmConsumerPropertiesToRemove)</_AsmReferenceGlobalPropertiesToRemove>
     </PropertyGroup>
+
+    <!--
+      RID-specific build: where the reference's PORTABLE layout puts each RID's library
+      (runtimes/<rid>/native/<file>, the RelativePath of each GetAsmNativeRuntimeAssets item),
+      so that copies headed there can be dropped (_AsmComputePortableNativeDestinations). They
+      come from a RID-agnostic .NET library between this project and the asm project, which is
+      built portable. Asked of the RID outer build, without this project's RID or the
+      properties removed above, which leaves the global properties such a library's own call
+      usually has, so MSBuild usually hands back that call's results (and otherwise evaluates
+      the project again: the paths are the same). A reference that declares no RIDs is asked
+      for every RID AsmSdk builds: the most a portable build of it can have produced. Paths
+      only: GetAsmNativeRuntimeAssets builds nothing, so this costs evaluations, never a link.
+    -->
+    <PropertyGroup Condition="'$(_AsmReferenceKind)' == 'SharedLibrary' and '$(RuntimeIdentifier)' != '' and '$(_AsmReferenceRids)' == ''">
+      <_AsmPortableQueryProperties>AsmRequestedRuntimeIdentifiers=$(_AsmConsumerSupportedRuntimeIdentifiers.Replace(';', ','))</_AsmPortableQueryProperties>
+    </PropertyGroup>
+    <MSBuild Condition="'$(_AsmReferenceKind)' == 'SharedLibrary' and '$(RuntimeIdentifier)' != ''"
+             Projects="@(_AsmProjectReference)"
+             Targets="GetAsmNativeRuntimeAssets"
+             Properties="%(_AsmProjectReference.SetConfiguration);%(_AsmProjectReference.SetPlatform);%(_AsmProjectReference.SetTargetFramework);$(_AsmPortableQueryProperties)"
+             RemoveProperties="RuntimeIdentifier;$(_AsmConsumerPropertiesToRemove);%(_AsmProjectReference.GlobalPropertiesToRemove)">
+      <Output TaskParameter="TargetOutputs" ItemName="_AsmPortableNativeAsset" />
+    </MSBuild>
 
     <!-- Replaced, not modified: the item goes back with the new metadata (at the end of the
          list, which changes nothing but the order references are visited in). -->
@@ -177,5 +223,84 @@
                                   DepsFilePath="$(PublishDepsFilePath)"
                                   NativeAssets="@(_AsmNativeRuntimeAssetForDeps)"
                                   MainAssemblyFileName="$(TargetFileName)" />
+  </Target>
+
+  <!--
+    _AsmComputePortableNativeDestinations (RID-specific builds): every path the asm
+    references' portable layout uses, from the query in _AsmConfigureEachAsmProjectReference,
+    plus the PDB beside each Windows library (GetAsmNativeRuntimeAssets lists a PDB only once
+    it exists, and the query runs before anything is built). Each item names its path twice:
+    TargetPath, which the build's copy lists match on, and RelativePath, which publish's
+    ResolvedFileToPublish matches on. The item's own name is only a key.
+  -->
+  <Target Name="_AsmComputePortableNativeDestinations"
+          Condition="'$(UsingAsmFoundationSdk)' != 'true' and '$(RuntimeIdentifier)' != '' and '@(_AsmPortableNativeAsset)' != ''">
+    <ItemGroup>
+      <_AsmPortableNativeDestination Include="%(_AsmPortableNativeAsset.RelativePath)" TargetPath="%(_AsmPortableNativeAsset.RelativePath)" RelativePath="%(_AsmPortableNativeAsset.RelativePath)" />
+      <_AsmPortableNativeDestination Include="$([System.IO.Path]::ChangeExtension('%(_AsmPortableNativeAsset.RelativePath)', '.pdb'))"
+                                     TargetPath="$([System.IO.Path]::ChangeExtension('%(_AsmPortableNativeAsset.RelativePath)', '.pdb'))"
+                                     RelativePath="$([System.IO.Path]::ChangeExtension('%(_AsmPortableNativeAsset.RelativePath)', '.pdb'))"
+                                     Condition="'%(_AsmPortableNativeAsset.Extension)' == '.dll'" />
+    </ItemGroup>
+  </Target>
+
+  <!--
+    _AsmDropPortableNativeCopies: a RID-specific build copies no runtimes/<rid>/native/ file of
+    an asm reference. A RID-agnostic .NET library in between hands every RID's copy on (see the
+    top of this file), and they landed in the app's output beside the flat library its own
+    reference copies: 11 dead files for a seven-RID library and a four-RID one (measured), the
+    Windows and macOS ones in a Linux container image too, and NETSDK1236 in a single-file
+    publish. Matched by destination (TargetPath), not by file: the flat copy of the app's own
+    RID is the same file, and must stay.
+    After GetCopyToOutputDirectoryItems, which fills the copy lists that the copy step
+    (_CopyOutOfDateSourceItemsToOutputDirectory and its Always and IfDifferent variants) reads
+    next. Footgun: what GetCopyToOutputDirectoryItems returns to a project that references this
+    one was computed before this target runs and still names them; such a project drops them
+    itself when it is RID-specific (it sees the asm references transitively too).
+  -->
+  <Target Name="_AsmDropPortableNativeCopies"
+          AfterTargets="GetCopyToOutputDirectoryItems"
+          DependsOnTargets="_AsmComputePortableNativeDestinations"
+          Condition="'$(UsingAsmFoundationSdk)' != 'true' and '$(RuntimeIdentifier)' != ''">
+    <ItemGroup Condition="'@(_AsmPortableNativeDestination)' != ''">
+      <_SourceItemsToCopyToOutputDirectory Remove="@(_AsmPortableNativeDestination)" MatchOnMetadata="TargetPath" MatchOnMetadataOptions="PathLike" />
+      <_SourceItemsToCopyToOutputDirectoryAlways Remove="@(_AsmPortableNativeDestination)" MatchOnMetadata="TargetPath" MatchOnMetadataOptions="PathLike" />
+      <_SourceItemsToCopyToOutputDirectoryIfDifferent Remove="@(_AsmPortableNativeDestination)" MatchOnMetadata="TargetPath" MatchOnMetadataOptions="PathLike" />
+      <AllItemsFullPathWithTargetPath Remove="@(_AsmPortableNativeDestination)" MatchOnMetadata="TargetPath" MatchOnMetadataOptions="PathLike" />
+    </ItemGroup>
+  </Target>
+
+  <!--
+    _AsmPrepareNativePublishAssets: the publish list as NuGet would make it for a package with
+    native files, before anything reads it (single-file bundling, the copy, containers):
+      RID-specific publish: no runtimes/<rid>/native/ copy of an asm reference (as
+        _AsmDropPortableNativeCopies, by RelativePath, which publish names the destination).
+      Every publish: each asm library (not its PDB) gets AssetType=native, the metadata the
+        .NET SDK's single-file step classifies by (_ComputeFilesToBundle). Measured with the
+        .NET 11 SDK before this: -p:PublishSingleFile=true on win-x64 published a program
+        whose qamath.dll was neither in the bundle nor beside it (NETSDK1236, and
+        DllNotFoundException at run time), and on Linux IncludeNativeLibrariesForSelfExtract
+        left libqamath.so outside the bundle. Now a native library stays beside the bundle,
+        as a NuGet package's does, unless IncludeNativeLibrariesForSelfExtract puts it inside.
+    The asm libraries are known by file (the app's own references' builds, from
+    _AsmCollectNativeRuntimeAssets): identity matching through Include/Exclude, then each one
+    is replaced by itself with the metadata added (Update does not work inside targets).
+  -->
+  <Target Name="_AsmPrepareNativePublishAssets"
+          AfterTargets="ComputeResolvedFilesToPublishList"
+          DependsOnTargets="_AsmComputePortableNativeDestinations;_AsmCollectNativeRuntimeAssets"
+          Condition="'$(UsingAsmFoundationSdk)' != 'true'">
+    <ItemGroup Condition="'$(RuntimeIdentifier)' != '' and '@(_AsmPortableNativeDestination)' != ''">
+      <ResolvedFileToPublish Remove="@(_AsmPortableNativeDestination)" MatchOnMetadata="RelativePath" MatchOnMetadataOptions="PathLike" />
+    </ItemGroup>
+    <ItemGroup Condition="'@(_AsmNativeRuntimeAssetForDeps)' != ''">
+      <!-- Everything that is not an asm library, then everything else: the asm libraries. -->
+      <_AsmPublishedOther Include="@(ResolvedFileToPublish)" Exclude="@(_AsmNativeRuntimeAssetForDeps)" />
+      <_AsmPublishedNative Include="@(ResolvedFileToPublish)" Exclude="@(_AsmPublishedOther)" />
+      <ResolvedFileToPublish Remove="@(_AsmPublishedNative)" />
+      <ResolvedFileToPublish Include="@(_AsmPublishedNative)" AssetType="native" />
+      <_AsmPublishedOther Remove="@(_AsmPublishedOther)" />
+      <_AsmPublishedNative Remove="@(_AsmPublishedNative)" />
+    </ItemGroup>
   </Target>
 </Project>

@@ -24,15 +24,15 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
     public static readonly TheoryData<string> AllRids =
         ["win-x64", "win-arm64", "linux-x64", "linux-arm64", "linux-musl-x64", "osx-x64", "osx-arm64"];
 
-    /// <summary>What Everywhere's ew_platform() returns per RID (see Everywhere.asmproj).</summary>
-    private static readonly Dictionary<string, int> PlatformCode = new()
+    /// <summary>What Everywhere's ew_platform() returns per RID (see Everywhere.asmproj); also the .NET program tests' expectation.</summary>
+    internal static readonly Dictionary<string, int> PlatformCode = new()
     {
         ["win-x64"] = 1, ["win-arm64"] = 2, ["linux-x64"] = 3, ["linux-arm64"] = 4,
         ["linux-musl-x64"] = 5, ["osx-x64"] = 6, ["osx-arm64"] = 7,
     };
 
     /// <summary>What ew_os() returns per RID: 100 + the osname() variant its qualifier picked.</summary>
-    private static readonly Dictionary<string, int> OsNameCode = new()
+    internal static readonly Dictionary<string, int> OsNameCode = new()
     {
         ["win-x64"] = 111, ["win-arm64"] = 121, ["linux-x64"] = 112, ["linux-arm64"] = 120,
         ["linux-musl-x64"] = 113, ["osx-x64"] = 110, ["osx-arm64"] = 120,
@@ -47,7 +47,7 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
     };
 
     /// <summary>llvm-readobj's "Format:" line per RID.</summary>
-    private static readonly Dictionary<string, string> Format = new()
+    internal static readonly Dictionary<string, string> Format = new()
     {
         ["win-x64"] = "COFF-x86-64", ["win-arm64"] = "COFF-ARM64", ["linux-x64"] = "elf64-x86-64",
         ["linux-arm64"] = "elf64-littleaarch64", ["linux-musl-x64"] = "elf64-x86-64",
@@ -61,14 +61,14 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
     /// <param name="rid">The RID.</param>
     /// <param name="name">The AssemblyName.</param>
     /// <returns>The file name.</returns>
-    private static string LibraryFile(string rid, string name) =>
+    internal static string LibraryFile(string rid, string name) =>
         rid.StartsWith("win-", StringComparison.Ordinal) ? $"{name}.dll"
         : rid.StartsWith("osx-", StringComparison.Ordinal) ? $"lib{name}.dylib"
         : $"lib{name}.so";
 
     /// <summary>The build of this test process's own platform, when AsmSdk builds that RID.</summary>
     /// <returns>The host RID, or null on a platform none of the seven covers.</returns>
-    private static string? HostBuildRid() => PlatformCode.ContainsKey(Repo.HostRid) ? Repo.HostRid : null;
+    internal static string? HostBuildRid() => PlatformCode.ContainsKey(Repo.HostRid) ? Repo.HostRid : null;
 
     /// <summary>Builds Everywhere (and EverywhereStatic through its reference) once.</summary>
     /// <returns>The build's result, asserted successful.</returns>
@@ -94,6 +94,30 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
         Assert.True(File.Exists(library), $"{rid}: no {library}");
         Assert.Contains($"Format: {Format[rid]}", sdk.ReadObj(library, "--file-headers"));
         Assert.Contains($"Everywhere -> {library}", build.StdOut);
+    }
+
+    /// <summary>
+    /// dotnet build -o of a seven-RID project puts each RID in a folder of its own,
+    /// &lt;folder&gt;/&lt;rid&gt;/, with the static library it links beside it. -o sets a global
+    /// OutputPath, which the .NET SDK does not extend by the RID: before 0.3.0 every inner build
+    /// wrote to the one folder, a library of one OS overwrote another's of the same name, and a
+    /// link read a static library built for another machine.
+    /// </summary>
+    /// <param name="rid">The runtime identifier.</param>
+    [Theory]
+    [MemberData(nameof(AllRids))]
+    public void An_output_folder_on_the_command_line_keeps_each_rid_apart(string rid)
+    {
+        string folder = Path.Combine(Repo.Artifacts, "test-run", "everywhere-o");
+        CommandResult build = sdk.Once("build Everywhere -o", () => sdk.Dotnet("build", Repo.TestProject("Everywhere"), "-c", "Release", "-o", folder));
+        Assert.True(build.ExitCode == 0, build.Tail());
+        string library = Path.Combine(folder, rid, LibraryFile(rid, "everywhere"));
+        Assert.True(File.Exists(library), $"{rid}: no {library}");
+        Assert.Contains($"Format: {Format[rid]}", sdk.ReadObj(library, "--file-headers"));
+        string staticLibrary = rid.StartsWith("win-", StringComparison.Ordinal) ? "everywherestatic.lib" : "libeverywherestatic.a";
+        Assert.True(File.Exists(Path.Combine(folder, rid, staticLibrary)), $"{rid}: no {staticLibrary} beside the library");
+        // Nothing of any RID directly in the folder: each went to its own.
+        Assert.Empty(Directory.GetFiles(folder));
     }
 
     /// <summary>

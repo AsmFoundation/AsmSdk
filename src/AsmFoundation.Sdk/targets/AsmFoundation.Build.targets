@@ -217,6 +217,16 @@
          with its own tools must name a linker that speaks them. -->
     <Error Code="ASM0005" Condition="'$(AsmToolchain)' == 'System' and ('$(_AsmOs)' == 'Windows' or '$(_AsmOs)' == 'MacOS') and '$(AsmLinkerCommand)' == ''"
            Text="AsmToolchain=System links $(_AsmRid) with the command in AsmLinkerCommand, and its default, ld, is GNU ld, which links Linux (ELF) files only. Set AsmLinkerCommand to lld-link (Windows) or ld64.lld (macOS), or build $(_AsmRid) with the bundled toolchain." />
+    <!-- The same default fails for a Linux RID of another architecture: a distribution's GNU
+         ld links the build machine's own machine type (an x64 Ubuntu's ld has no AArch64
+         emulation), and stopped linux-arm64 with "file in wrong format" (measured: Ubuntu
+         24.04, binutils 2.42). _AsmSdkArch is the build machine's architecture as the .NET SDK
+         reports it, named like _AsmArch. A cross ld that does link it is named explicitly, and
+         an explicit AsmLinkerCommand skips this check. Only for an output that is linked
+         (_AsmIsLinked: a shared library or a program): a static library or object
+         files never run the linker. -->
+    <Error Code="ASM0005" Condition="'$(AsmToolchain)' == 'System' and '$(_AsmIsLinked)' == 'true' and '$(_AsmOs)' == 'Linux' and '$(_AsmSdkArch)' != '' and '$(_AsmArch)' != '$(_AsmSdkArch)' and '$(AsmLinkerCommand)' == ''"
+           Text="AsmToolchain=System links $(_AsmRid) with the command in AsmLinkerCommand, and its default, ld, is this machine's GNU ld, which links $(_AsmSdkArch) ELF files only. Set AsmLinkerCommand to ld.lld (it links every architecture) or a cross linker for $(_AsmArch) (such as aarch64-linux-gnu-ld), or build $(_AsmRid) with the bundled toolchain." />
 
     <!--
       NuGet does not keep the Unix execute bit when it extracts a package, so the tools come
@@ -356,6 +366,19 @@
       <_AsmWarningArguments Condition="'$(TreatWarningsAsErrors)' == 'true'">$(_AsmWarningArguments) -w+error</_AsmWarningArguments>
       <!-- The SDK's own stubs: the same warnings, always as errors (they are ours to keep clean). -->
       <_AsmSdkSourceWarningArguments>-w+all -w-reloc-rel-dword -w-reloc-abs-qword -w+error</_AsmSdkSourceWarningArguments>
+      <!--
+        NASM's messages in Visual C++'s format, "file(line) : error: text", on every OS. NASM's
+        default "file:line: error: text" has no column, and MSBuild recognizes the GCC/Clang
+        form only with one: NASM's errors and warnings were plain output, so IDEs listed only
+        ASM0007 ("the assembler exited with code 1") and MSBuild's MSB3073, never the line at
+        fault (measured with MSBuild 18: a syntax error counted 2 errors, not 3). With -Xvc each
+        is an MSBuild error or warning with its file and line, which Visual Studio, Rider and
+        VS Code open at the line. llvm-mc's "file:line:col: error:" needs nothing.
+        Consequence: a NASM warning now counts as an MSBuild warning, so a build run with
+        -warnaserror (MSBuild-wide) fails on one; TreatWarningsAsErrors already made NASM
+        itself fail (-w+error).
+      -->
+      <_AsmNasmMessageArguments>-Xvc</_AsmNasmMessageArguments>
       <_AsmObjectArguments>@(_AsmObject->'&quot;%(Identity)&quot;', ' ')</_AsmObjectArguments>
       <_AsmLinkInputArguments>@(_AsmLinkInput->'&quot;%(ToolPath)&quot;', ' ')</_AsmLinkInputArguments>
       <_AsmTargetPathArgument>&quot;$(TargetPath.Replace('\','/'))&quot;</_AsmTargetPathArgument>
@@ -510,7 +533,7 @@
       <_AsmAssemblerExitCode>0</_AsmAssemblerExitCode>
     </PropertyGroup>
     <Exec Condition="'%(_AsmSelectedSource.AsmLanguage)' == 'Nasm'"
-          Command="$(_AsmNasm) $(_AsmNasmFormatArguments) $(_AsmDebugArguments) $(_AsmWarningArguments) $(AsmFlags) $(_AsmIncludeArguments) $(_AsmDefineArguments) -o &quot;%(_AsmSelectedSource.ObjectToolPath)&quot; &quot;%(_AsmSelectedSource.SourceToolPath)&quot;"
+          Command="$(_AsmNasm) $(_AsmNasmMessageArguments) $(_AsmNasmFormatArguments) $(_AsmDebugArguments) $(_AsmWarningArguments) $(AsmFlags) $(_AsmIncludeArguments) $(_AsmDefineArguments) -o &quot;%(_AsmSelectedSource.ObjectToolPath)&quot; &quot;%(_AsmSelectedSource.SourceToolPath)&quot;"
           WorkingDirectory="$(MSBuildProjectDirectory)"
           ContinueOnError="ErrorAndContinue">
       <Output TaskParameter="ExitCode" PropertyName="_AsmAssemblerExitCode" />
@@ -563,13 +586,13 @@
                           ExtraSymbols="@(AsmLibcSymbol)"
                           OutputPath="$(_AsmStubToolDirectory)libc-stub$(_AsmStubSourceExtension)" />
     <Exec Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmArch)' == 'x64'"
-          Command="$(_AsmNasm) -f elf64 $(_AsmSdkSourceWarningArguments) -o &quot;$(_AsmStubToolDirectory)libc-stub.o&quot; &quot;$(_AsmStubToolDirectory)libc-stub.asm&quot;" />
+          Command="$(_AsmNasm) $(_AsmNasmMessageArguments) -f elf64 $(_AsmSdkSourceWarningArguments) -o &quot;$(_AsmStubToolDirectory)libc-stub.o&quot; &quot;$(_AsmStubToolDirectory)libc-stub.asm&quot;" />
     <Exec Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmArch)' == 'arm64'"
           Command="$(_AsmLlvmMc) --triple=$(_AsmLlvmMcTriple) --filetype=obj -o &quot;$(_AsmStubToolDirectory)libc-stub.o&quot; &quot;$(_AsmStubToolDirectory)libc-stub.s&quot;" />
     <Exec Condition="'$(_AsmOs)' == 'Linux'"
           Command="$(_AsmLinker) -shared -soname $(_AsmLibcStubName) -o &quot;$(_AsmStubToolDirectory)$(_AsmLibcStubName)&quot; &quot;$(_AsmStubToolDirectory)libc-stub.o&quot;" />
     <Exec Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmArch)' == 'x64'"
-          Command="$(_AsmNasm) -f elf64 $(_AsmSdkSourceWarningArguments) -o &quot;$(_AsmStubToolDirectory)nonshared.o&quot; &quot;$(_AsmSdkStubSourceDirectory)nonshared-x64.asm&quot;" />
+          Command="$(_AsmNasm) $(_AsmNasmMessageArguments) -f elf64 $(_AsmSdkSourceWarningArguments) -o &quot;$(_AsmStubToolDirectory)nonshared.o&quot; &quot;$(_AsmSdkStubSourceDirectory)nonshared-x64.asm&quot;" />
     <Exec Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmArch)' == 'arm64'"
           Command="$(_AsmLlvmMc) --triple=$(_AsmLlvmMcTriple) --filetype=obj -o &quot;$(_AsmStubToolDirectory)nonshared.o&quot; &quot;$(_AsmSdkStubSourceDirectory)nonshared-arm64.s&quot;" />
     <Delete Condition="'$(_AsmOs)' == 'Linux'" Files="$(AsmIntermediateDirectory)stubs/libasmsdk_nonshared.a" />
@@ -602,7 +625,7 @@
     <Exec Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmUsesLibc)' == 'true'"
           Command="$(_AsmLibrarian) -def:&quot;$(_AsmStubToolDirectory)ucrtbase.def&quot; -machine:$(_AsmPeMachine) -out:&quot;$(_AsmStubToolDirectory)ucrtbase.lib&quot;" />
     <Exec Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmUsesLibc)' == 'true' and '$(_AsmArch)' == 'x64'"
-          Command="$(_AsmNasm) -f win64 $(_AsmSdkSourceWarningArguments) -o &quot;$(_AsmStubToolDirectory)winstdio.obj&quot; &quot;$(_AsmSdkStubSourceDirectory)winstdio-x64.asm&quot;" />
+          Command="$(_AsmNasm) $(_AsmNasmMessageArguments) -f win64 $(_AsmSdkSourceWarningArguments) -o &quot;$(_AsmStubToolDirectory)winstdio.obj&quot; &quot;$(_AsmSdkStubSourceDirectory)winstdio-x64.asm&quot;" />
     <Exec Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmUsesLibc)' == 'true' and '$(_AsmArch)' == 'arm64'"
           Command="$(_AsmLlvmMc) --triple=$(_AsmLlvmMcTriple) --filetype=obj -o &quot;$(_AsmStubToolDirectory)winstdio.obj&quot; &quot;$(_AsmSdkStubSourceDirectory)winstdio-arm64.s&quot;" />
     <Delete Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmUsesLibc)' == 'true'" Files="$(AsmIntermediateDirectory)stubs/asmsdk_winstdio.lib" />
@@ -676,7 +699,7 @@
           Outputs="$(AsmIntermediateDirectory)stubs/$(_AsmCrtObjectName)">
     <MakeDir Directories="$(AsmIntermediateDirectory)stubs" />
     <Exec Condition="'$(_AsmArch)' == 'x64'"
-          Command="$(_AsmNasm) -f $(_AsmNasmFormat) $(_AsmSdkSourceWarningArguments) -o &quot;$(_AsmStubToolDirectory)$(_AsmCrtObjectName)&quot; &quot;$(_AsmCrtSource.Replace('\','/'))&quot;" />
+          Command="$(_AsmNasm) $(_AsmNasmMessageArguments) -f $(_AsmNasmFormat) $(_AsmSdkSourceWarningArguments) -o &quot;$(_AsmStubToolDirectory)$(_AsmCrtObjectName)&quot; &quot;$(_AsmCrtSource.Replace('\','/'))&quot;" />
     <Exec Condition="'$(_AsmArch)' == 'arm64'"
           Command="$(_AsmLlvmMc) --triple=$(_AsmLlvmMcTriple) --filetype=obj -o &quot;$(_AsmStubToolDirectory)$(_AsmCrtObjectName)&quot; &quot;$(_AsmCrtSource.Replace('\','/'))&quot;" />
     <ItemGroup>
@@ -938,13 +961,49 @@
   -->
   <Target Name="_AsmBuildEachRuntimeIdentifier" DependsOnTargets="_AsmCheckRuntimeIdentifiers">
     <ItemGroup>
-      <_AsmRidToBuild Include="$(_AsmBuildRuntimeIdentifiers)" />
-      <_AsmRidProject Include="$(MSBuildProjectFullPath)" Condition="'@(_AsmRidToBuild)' != ''">
-        <AdditionalProperties>RuntimeIdentifier=%(_AsmRidToBuild.Identity)</AdditionalProperties>
+      <_AsmRidProject Include="$(MSBuildProjectFullPath)" Condition="'@(_AsmInnerBuild)' != ''">
+        <AdditionalProperties>%(_AsmInnerBuild.AdditionalProperties)</AdditionalProperties>
       </_AsmRidProject>
     </ItemGroup>
     <MSBuild Condition="'@(_AsmRidProject)' != ''" Projects="@(_AsmRidProject)" Targets="Build" BuildInParallel="$(BuildInParallel)" />
   </Target>
+
+  <!--
+    _AsmInnerBuild: one item per RID the RID outer build builds, with the global properties of
+    that RID's inner build as AdditionalProperties. The three calls into the inner builds (Build
+    above, Clean below, GetAsmNativeRuntimeAssets in References.targets) all use these items,
+    because MSBuild reuses a build only for the same global properties: the query must reach the
+    builds that already ran, and the clean the folders they wrote.
+
+    The RID, and an output folder per RID when the outer build's would hold them all:
+      OutputPath  when it came from the command line (dotnet build -o folder, which also sets
+                  _CommandLineDefinedOutputPath). A global OutputPath is not extended by the
+                  .NET SDK's RID suffix, so every inner build wrote to the same folder and one
+                  RID's libraries overwrote another's: a later link then read a static library
+                  of the wrong machine ("machine type x64 conflicts with arm64", measured).
+                  Each RID now gets folder/<rid>/, the folder the IDE up-to-date check expects.
+      OutDir      when it differs from OutputPath, so it was set explicitly (-p:OutDir=, or in
+                  a project file): OutDir is never extended by a RID either.
+    A project with several target frameworks (freestanding;libc) gets folder/<tfm>/<rid>/: the
+    folder is shared by its frameworks as well, and each builds the same RIDs.
+    Footgun: these global properties reach the projects an inner build references, as any
+    global property does, so a static library this project links lands in folder/<rid>/ too.
+    A .NET project that references this one removes all three first (see the SDK package's
+    buildTransitive targets): its own -o folder gets copies, not the asm projects' builds.
+    Items, not properties, so that each value can name its RID; evaluated after every property,
+    so OutDir and OutputPath are final here (this file is imported after Microsoft.NET.Sdk's
+    targets, which set OutDir).
+  -->
+  <PropertyGroup Condition="'$(_AsmRid)' == ''">
+    <_AsmSharedOutputFramework Condition="$(TargetFrameworks.Contains(';'))">$(TargetFramework)/</_AsmSharedOutputFramework>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(_AsmRid)' == '' and '$(_AsmBuildRuntimeIdentifiers)' != ''">
+    <_AsmInnerBuild Include="$(_AsmBuildRuntimeIdentifiers)">
+      <AdditionalProperties>RuntimeIdentifier=%(Identity)</AdditionalProperties>
+      <AdditionalProperties Condition="'$(_CommandLineDefinedOutputPath)' == 'true'">%(AdditionalProperties);OutputPath=$(OutputPath)$(_AsmSharedOutputFramework)%(Identity)/</AdditionalProperties>
+      <AdditionalProperties Condition="'$(OutDir)' != '$(OutputPath)'">%(AdditionalProperties);OutDir=$(OutDir)$(_AsmSharedOutputFramework)%(Identity)/</AdditionalProperties>
+    </_AsmInnerBuild>
+  </ItemGroup>
 
   <!--
     dotnet clean of the RID outer build cleans every inner build too: each keeps its own list
@@ -958,9 +1017,10 @@
   -->
   <Target Name="_AsmCleanEachRuntimeIdentifier" AfterTargets="Clean" Condition="'$(_AsmRid)' == '' and '$(TargetFramework)' != '' and '$(_AsmBuildRuntimeIdentifiers)' != ''">
     <ItemGroup>
-      <_AsmRidToClean Include="$(_AsmBuildRuntimeIdentifiers)" />
+      <!-- The inner builds' own global properties (_AsmInnerBuild): an output folder per RID
+           when the outer build's is shared, so each clean finds the folder its build wrote. -->
       <_AsmRidCleanProject Include="$(MSBuildProjectFullPath)">
-        <AdditionalProperties>RuntimeIdentifier=%(_AsmRidToClean.Identity)</AdditionalProperties>
+        <AdditionalProperties>%(_AsmInnerBuild.AdditionalProperties)</AdditionalProperties>
       </_AsmRidCleanProject>
     </ItemGroup>
     <MSBuild Projects="@(_AsmRidCleanProject)" Targets="Clean" BuildInParallel="$(BuildInParallel)" />

@@ -312,5 +312,6 @@ release binaries for:
 
 Every toolchain builds every RID. `llvm-mc` arrived in toolchain 0.2.0; with an older one, a
 `.s` source stops with **ASM0004**. The System toolchain links with GNU `ld` by default,
-which links ELF only. Windows and macOS RIDs need `AsmLinkerCommand` set to `lld-link` or
-`ld64.lld` (**ASM0005**).
+which links ELF of the build machine's own architecture only. Windows and macOS RIDs need
+`AsmLinkerCommand` set to `lld-link` or `ld64.lld`, and the Linux RID of the other
+architecture `ld.lld` (**ASM0005**).

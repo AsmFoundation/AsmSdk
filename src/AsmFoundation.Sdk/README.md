@@ -110,7 +110,10 @@ next to a shared one.
 - **To a `.csproj`:** a `ProjectReference` from a `.csproj` builds the `.asmproj` for the
   RIDs the build needs. A portable build gets each library under `runtimes/<rid>/native/`,
   listed in `deps.json`, so the .NET host loads the right one; a RID-specific build gets the
-  best match, by the RID graph, beside the program. Ready for `[LibraryImport]`.
+  best match, by the RID graph, beside the program. Ready for `[LibraryImport]`, also through
+  a C# wrapper library in between, and for every publish mode: a single file (the library
+  beside it, or inside it with `IncludeNativeLibrariesForSelfExtract`), NativeAOT, trimming,
+  container images.
 - **As a package:** `dotnet pack` writes this layout:
 
   | Path | Contents |

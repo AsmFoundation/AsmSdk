@@ -84,7 +84,13 @@ commands you name.
   ELF only, so a Windows or macOS RID without `AsmLinkerCommand` stops with `ASM0005`. Name
   `lld-link` (it also writes the SDK's import libraries, as `lld-link -lib`) or `ld64.lld`,
   conditioned on the RID as above.
-- **The link lines stay the same,** and GNU `ld` accepts the Linux ones.
+- **So does the Linux RID of the other architecture.** A distribution's GNU `ld` links its own
+  machine's ELF only (Ubuntu x64's has no AArch64 emulation, and stops with "file in wrong
+  format"), so `linux-arm64` on an x64 machine, or `linux-x64` on an ARM64 one, stops with
+  `ASM0005` before any tool runs. `ld.lld` links every architecture, as in the example above;
+  a cross `ld` such as `aarch64-linux-gnu-ld` works when named. A static library never links,
+  and is not checked.
+- **The link lines stay the same,** and GNU `ld` accepts the Linux ones for its own architecture.
 - **GNU `ld` resolves archives in command-line order,** unlike `ld.lld`. List
   `AsmLinkLibrary` items so that each library comes after the code that uses it.
 - **NASM 2.16** (Ubuntu 24.04's `nasm` package) does not know the two warning names the SDK

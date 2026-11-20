@@ -1,0 +1,20 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    The interop tour (InteropTests), part 2 of 5: the shared library C# calls in every way .NET offers (managed/Qa.Interop), for all seven
+    RIDs: qamath.asm (NASM, x64 RIDs) and qamath.s (GNU syntax, ARM64 RIDs). It links QaHelpers,
+    a RID-less static library, whose helper stays unexported (HIDDEN_FUNCTION); PrivateAssets
+    keeps the static library out of this project's package and out of .NET consumers.
+  -->
+  <PropertyGroup>
+    <AssemblyName>qamath</AssemblyName>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <PackageId>AsmQa.Math</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>AsmQa</Authors>
+    <Description>Interop tour: an assembly library that C# calls through every interop technique.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../QaHelpers/QaHelpers.asmproj" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

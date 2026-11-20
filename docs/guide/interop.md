@@ -63,7 +63,19 @@ let .NET's own RID rules choose the library.
   transitive references of an asm reference.
 - **The app's own publish options stay with the app.** `SelfContained`, `PublishAot`,
   `PublishTrimmed`, `PublishSingleFile` and `PublishReadyToRun` are not passed on: the asm
-  project builds the same native code either way.
+  project builds the same native code either way. That holds on the command line too
+  (`dotnet publish -p:PublishAot=true`), where NuGet's restore hands them to every project:
+  the asm projects ignore them.
+- **Through a class library.** An app that reaches the asm project through a C# wrapper
+  (app → `Acme.Crc.Net.csproj` → `Crc.asmproj`) gets the same result. The .NET SDK adds the
+  asm project to the app's references transitively, and the consumer targets build it for the
+  app. The wrapper itself is RID-agnostic, so it is built portable and keeps every RID's
+  `runtimes/` copy in its own output. A RID-specific app leaves those out of its output and
+  publish folders, as NuGet leaves out other RIDs' assets.
+- **`-o`:** `dotnet build App.csproj -o out` builds the asm projects in their own `bin/`
+  folders, and `out/` gets the copies the app needs. Footgun: `-o` sends every project's
+  output to `out/`, so a wrapper library in between puts its portable `runtimes/` copies there
+  as well. `dotnet publish -o` has no such effect.
 - **No assembly reference** is added. The SDK's `GetTargetPathWithTargetPlatformMoniker`
   returns nothing.
 - **Library names:** `[LibraryImport("hello")]` and `[DllImport("hello")]` probe `hello.dll`
@@ -73,6 +85,47 @@ let .NET's own RID rules choose the library.
   first call throws `DllNotFoundException`.
 - **A single solution builds both** with `dotnet build App.slnx`, as long as the
   `.asmproj` entry has its type GUID.
+
+## Publishing a .NET app
+
+Every publish mode of .NET carries the asm library, the way it carries a NuGet package's native
+library (measured with the .NET 10 and 11 SDKs, through a project reference and through a
+package):
+
+| `dotnet publish …` | Where the asm library goes |
+|---|---|
+| (portable) | `runtimes/<rid>/native/`, listed in `deps.json` |
+| `-r <rid>` | beside the app |
+| `-r <rid> -p:PublishSingleFile=true` | beside the single file |
+| the same with `-p:IncludeNativeLibrariesForSelfExtract=true` | inside the single file; the .NET host extracts it at start, so the file runs alone |
+| `-r <rid> -p:PublishAot=true` | beside the native program, loaded at run time (NativeAOT does not link a shared library in). NativeAOT needs its platform linker, as always: Visual Studio's C++ tools on Windows, clang on Linux, Xcode on macOS |
+| `-r <rid> -p:PublishTrimmed=true` | beside the app; trimming leaves native files alone |
+| `-r linux-x64 -t:PublishContainer` | in the image, beside the app |
+
+The single-file rows rely on the consumer targets, which mark the asm libraries
+`AssetType=native`: the metadata the .NET SDK decides by.
+
+**A static library inside a NativeAOT program.** NativeAOT can link a static library into the
+program and call it directly: no library file ships, and nothing is looked up at run time. The
+consumer targets leave static libraries alone, so name the library yourself, for the RID being
+published, and build it for that RID first (`dotnet build Crc.asmproj -c Release -r win-x64`):
+
+```xml
+<ItemGroup Condition="'$(RuntimeIdentifier)' != '' and '$(PublishAot)' == 'true'">
+  <DirectPInvoke Include="crc" />  <!-- the name in [LibraryImport("crc")] -->
+  <NativeLibrary Condition="$(RuntimeIdentifier.StartsWith('win-'))"
+                 Include="../Crc/bin/$(Configuration)/freestanding/$(RuntimeIdentifier)/crc.lib" />
+  <NativeLibrary Condition="!$(RuntimeIdentifier.StartsWith('win-'))"
+                 Include="../Crc/bin/$(Configuration)/freestanding/$(RuntimeIdentifier)/libcrc.a" />
+</ItemGroup>
+```
+
+- **Declare its entry points with `HIDDEN_FUNCTION`.** A `FUNCTION` in a static library takes
+  its export along into whatever links it, so a Windows program would export it.
+  `HIDDEN_FUNCTION` links the same and exports nothing (measured on Windows: the program's
+  export table then holds only .NET's own entry; a Linux program exports neither).
+- **A JIT run cannot use it.** `dotnet run` has no static library to load and throws
+  `DllNotFoundException`; only the published program has the code linked in.
 
 ## .NET through a package
 

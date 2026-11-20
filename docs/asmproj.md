@@ -134,6 +134,14 @@ Outputs go to `bin/<Configuration>/<TargetFramework>/<rid>/`, as in .NET
 (`AppendTargetFrameworkToOutputPath` and `AppendRuntimeIdentifierToOutputPath` keep their
 defaults, `true`). Each inner build prints `<Project> -> <output>`, as a `.csproj` does.
 
+**`dotnet build -o <folder>`** sets a global `OutputPath`, which the .NET SDK never extends by
+the RID. The RID outer build therefore gives each RID `<folder>/<rid>/`
+(`<folder>/<tfm>/<rid>/` in a project with both frameworks), and an explicit `OutDir` the
+same; one folder for all of them would let each RID overwrite another's files. The projects an
+inner build references get the same folder, as any global property reaches them. A .NET
+project built with `-o` does not pass its folder on: its asm references build in their own
+`bin/`, and the app's folder gets the copies.
+
 ## Runtime and link properties
 
 | Property | Default | Meaning and footguns |
@@ -186,7 +194,7 @@ deletes the image, so the next build links and checks again.
 **The assembler command lines, as run** (from the project folder, with forward-slash paths):
 
 ```text
-nasm -f win64|elf64|macho64 [--gprefix _] [-D.rodata=.rdata] [-g -F dwarf|cv8] -w+all -w-reloc-rel-dword -w-reloc-abs-qword [-w+error] $(AsmFlags)
+nasm -Xvc -f win64|elf64|macho64 [--gprefix _] [-D.rodata=.rdata] [-g -F dwarf|cv8] -w+all -w-reloc-rel-dword -w-reloc-abs-qword [-w+error] $(AsmFlags)
      -I"<dir>/" ... -D<your symbols> ... -DDEBUG|-DRELEASE -DFREESTANDING|-DLIBC -DWINDOWS|-DLINUX|-DMACOS -DX64
      -o "<obj>/x.o" "<project>/x.asm"
 
@@ -194,8 +202,10 @@ llvm-mc --triple=<cpu>-<os> --filetype=obj [-g] $(AsmLlvmMcFlags) -I "<dir>/" ..
         -o "<obj>/x.o" "<project>/x.s"
 ```
 
-`--gprefix _` is macOS's (Mach-O's underscore), and `-D.rodata=.rdata` Windows' (NASM's win64
-output makes an unknown section name executable code). [The tools](toolchain/tools.md) has
+`-Xvc` prints NASM's messages as `x.asm(12): error : …`, the form MSBuild recognizes, so each is an
+MSBuild error or warning with its file and line (NASM's own `x.asm:12:` form has no column, and
+MSBuild left it as plain output). `--gprefix _` is macOS's (Mach-O's underscore), and
+`-D.rodata=.rdata` Windows' (NASM's win64 output makes an unknown section name executable code). [The tools](toolchain/tools.md) has
 the triples.
 
 ## Sharing and pack properties
@@ -232,7 +242,7 @@ consumers need nothing from the SDK.
 | `AsmHostRid` | from `NETCoreSdkRuntimeIdentifier`: `win-<arch>`, `osx-<arch>`, `linux-<arch>` or `linux-musl-<arch>` | the build machine. Distribution RIDs (`ubuntu.24.04-x64`, `alpine.3.20-x64`) become portable ones. |
 | `AsmToolchainPackageId` | `AsmFoundation.Toolchain.$(AsmHostRid)` | packages exist for `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64` and `osx-arm64`. Elsewhere the build stops with `ASM0006`. |
 | `AsmToolchainDirectory` | `<NuGetPackageRoot>/asmfoundation.toolchain.<rid>/<version>/tools/` | set it to use tools from another folder: no download happens, and the folder must hold `nasm`, `llvm-mc`, `lld` and `llvm-ar` (`.exe` on Windows). |
-| `AsmNasmCommand`, `AsmLlvmMcCommand`, `AsmLinkerCommand`, `AsmArchiverCommand` | `nasm`, `llvm-mc`, `ld`, `ar` | the commands used with `AsmToolchain=System`. They may include arguments. `ld` links ELF only: Windows and macOS RIDs need `AsmLinkerCommand` set to `lld-link` or `ld64.lld` (`ASM0005`). |
+| `AsmNasmCommand`, `AsmLlvmMcCommand`, `AsmLinkerCommand`, `AsmArchiverCommand` | `nasm`, `llvm-mc`, `ld`, `ar` | the commands used with `AsmToolchain=System`. They may include arguments. `ld` links ELF of the build machine's own architecture only: Windows and macOS RIDs need `AsmLinkerCommand` set to `lld-link` or `ld64.lld`, and the Linux RID of the other architecture `ld.lld` or a cross `ld` (`ASM0005`). |
 
 ## Properties the SDK sets for you
 
@@ -250,6 +260,7 @@ Read-only in practice.
 | `IncludeBuildOutput`, `CopyBuildOutputToOutputDirectory`, `CopyOutputSymbolsToOutputDirectory` | `false` | the native outputs are written and packed by the SDK's own steps |
 | `SkipCopyBuildProduct` | `true` | the same reason |
 | `NoWarn` | `+NU5128` | a native package's payload is outside `lib/` by design |
+| `PublishAot`, `PublishTrimmed`, `PublishSingleFile`, `PublishReadyToRun`, `SelfContained` | `false`, and `TreatAsLocalProperty` on `Sdk.props` | a .NET app's publish switches on the command line (`dotnet publish -p:PublishAot=true`) are global properties, and NuGet's restore evaluates every project with them: Microsoft.NET.Sdk then stopped each asm project's restore (`NETSDK1207` for AOT, `NETSDK1124` for trimming). Local from `Sdk.props` on, they are `false` for everything after it; projects built from here still inherit the original values |
 
 **In `Properties.targets`, after the project body:**
 
@@ -325,8 +336,10 @@ Read-only in practice.
 
 | Target | Runs | Notes |
 |---|---|---|
-| `_AsmConfigureAsmProjectReferences` | after `_GetProjectReferenceTargetFrameworkProperties` | per asm reference: drops a non-shared-library reference with a message; a RID-specific build gets the RID that serves it best (`AsmSelectRuntimeIdentifier`, `ASM0040`, `ASM0041`); a portable build passes the reference's `RuntimeIdentifiers` metadata on; the app's publish properties (`SelfContained`, `PublishAot`, …) are not passed |
+| `_AsmConfigureAsmProjectReferences` | after `_GetProjectReferenceTargetFrameworkProperties` | per asm reference: drops a non-shared-library reference with a message; a RID-specific build gets the RID that serves it best (`AsmSelectRuntimeIdentifier`, `ASM0040`, `ASM0041`); a portable build passes the reference's `RuntimeIdentifiers` metadata on; the app's publish properties (`SelfContained`, `PublishAot`, …) and output folder (`OutputPath`, `OutDir`) are not passed; a RID-specific build also asks for the reference's portable paths (`GetAsmNativeRuntimeAssets` without its RID) |
 | `_AsmCollectNativeRuntimeAssets`, `_AsmAddNativeAssetsToBuildDepsFile`, `_AsmAddNativeAssetsToPublishDepsFile` | after the `deps.json` is generated, for build and publish | add each library as a `runtimeTargets` entry of a project library, so the .NET host finds the right one (`ASM0042` if the file cannot be read) |
+| `_AsmDropPortableNativeCopies` | after `GetCopyToOutputDirectoryItems`, RID-specific builds | removes the copies headed for the asm references' `runtimes/<rid>/native/` paths, which a RID-agnostic class library in between hands on; matched by destination, so the flat copy of the same file stays |
+| `_AsmPrepareNativePublishAssets` | after `ComputeResolvedFilesToPublishList` | the same for publish (RID-specific), and `AssetType=native` on each asm library, which the .NET SDK's single-file step decides by (beside the bundle, or inside it with `IncludeNativeLibrariesForSelfExtract`) |
 
 ## Files the build writes
 
@@ -350,7 +363,7 @@ by `dotnet clean` only if you add it to `FileWrites` too.
 | `ASM0002` | `AsmToolchain` is neither `Bundled` nor `System`. | Use one of the two. |
 | `ASM0003` | `TargetFramework` is neither `freestanding` nor `libc`. | Use one of the two, or `TargetFrameworks=freestanding;libc`. |
 | `ASM0004` | A `.s` source, or an ARM64 `libc` build, with a toolchain that has no `llvm-mc` (0.1.0). | `AsmToolchainVersion` 0.2.0 or later. |
-| `ASM0005` | `AsmToolchain=System` for a Windows or macOS RID without `AsmLinkerCommand`: the default `ld` links ELF only. | `AsmLinkerCommand` `lld-link` or `ld64.lld`. |
+| `ASM0005` | `AsmToolchain=System` without `AsmLinkerCommand`, for a Windows or macOS RID, or for a linked Linux RID of another architecture than the build machine's: the default `ld` links the machine's own ELF only. | `AsmLinkerCommand` `lld-link`, `ld64.lld` or `ld.lld` (or a cross `ld`). |
 | `ASM0006` | No toolchain package for this build machine (Intel Mac, musl). | `AsmToolchain=System`, `AsmToolchainDirectory`, or `AsmHostRid`. |
 | `ASM0007` | The assembler failed on a source; its object was deleted. | Read the assembler's line above it. |
 | `ASM0010` | No RID to build: none listed, none asked for, no `-r`. | `RuntimeIdentifiers`, a `ProjectReference`'s `RuntimeIdentifiers`, or `-r`. |

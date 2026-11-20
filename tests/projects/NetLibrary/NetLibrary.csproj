@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A RID-agnostic .NET class library over the seven-RID Everywhere.asmproj (DotnetAppTests),
+    the middle of most real solutions: app -> wrapper library -> asm project. NetThroughLibrary
+    reaches Everywhere only through it.
+
+    Being RID-agnostic, it is built portable even when the app is built for one RID, and it
+    hands every RID's runtimes/<rid>/native/ copy on to the app (GetCopyToOutputDirectoryItems).
+    The consumer targets must keep those out of a RID-specific app's output and publish folder:
+    the app gets its own RID's library, flat, through the transitive asm reference.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- LibraryImport's generated stubs are unsafe code. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- A test library: tests/projects/Directory.Build.props sends packages to the local feed,
+         which this one never is. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Everywhere/Everywhere.asmproj" />
+  </ItemGroup>
+</Project>

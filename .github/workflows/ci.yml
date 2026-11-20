@@ -18,6 +18,10 @@
 #      under the ARM machines' x64 emulation, the musl program in an Alpine container where
 #      Docker runs Linux containers. The linux-x64 samples run natively on Ubuntu x64 only
 #      (elsewhere those tests are skipped with the reason: ASMSDK_TEST_RUN=none).
+#      DotnetAppTests builds and publishes a .NET program for the machine's own RID (through a
+#      class library, -o, single file both ways) and runs it; InteropTests runs the interop
+#      tour (tests/projects/Interop: every way C# calls an asm library) natively, so the ARM64
+#      code runs on real Windows on Arm, Linux ARM64 and Apple silicon machines.
 #   The only prerequisite is the .NET SDK: no Python since 0.2.0.
 #   3. The staged toolchain is kept as an artifact: release.yml packs all five from it.
 #

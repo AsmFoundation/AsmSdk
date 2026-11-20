@@ -96,7 +96,7 @@ Migration from 0.2.0, without a compatibility layer:
   under emulation) and `linux-arm64` (NASM built from source). Intel Macs and musl hosts have
   no package (LLVM publishes no binaries for them): `ASM0006` names `AsmToolchain=System`.
   `ASM0004` for a `.s` source with a toolchain without `llvm-mc`, `ASM0005` for a Windows or
-  macOS RID with the System toolchain's GNU `ld`.
+  macOS RID, or the Linux RID of the other architecture, with the System toolchain's GNU `ld`.
 - **Realistic samples,** each a complete program:
   - `samples/Crc32C`: CRC-32C as a freestanding shared library for all seven RIDs: x64 in
     NASM through `asmsdk.inc`, ARM64 in GNU syntax. `ExportsFile` keeps five names (versioned
@@ -119,9 +119,14 @@ Migration from 0.2.0, without a compatibility layer:
     byte-identical to `xxd`'s, from a static executable of about 4 KB.
 - **Tests:** `CrossPlatformTests` (formats, exports, qualifiers, the C library of each OS,
   programs' exports, the .NET consumer per RID, packages, the RID errors, the image checks,
-  each machine's own build run natively, the x64 build under emulation on ARM64 machines),
-  and `ExampleTests` for every fact the documentation states about the samples. AsmSdk.Tests
-  has 119 tests.
+  each machine's own build run natively, the x64 build under emulation on ARM64 machines,
+  `-o`), `DotnetAppTests` (a .NET program that reaches the asm project through a class
+  library: RID-specific build and publish, `-o`, single file with the library beside it and
+  inside it, the publish switches on the command line), `DiagnosticsTests` (NASM's errors at
+  their line, `ASM0005` for the System toolchain), `InteropTests` (the interop tour,
+  `tests/projects/Interop`: every way C# calls an asm library, 51 checks on x64 and 48 on
+  ARM64, run natively on each of the five CI machines), and `ExampleTests` for every fact the
+  documentation states about the samples. AsmSdk.Tests has 135 tests.
 - **Documentation:** a Platforms and runtime identifiers guide; every guide, the reference and
   the toolchain pages for the seven RIDs; an Examples section that walks through the samples;
   and, for AI tools, `llms.txt`, `llms-full.txt` and a Markdown copy of every page
@@ -135,6 +140,15 @@ Migration from 0.2.0, without a compatibility layer:
 - **Programs export nothing** without an `ExportsFile`: `FUNCTION main` made `main` an export,
   and a Windows `.exe` then got a stray import library. A Windows program links `-noimplib`
   unless its `ExportsFile` exports something.
+- **NASM reports in Visual C++'s format** (`-Xvc`): `x.asm(12): error : …`. MSBuild recognizes
+  it, so an error or warning is an MSBuild one with its file and line, which IDEs list and
+  open. NASM's default `x.asm:12: error:` (no column) was plain output: the IDE showed only
+  `ASM0007` and `MSB3073`. A NASM warning now counts as an MSBuild warning, so a build with
+  `-warnaserror` fails on one.
+- **`dotnet build -o <folder>`** of an asm project with several RIDs puts each RID in
+  `<folder>/<rid>/` (`<folder>/<tfm>/<rid>/` when it targets both frameworks), and so does an
+  explicit `OutDir`. A global output folder is never extended by the RID, and the RIDs
+  overwrote each other's files.
 - **The default sources** are `**/*.asm` and `**/*.s`.
 - **`AsmToolchainVersion`** defaults to 0.2.0.
 - The Crc32C sample's paths are named for every CPU: `crc32c_append_hardware` and
@@ -151,6 +165,35 @@ Migration from 0.2.0, without a compatibility layer:
   <referencing project>/obj/…/x.o`): the object paths were relative to the wrong folder.
 - **A failed assembler run** could leave an empty object that later builds took as up to date.
   The object is now deleted, and the build reports `ASM0007` with the source's name.
+
+Found by a manual QA of C# with asm projects (2026-11-20: a solution of three asm projects and
+three .NET projects, every interop technique, every build and publish mode, run on Windows,
+Ubuntu, Alpine, Linux ARM64 and a clean Windows 11 with only the .NET SDK):
+
+- **A single-file publish lost the asm library.** `dotnet publish -r win-x64
+  -p:PublishSingleFile=true` put it neither in the bundle nor beside it (`NETSDK1236`), and
+  the program failed with `DllNotFoundException`. On Linux and macOS,
+  `IncludeNativeLibrariesForSelfExtract` left `lib<name>.so` and `.dylib` outside the bundle.
+  The .NET SDK decides by `AssetType`, which `GetCopyToPublishDirectoryItems` drops: the
+  consumer targets now mark the asm libraries `AssetType=native`, as NuGet marks a package's.
+  The library goes beside the bundle, or inside it with `IncludeNativeLibrariesForSelfExtract`.
+- **A RID-specific build or publish through a class library** (app → C# library → `.asmproj`)
+  carried every RID's `runtimes/<rid>/native/` copy. The class library is RID-agnostic, so it
+  is built portable and hands them on: 11 dead files in the QA solution, and Windows and macOS
+  libraries in Linux container images. They are now left out, as NuGet leaves out other RIDs'
+  assets.
+- **`dotnet build -r <rid> -o <folder>` through a class library failed to link:** the global
+  output folder reached the asm projects, every RID of the portable build wrote into it, and a
+  link read another machine's static library ("machine type x64 conflicts with arm64"). The
+  consumer targets no longer pass the app's output folder (`OutputPath`, `OutDir`) to asm
+  projects, which build in their own `bin/`; the app's folder gets the copies.
+- **`dotnet publish -p:PublishAot=true` or `-p:PublishTrimmed=true`** stopped NuGet's restore in
+  every asm project (`NETSDK1207`, `NETSDK1124`): a command-line property reaches every project
+  of the restore graph, where no consumer target can remove it. `Sdk.props` now declares the
+  .NET publish switches `TreatAsLocalProperty` and sets them to `false`.
+- **`AsmToolchain=System` for the Linux RID of the other architecture** failed in GNU `ld` with
+  "file in wrong format" (an x64 machine's `ld` links x64 ELF only). It stops with `ASM0005`,
+  which names `ld.lld` or a cross `ld`.
 
 ### Removed
 

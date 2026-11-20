@@ -1,0 +1,17 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    The interop tour (InteropTests), part 3 of 5: a library on the platform's C library (malloc/free, snprintf, qsort), for the x64 RIDs
+    only. A portable .NET app then carries it for those four RIDs, and on ARM64 the C# side must
+    cope with its absence (NativeLibrary.TryLoad).
+  -->
+  <PropertyGroup>
+    <TargetFramework>libc</TargetFramework>
+    <AssemblyName>qalibc</AssemblyName>
+    <RuntimeIdentifiers>win-x64;linux-x64;linux-musl-x64;osx-x64</RuntimeIdentifiers>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <PackageId>AsmQa.Libc</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>AsmQa</Authors>
+    <Description>Interop tour: an assembly library on the platform's C library, x64 only.</Description>
+  </PropertyGroup>
+</Project>

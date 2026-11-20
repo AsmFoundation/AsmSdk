@@ -1,0 +1,11 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    The interop tour (InteropTests), part 1 of 5: a static library with no RIDs of its own: QaMath links it for each of its RIDs. Its one
+    function is a HIDDEN_FUNCTION, so the shared library that links it exports it on no OS.
+  -->
+  <PropertyGroup>
+    <OutputType>StaticLibrary</OutputType>
+    <AssemblyName>qahelpers</AssemblyName>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+</Project>

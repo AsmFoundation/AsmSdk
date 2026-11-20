@@ -182,11 +182,12 @@
     </ItemGroup>
 
     <!-- The RID outer build: each inner build, with the same global properties as the
-         dispatch, so MSBuild returns the results of the builds it already ran. -->
+         dispatch (_AsmInnerBuild in Build.targets: the RID, and an output folder per RID when
+         the outer build's is shared), so MSBuild returns the results of the builds it already
+         ran and the paths name the files those builds wrote. -->
     <ItemGroup Condition="'$(_AsmRid)' == ''">
-      <_AsmRidToQuery Include="$(_AsmBuildRuntimeIdentifiers)" />
-      <_AsmRidQueryProject Include="$(MSBuildProjectFullPath)" Condition="'@(_AsmRidToQuery)' != ''">
-        <AdditionalProperties>RuntimeIdentifier=%(_AsmRidToQuery.Identity)</AdditionalProperties>
+      <_AsmRidQueryProject Include="$(MSBuildProjectFullPath)" Condition="'@(_AsmInnerBuild)' != ''">
+        <AdditionalProperties>%(_AsmInnerBuild.AdditionalProperties)</AdditionalProperties>
       </_AsmRidQueryProject>
     </ItemGroup>
     <MSBuild Condition="'@(_AsmRidQueryProject)' != ''" Projects="@(_AsmRidQueryProject)" Targets="GetAsmNativeRuntimeAssets" BuildInParallel="$(BuildInParallel)">
