@@ -99,7 +99,7 @@ jobs:
   | export added | minor |
   | implementation only | patch |
 
-  `inspect_elf.py --json` lists the exports, so a CI step can diff them against the
+  `inspect_output.py --json` lists the exports, so a CI step can diff them against the
   previous release.
 
 ## Releasing to nuget.org with trusted publishing

@@ -356,7 +356,7 @@ item differs per build machine:
 </ItemGroup>
 ```
 
-Check the result with [`inspect_elf.py`](../ecosystem/claude-code.md#inspect_elfpy), which reports `RUNPATH: $ORIGIN`.
+Check the result with [`inspect_output.py`](../ecosystem/claude-code.md#inspect_outputpy), which reports `RUNPATH: $ORIGIN`.
 
 **A shared library that links another shared library** (a `ProjectReference` to a plain
 `Library`, or a package with `AsmPackageLinkKind=Shared`) depends on it by name:

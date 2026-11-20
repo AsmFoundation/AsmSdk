@@ -139,7 +139,7 @@ The build does not use it. It is there to check what was built, in every format:
 
 For GNU `readelf`-style output, add `--elf-output-style=GNU`; the same binary copied as
 `llvm-readelf` defaults to it. The
-[asmsdk Claude Code plugin](../ecosystem/claude-code.md#inspect_elfpy) includes
-`inspect_elf.py`. It finds this binary in the package cache by itself and prints one
+[asmsdk Claude Code plugin](../ecosystem/claude-code.md#inspect_outputpy) includes
+`inspect_output.py`. It finds this binary in the package cache by itself and prints one
 summary per file. It can also check expectations in CI, such as "exports `hello_add`" or
 "needs `libc.so.6`".

@@ -195,4 +195,4 @@ leads to them, is skipped. A target hooked anywhere else that runs a tool needs
   items, as JSON.
 - **`dotnet build -bl`** writes `msbuild.binlog`. Open it in the MSBuild Structured Log
   Viewer to see every target, its skip reason (up to date) and every property.
-- **[`inspect_elf.py`](../ecosystem/claude-code.md#inspect_elfpy)** shows what came out.
+- **[`inspect_output.py`](../ecosystem/claude-code.md#inspect_outputpy)** shows what came out.

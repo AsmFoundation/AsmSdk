@@ -123,6 +123,26 @@ The directives differ because the formats do. Measured with NASM 3.02:
   `ExportsFile`. A plain `global` is not exported. On Linux and macOS, every `global` is
   exported unless it is hidden, or an `ExportsFile` says otherwise.
 
+No macro covers data. Data that other files of the library use, and that no image may export,
+gets one declaration per OS:
+
+```nasm
+section .data
+%ifdef LINUX
+global hash_seed:data hidden 8      ; the visibility before the size
+%elifdef MACOS
+global hash_seed:private_extern
+%else
+global hash_seed                    ; a DLL exports only what it is told to
+%endif
+hash_seed: dq 0x9E3779B97F4A7C15
+```
+
+Measured with one such source built for linux-x64, win-x64 and osx-x64: none of the three
+libraries exports `hash_seed`. With a plain `global` in the macOS branch, `libHash.dylib`
+exports it. [`check_asmproj.py`](../ecosystem/claude-code.md#check_asmprojpy) reports a symbol
+that is internal on one OS and exported on another (`ASMSRC022`).
+
 On ELF (Linux-only files), the directives also give sizes and data types:
 
 | Directive | Result in a `.so` |
