@@ -54,7 +54,9 @@ public sealed class PackageTests(SdkUnderTest sdk)
 
     /// <summary>
     /// A multi-targeted package (TargetFrameworks=freestanding;libc): include/ once, and per
-    /// framework a lib/ marker, the consumer props and the shared library.
+    /// framework a lib/ marker, the consumer props, the .NET consumer targets (BinariesCopyPath;
+    /// NuGet imports the nearest framework's, the one whose library it also picks) and the shared
+    /// library.
     /// </summary>
     [Fact]
     public void A_multi_targeted_package_has_one_layout_per_framework()
@@ -68,6 +70,7 @@ public sealed class PackageTests(SdkUnderTest sdk)
         {
             expected.UnionWith([
                 $"lib/{framework}/_._", $"build/{framework}/hello.props", $"buildTransitive/{framework}/hello.props",
+                $"build/{framework}/hello.targets", $"buildTransitive/{framework}/hello.targets",
                 $"runtimes/linux-x64/nativeassets/{framework}/libhello.so",
             ]);
         }

@@ -16,6 +16,13 @@
                                                generated per target framework: wire the include
                                                files and, per RID, that RID's library into a
                                                consuming .asmproj (AsmWritePackageProps)
+      build/<nuget-tfm>/<id>.targets, buildTransitive/<nuget-tfm>/<id>.targets
+                                               for a package with a shared library: lets a .NET
+                                               consumer choose where the library goes
+                                               (BinariesCopyPath on its PackageReference, or as
+                                               its property), in plain MSBuild because the
+                                               package does not depend on AsmFoundation.Sdk
+                                               (AsmWritePackageConsumerTargets)
       native/<rid>/<tfm>/libfoo.a, foo.lib     static library (Unix, Windows)
       native/<rid>/<tfm>/foo.dll.lib           the import library of a Windows DLL, for a
                                                consuming .asmproj that links the DLL
@@ -57,6 +64,7 @@
     <AsmPackageLinkKind Condition="'$(AsmPackageLinkKind)' == ''">Static</AsmPackageLinkKind>
     <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);_AsmPackNativeContent</TargetsForTfmSpecificContentInPackage>
     <_AsmGeneratedPropsPath>$(AsmIntermediateDirectory)pack/$(PackageId).props</_AsmGeneratedPropsPath>
+    <_AsmGeneratedConsumerTargetsPath>$(AsmIntermediateDirectory)pack/$(PackageId).targets</_AsmGeneratedConsumerTargetsPath>
     <_AsmEmptyLibMarkerPath>$(AsmIntermediateDirectory)pack/_._</_AsmEmptyLibMarkerPath>
   </PropertyGroup>
 
@@ -66,6 +74,7 @@
   </ItemGroup>
 
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmWritePackageProps" AssemblyFile="$(_AsmTasksAssembly)" />
+  <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmWritePackageConsumerTargets" AssemblyFile="$(_AsmTasksAssembly)" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmRemovePackageDependency" AssemblyFile="$(_AsmTasksAssembly)" />
 
   <!--
@@ -158,6 +167,18 @@
          task deletes the file instead of writing an empty one. -->
     <Touch Files="$(_AsmEmptyLibMarkerPath)" AlwaysCreate="true" />
 
+    <!-- A shared library is something a .NET consumer loads: give it BinariesCopyPath. A
+         package of static libraries only has nothing for .NET to move. -->
+    <ItemGroup>
+      <_AsmPackedSharedLibrary Include="@(_AsmPackedRidFile)" Condition="$([System.String]::Copy('%(_AsmPackedRidFile.PackagePath)').StartsWith('runtimes/'))" />
+    </ItemGroup>
+    <AsmWritePackageConsumerTargets Condition="'@(_AsmPackedSharedLibrary)' != ''"
+                                    PackageId="$(PackageId)"
+                                    PackageVersion="$(PackageVersion)"
+                                    Origin="AsmFoundation.Sdk"
+                                    LibraryNames="$(AssemblyName)"
+                                    OutputPath="$(_AsmGeneratedConsumerTargetsPath)" />
+
     <ItemGroup>
       <TfmSpecificPackageFile Include="@(AsmPublicInclude)" Condition="'$(_AsmPackIsFirstTargetFramework)' == 'true'" PackagePath="include/%(RecursiveDir)%(Filename)%(Extension)" />
       <TfmSpecificPackageFile Include="@(AsmSource)" Condition="'$(AsmPackSources)' == 'true' and '$(_AsmPackIsFirstTargetFramework)' == 'true'" PackagePath="src/%(RecursiveDir)%(Filename)%(Extension)" />
@@ -166,7 +187,10 @@
       <TfmSpecificPackageFile Include="@(_AsmPackedRidFile)" PackagePath="%(_AsmPackedRidFile.PackagePath)" />
       <TfmSpecificPackageFile Include="$(_AsmGeneratedPropsPath)" PackagePath="build/$(_AsmNuGetFramework)/$(PackageId).props" />
       <TfmSpecificPackageFile Include="$(_AsmGeneratedPropsPath)" PackagePath="buildTransitive/$(_AsmNuGetFramework)/$(PackageId).props" />
+      <TfmSpecificPackageFile Include="$(_AsmGeneratedConsumerTargetsPath)" Condition="'@(_AsmPackedSharedLibrary)' != ''" PackagePath="build/$(_AsmNuGetFramework)/$(PackageId).targets" />
+      <TfmSpecificPackageFile Include="$(_AsmGeneratedConsumerTargetsPath)" Condition="'@(_AsmPackedSharedLibrary)' != ''" PackagePath="buildTransitive/$(_AsmNuGetFramework)/$(PackageId).targets" />
       <FileWrites Include="$(_AsmGeneratedPropsPath);$(_AsmEmptyLibMarkerPath)" />
+      <FileWrites Include="$(_AsmGeneratedConsumerTargetsPath)" Condition="'@(_AsmPackedSharedLibrary)' != ''" />
     </ItemGroup>
   </Target>
 

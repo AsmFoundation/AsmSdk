@@ -50,4 +50,35 @@ public sealed class InteropTests(SdkUnderTest sdk)
         Assert.Equal("0", summary.Groups[2].Value);
         Assert.True(int.Parse(summary.Groups[1].Value) >= 48, run.Output);
     }
+
+    /// <summary>
+    /// The tour with BinariesCopyPath as the program's property, so every asm library it gets
+    /// (QaMath and QaLibc, through Qa.Interop) lands elsewhere than runtimes/: every check still
+    /// passes on this machine, which proves on each CI machine natively (Windows on Arm and
+    /// Apple silicon included) that the .NET host follows deps.json's localPath to the new
+    /// folder for its own RID.
+    /// </summary>
+    /// <param name="value">The BinariesCopyPath value.</param>
+    /// <param name="folder">The test-run folder name.</param>
+    [Theory]
+    [InlineData("native/{rid}", "native-rid")]
+    [InlineData("RidFolders", "rid-folders")]
+    public void The_interop_tour_passes_with_a_binaries_copy_path(string value, string folder)
+    {
+        if (CrossPlatformTests.HostBuildRid() is null)
+        {
+            Assert.Skip($"AsmSdk builds no library for this machine ({Repo.HostRid})");
+        }
+
+        string output = Path.Combine(Repo.Artifacts, "test-run", "interop-" + folder);
+        CommandResult build = sdk.Once($"build Interop {value}", () => sdk.Dotnet("build", App, "-c", "Release", $"-p:BinariesCopyPath={value}", "-o", output));
+        Assert.True(build.ExitCode == 0, build.Tail());
+        Assert.False(Directory.Exists(Path.Combine(output, "runtimes")), "a runtimes/ folder although BinariesCopyPath moved every library");
+        CommandResult run = Command.Run("dotnet", [Path.Combine(output, "asmqa.dll")], Repo.Root);
+        Assert.True(run.ExitCode == 0, run.Output);
+        Match summary = Regex.Match(run.StdOut, @"(\d+) passed, (\d+) failed");
+        Assert.True(summary.Success, run.Output);
+        Assert.Equal("0", summary.Groups[2].Value);
+        Assert.True(int.Parse(summary.Groups[1].Value) >= 48, run.Output);
+    }
 }

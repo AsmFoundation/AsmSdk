@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A .NET program that reaches Everywhere.asmproj only through NetLayoutLibrary
+    (NativeLayoutTests). It sets no BinariesCopyPath of its own, so the library's choice shapes
+    its output; with NetLayoutLibraryPrivate=all, the asm reference does not flow here at all
+    (nor do the SDK's consumer targets): the files arrive where NetLayoutLibrary laid them out,
+    and only NetLayoutLibrary's generated loader can find the library.
+    It prints the same line as NetConsumer: "<RID> 42 <ew_platform()> <ew_os()>".
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <!-- A folder of this program's own for each test case (with a trailing slash), instead of
+         dotnet build -o: -o is every project's output folder, so NetLayoutLibrary would copy
+         its own layout of the asm library there as well (a documented footgun). -->
+    <OutDir Condition="'$(NetLayoutThroughOutput)' != ''">$(NetLayoutThroughOutput)</OutDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../NetLayoutLibrary/NetLayoutLibrary.csproj" />
+  </ItemGroup>
+</Project>

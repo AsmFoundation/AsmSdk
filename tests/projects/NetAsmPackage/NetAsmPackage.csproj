@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A .NET program that references the asm package Test.Everywhere (Everywhere.asmproj, packed)
+    by version, with BinariesCopyPath on the PackageReference from NetAsmPackageReference
+    (NativeLayoutTests). An asm package does not depend on AsmFoundation.Sdk, so this program has
+    none of the SDK's consumer targets: the package's own buildTransitive targets move its
+    binaries, and NuGet's resolution does the rest.
+    It prints the same line as NetConsumer: "<RID> 42 <ew_platform()> <ew_os()>".
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Test.Everywhere" Version="1.0.0" BinariesCopyPath="$(NetAsmPackageReference)" />
+  </ItemGroup>
+</Project>

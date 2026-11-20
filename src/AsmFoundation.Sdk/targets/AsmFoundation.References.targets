@@ -150,20 +150,26 @@
       AsmOutputKind        SharedLibrary, StaticLibrary, Executable or Objects; only a shared
                            library is something a .NET app can load
       RuntimeIdentifiers   the declared RIDs (as GetAsmRuntimeIdentifiers), ";"-separated
+      AsmImportName        the library's name without "lib" or an extension (its AssemblyName):
+                           the name [DllImport] uses, which the generated loader looks for
     The caller removes its own global RuntimeIdentifier first, as for GetAsmRuntimeIdentifiers.
   -->
   <Target Name="GetAsmConsumerInfo" Returns="@(_AsmConsumerInfo)">
     <ItemGroup>
-      <_AsmConsumerInfo Include="$(MSBuildProjectFullPath)" AsmOutputKind="$(_AsmOutputKind)" RuntimeIdentifiers="$(_AsmDeclaredRuntimeIdentifiers)" />
+      <_AsmConsumerInfo Include="$(MSBuildProjectFullPath)" AsmOutputKind="$(_AsmOutputKind)" RuntimeIdentifiers="$(_AsmDeclaredRuntimeIdentifiers)" AsmImportName="$(AssemblyName)" />
     </ItemGroup>
   </Target>
 
   <!--
     GetAsmNativeRuntimeAssets: the shared library of every RID this build covers, each with
-      RelativePath       runtimes/<rid>/native/<file>: where a portable .NET app keeps it
+      RelativePath       runtimes/<rid>/native/<file>: where a portable .NET app keeps it by
+                         default (a referencing project's BinariesCopyPath may choose another
+                         place; see the consumer targets)
       RuntimeIdentifier  the RID, as deps.json's runtimeTargets name it
       AsmLibraryName,    the library's name and version in deps.json: the project's PackageId
       AsmLibraryVersion  and PackageVersion, the names NuGet's assets file gives this project
+      AsmProject         this project file: which library a file belongs to
+      AsmImportName      the name [DllImport] uses (AssemblyName: calc for calc.dll, libcalc.so)
     An inner build returns its own RID's library; the RID outer build asks each inner build.
     Nothing for a project that produces no shared library (a static library or an executable
     is nothing a .NET app can load). On Windows the PDB goes along when there is one, as .NET
@@ -178,7 +184,7 @@
     <ItemGroup Condition="'$(_AsmRid)' != '' and '$(AsmSharedLibraryPath)' != ''">
       <_AsmNativeRuntimeAsset Include="$(AsmSharedLibraryPath)" RelativePath="runtimes/$(RuntimeIdentifier)/native/$(TargetFileName)" />
       <_AsmNativeRuntimeAsset Include="$(_AsmPdbPath)" Condition="'$(_AsmPdbPath)' != '' and Exists('$(_AsmPdbPath)')" RelativePath="runtimes/$(RuntimeIdentifier)/native/$(TargetName).pdb" AsmSymbols="true" />
-      <_AsmNativeRuntimeAsset RuntimeIdentifier="$(RuntimeIdentifier)" AsmLibraryName="$(_AsmNativeLibraryName)" AsmLibraryVersion="$(_AsmNativeLibraryVersion)" AsmProject="$(MSBuildProjectFullPath)" />
+      <_AsmNativeRuntimeAsset RuntimeIdentifier="$(RuntimeIdentifier)" AsmLibraryName="$(_AsmNativeLibraryName)" AsmLibraryVersion="$(_AsmNativeLibraryVersion)" AsmProject="$(MSBuildProjectFullPath)" AsmImportName="$(AssemblyName)" />
     </ItemGroup>
 
     <!-- The RID outer build: each inner build, with the same global properties as the

@@ -256,7 +256,9 @@ internal static partial class Native
 
 A build for one platform (`dotnet publish -r linux-arm64`, or a `RuntimeIdentifier` in the
 `.csproj`) gets that platform's library alone, copied beside `App.dll`, and NuGet's RID rules
-pick it. See [Calling assembly from .NET](interop.md#net-in-the-same-solution).
+pick it. See [Calling assembly from .NET](interop.md#net-in-the-same-solution). To keep the
+libraries somewhere else, such as `native/<rid>/`, set `BinariesCopyPath` on the reference
+([Where the binaries go](interop.md#where-the-binaries-go-binariescopypath)).
 
 **Running it** works on any of the seven platforms:
 

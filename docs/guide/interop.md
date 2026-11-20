@@ -86,6 +86,112 @@ let .NET's own RID rules choose the library.
 - **A single solution builds both** with `dotnet build App.slnx`, as long as the
   `.asmproj` entry has its type GUID.
 
+## Where the binaries go: BinariesCopyPath
+
+By default the asm libraries go where NuGet puts a package's native files: `runtimes/<rid>/native/`
+in a portable build, beside the app in a RID-specific one. `BinariesCopyPath` puts them
+elsewhere, for build and publish alike:
+
+```xml
+<!-- One reference -->
+<ProjectReference Include="../Hello/Hello.asmproj" BinariesCopyPath="native/{rid}" />
+
+<!-- Every asm reference of the project (and its asm packages) -->
+<PropertyGroup>
+  <BinariesCopyPath>RidFolders</BinariesCopyPath>
+</PropertyGroup>
+```
+
+| Value | A portable build (every RID) | A build for one RID (`-r win-x64`) |
+|---|---|---|
+| `Auto` (the default) | `runtimes/<rid>/native/hello.dll` | `hello.dll`, beside the app |
+| `Runtimes` | `runtimes/<rid>/native/hello.dll` | `runtimes/win-x64/native/hello.dll` |
+| `AppFolder` | `hello.dll`, `libhello.so`, `libhello.dylib`, beside the app (one RID per OS; see ASM0044 below) | `hello.dll` |
+| `RidFolders` | `<rid>/hello.dll` | `win-x64/hello.dll` |
+| any folder, `{rid}` optional | `native/{rid}` → `native/<rid>/hello.dll` | `native/{rid}` → `native/win-x64/hello.dll`; `native` → `native/hello.dll` |
+
+- **`{rid}`** is the RID each file was built for. In a build for one RID it is the RID that
+  serves it: a `linux-musl-arm64` app that gets the `linux-arm64` build has it in `linux-arm64/`.
+- **A folder without `{rid}`** holds a file name once. In a portable build, `win-x64` and
+  `win-arm64` both give `hello.dll`, and `linux-x64`, `linux-arm64` and `linux-musl-x64` all
+  give `libhello.so`, so such a build stops with **ASM0044** before anything is copied. Add
+  `{rid}`, or narrow the reference's `RuntimeIdentifiers` to one RID per OS. The three OSes
+  never collide: their file names differ.
+- **Values:** a preset (`Auto`, `Runtimes`, `AppFolder`, `RidFolders`, in any letter case), or a
+  folder inside the output: slashes either way, no absolute path, no `..`, none of
+  `< > : " | ? *`, and no placeholder but `{rid}`. Anything else stops with **ASM0043**, which
+  says where the value was written.
+- **Which value applies,** per asm library: the reference's own attribute, then the project's
+  property, then the choice of a .NET library the asm library comes through, then `Auto`. So
+  `BinariesCopyPath` on the reference inside a wrapper library, often the only place the asm
+  project is referenced, shapes the app's output as well; the app's own property or reference
+  overrides it. When two libraries in between disagree, **ASM0046** warns and the first wins.
+- **Footgun:** `RidFolders` in a portable build writes `bin/Debug/net10.0/win-x64/`, the same
+  folder `dotnet build -r win-x64` uses for the whole app. Prefer `native/{rid}` when you also
+  build for one RID.
+
+### How the app finds them
+
+No code is needed in the app. Measured with .NET 10 on Windows and Linux:
+
+- **`deps.json`:** the app's `deps.json` lists every asm library with `localPath`, the path it
+  was copied to: `runtimeTargets` in a portable app, plain `native` assets in an app for one
+  RID. The .NET host loads from any folder named there, framework-dependent and
+  self-contained alike. A self-contained app ignores `runtimeTargets`, and without `localPath`
+  the host keeps only a file name and looks beside the app.
+- **The generated loader:** a C# project for .NET 5 or later that puts an asm library
+  anywhere but the app folder gets `obj/.../AsmNativeLibraryLoader.g.cs`. It is a module
+  initializer that adds an `AssemblyLoadContext.ResolvingUnmanagedDll` handler, for what reads
+  no `deps.json`: NativeAOT, and an app that gets the files through a library without the
+  entries (`PrivateAssets="all"` below). It runs only after .NET's own probing failed, and
+  after any resolver of yours (`NativeLibrary.SetDllImportResolver` runs first). It looks
+  for `<name>.dll`, `lib<name>.so` or `lib<name>.dylib` under the app folder, for this
+  machine's RID, and on musl for the `linux-<arch>` build too. Turn it off with
+  `<AsmGenerateNativeLibraryLoader>false</AsmGenerateNativeLibraryLoader>`; a VB or F#
+  project, or one for an older framework, never gets it.
+
+| Publish kind | How the library in `native/` was found |
+|---|---|
+| portable, `dotnet build` / `dotnet run` | `deps.json` (`runtimeTargets` + `localPath`) |
+| `-r <rid>`, framework-dependent | `deps.json` (`native` + `localPath`) |
+| `-r <rid> --self-contained` | `deps.json` (`native` + `localPath`) |
+| `-p:PublishSingleFile=true` | the library stays in its folder beside the bundle |
+| `-p:PublishAot=true` | the generated loader |
+
+### PrivateAssets="all": the binaries inside a .NET package
+
+`dotnet pack` turns a `ProjectReference` into a package dependency, an asm reference too: a
+wrapper library `Acme.Calc` that references `Calc.asmproj` depends on the package `calc`, and
+both must be published. With NuGet's own `PrivateAssets="all"` ("this reference does not flow
+to my users"), the wrapper's package carries every RID's library itself, and depends on
+nothing:
+
+```xml
+<ProjectReference Include="../Calc.Native/Calc.Native.asmproj" PrivateAssets="all" />
+```
+
+```text
+Acme.Calc.1.0.0.nupkg
+  lib/net10.0/Acme.Calc.dll
+  runtimes/win-x64/native/calc.dll
+  runtimes/linux-x64/native/libcalc.so
+  runtimes/osx-arm64/native/libcalc.dylib     (one per RID of the reference)
+  buildTransitive/net10.0/Acme.Calc.targets   BinariesCopyPath for the package's users
+```
+
+- **Use it** for a library whose asm code is an implementation detail. Keep the dependency
+  when several .NET packages share one asm library: NuGet then ships it once.
+- **Within the solution,** an app that references the wrapper by project doesn't get the asm
+  reference (it does not flow). Unless the app has asm references of its own, it doesn't get
+  AsmSdk's targets either. So the app:
+  - copies what the wrapper hands on: the files where the wrapper's `BinariesCopyPath` put
+    them, every RID's (nothing in the app keeps only one);
+  - gets no `deps.json` entries;
+  - loads the library through the loader generated into the wrapper.
+
+  In a single-file publish the files stay beside the bundle. To place them elsewhere, set
+  `BinariesCopyPath` on the wrapper's reference.
+
 ## Publishing a .NET app
 
 Every publish mode of .NET carries the asm library, the way it carries a NuGet package's native
@@ -103,7 +209,8 @@ package):
 | `-r linux-x64 -t:PublishContainer` | in the image, beside the app |
 
 The single-file rows rely on the consumer targets, which mark the asm libraries
-`AssetType=native`: the metadata the .NET SDK decides by.
+`AssetType=native`: the metadata the .NET SDK decides by. "Beside the app" is the default:
+with `BinariesCopyPath` each row puts the library in that folder instead (see above).
 
 **A static library inside a NativeAOT program.** NativeAOT can link a static library into the
 program and call it directly: no library file ships, and nothing is looked up at run time. The
@@ -136,10 +243,23 @@ published, and build it for that RID first (`dotnet build Crc.asmproj -c Release
   beside it.
 - **What it ignores:** the package's `native/` folder (static and import libraries) and the asm
   items in its `build/` props. These apply only to asm projects.
+- **BinariesCopyPath on the PackageReference** (or the project's property) moves the package's
+  libraries like a project reference's:
+
+  ```xml
+  <PackageReference Include="Acme.Crc" Version="1.2.0" BinariesCopyPath="native/{rid}" />
+  ```
+
+  An asm package does not depend on AsmFoundation.Sdk, so the work is done by targets inside
+  the package (`buildTransitive/<tfm>/<id>.targets`, plain MSBuild, named for that package
+  only): they move NuGet's items, and the .NET SDK itself writes the new place into
+  `deps.json` as `localPath`. A C# consumer gets a generated loader for NativeAOT, as above.
+  Without the attribute or the property, nothing changes.
 - **Wrapper packages:** to ship a managed API, make a separate `.csproj` package (for
   example `Acme.Crc.Net`) that references the native package and contains the
   `[LibraryImport]` declarations. The pair works like `SkiaSharp` with its
-  `SkiaSharp.NativeAssets.*` packages.
+  `SkiaSharp.NativeAssets.*` packages. Or put the binaries inside the wrapper's package
+  with `PrivateAssets="all"` (above).
 
 **Example:** [Shipping to .NET through NuGet](../examples/nuget-for-dotnet.md) packs an assembly library for seven RIDs and its C# wrapper as two packages, and uses them from a program by version.
 

@@ -114,6 +114,11 @@ next to a shared one.
   a C# wrapper library in between, and for every publish mode: a single file (the library
   beside it, or inside it with `IncludeNativeLibrariesForSelfExtract`), NativeAOT, trimming,
   container images.
+- **Somewhere else:** `BinariesCopyPath` on the reference (or as the project's property, or on
+  a `PackageReference` to an asm package) puts the libraries in `native/{rid}`, `RidFolders`,
+  `AppFolder` or any folder of the output. `deps.json` names the place, and a generated
+  loader covers NativeAOT. `PrivateAssets="all"` on the reference packs the libraries into
+  the .NET project's own package.
 - **As a package:** `dotnet pack` writes this layout:
 
   | Path | Contents |
@@ -123,6 +128,7 @@ next to a shared one.
   | `native/<rid>/<tfm>/` | the static library, and a Windows DLL's import library |
   | `runtimes/<rid>/native/` | the shared library (`nativeassets/<framework>/` when the project targets both) |
   | `build/<framework>/<id>.props` | the generated props, per target framework |
+  | `buildTransitive/<framework>/<id>.targets` | with a shared library: `BinariesCopyPath` for the package's .NET users |
 
   A consuming `.asmproj` gets the package's include files and the library of its RID and
   nearest target framework from `build/<framework>/<id>.props`. A consuming `.csproj` gets the

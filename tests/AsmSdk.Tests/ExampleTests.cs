@@ -100,8 +100,9 @@ public sealed class ExampleTests(SdkUnderTest sdk)
     /// <summary>
     /// The asm package for .NET: each of the seven RIDs' libraries under runtimes/&lt;rid&gt;/native/
     /// (where .NET finds a RID-specific native asset), the import libraries of the Windows DLLs
-    /// under native/ (for asm consumers), the public include file, and netstandard1.0's lib/
-    /// marker and props.
+    /// under native/ (for asm consumers), the public include file, netstandard1.0's lib/ marker
+    /// and props, and the .NET consumer targets that give a PackageReference BinariesCopyPath
+    /// (a shared library is packed, so they are there).
     /// </summary>
     [Fact]
     public void Crc32C_packs_its_library_where_dotnet_finds_it()
@@ -113,6 +114,7 @@ public sealed class ExampleTests(SdkUnderTest sdk)
             {
                 "Samples.Crc32C.nuspec", "include/crc32c.inc", "lib/netstandard1.0/_._",
                 "build/netstandard1.0/Samples.Crc32C.props", "buildTransitive/netstandard1.0/Samples.Crc32C.props",
+                "build/netstandard1.0/Samples.Crc32C.targets", "buildTransitive/netstandard1.0/Samples.Crc32C.targets",
                 "runtimes/win-x64/native/crc32c.dll", "runtimes/win-arm64/native/crc32c.dll",
                 "runtimes/linux-x64/native/libcrc32c.so", "runtimes/linux-arm64/native/libcrc32c.so",
                 "runtimes/linux-musl-x64/native/libcrc32c.so",

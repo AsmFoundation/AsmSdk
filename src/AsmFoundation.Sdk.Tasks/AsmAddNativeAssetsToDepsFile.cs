@@ -9,22 +9,33 @@ using Microsoft.Build.Utilities;
 namespace AsmFoundation.Sdk.Tasks;
 
 /// <summary>
-/// Adds the native libraries of referenced asm projects to a portable .NET app's deps.json, as
-/// "runtimeTargets" of a project library, so that the .NET host loads the one built for the
-/// machine the app runs on from runtimes/&lt;rid&gt;/native/.
+/// Adds the native libraries of a .NET app's asm references to its deps.json, as a project
+/// library whose assets name the path each file was copied to, so that the .NET host loads the
+/// one for the machine the app runs on from wherever BinariesCopyPath put it.
 /// </summary>
 /// <remarks>
 /// <para>
 /// This is what NuGet gives a package's runtimes/ folder, and what the .NET SDK never does for a
 /// ProjectReference: its GenerateDepsFile ignores RuntimeTargetsCopyLocalItems of project
-/// libraries (measured with SDK 11.0.100). A deps.json edited this way made ONE portable output
-/// load the right library on win-x64, linux-x64 and linux-arm64.
+/// libraries (measured with SDK 11.0.100). Two shapes, by the deps.json's own target (a
+/// RID-specific one is named ".NETCoreApp,Version=v10.0/win-x64"), both measured with .NET 10
+/// on Windows and Linux:
 /// </para>
+/// <list type="bullet">
+/// <item>portable app: "runtimeTargets", one entry per RID, so ONE output loads the right
+/// library on each machine (runtimes/&lt;rid&gt;/native/, native/&lt;rid&gt;/, &lt;rid&gt;/ alike);</item>
+/// <item>RID-specific app: a plain "native" asset with "localPath". Without localPath the host
+/// keeps only the asset's file name and looks in the app folder (COREHOST_TRACE: "Computed
+/// relative path: calc.dll"), so a library in native/ was not found; with it, both a
+/// framework-dependent and a self-contained app load it. A self-contained app ignores
+/// runtimeTargets entirely, which is why they are not used there.</item>
+/// </list>
 /// <para>
-/// Idempotent: each library's runtimeTargets are replaced, not appended to, so a RID removed from
-/// the asm project disappears on the next build even when the SDK left deps.json untouched.
-/// The file is written only when its text changes. Error: ASM0042 (deps.json unreadable or not
-/// a deps file).
+/// Every entry carries "localPath", the path the file was copied to, as the .NET SDK writes it
+/// for a package's assets. Idempotent: each library's assets are replaced, not appended to, so
+/// a RID or a folder that changed disappears on the next build even when the SDK left deps.json
+/// untouched. The file is written only when its text changes. Error: ASM0042 (deps.json
+/// unreadable or not a deps file).
 /// </para>
 /// </remarks>
 public sealed class AsmAddNativeAssetsToDepsFile : Task
@@ -34,7 +45,8 @@ public sealed class AsmAddNativeAssetsToDepsFile : Task
     public string DepsFilePath { get; set; } = "";
 
     /// <summary>
-    /// The native files, with metadata RelativePath (runtimes/&lt;rid&gt;/native/&lt;file&gt;),
+    /// The native files (no PDBs), with metadata RelativePath (where the file is copied, relative
+    /// to the app: runtimes/&lt;rid&gt;/native/&lt;file&gt;, native/&lt;file&gt;, &lt;file&gt;, ...),
     /// RuntimeIdentifier, AsmLibraryName and AsmLibraryVersion.
     /// </summary>
     [Required]
@@ -81,19 +93,30 @@ public sealed class AsmAddNativeAssetsToDepsFile : Task
         JsonObject libraries = root.GetOrAddObject("libraries");
         JsonObject? main = FindMainLibrary(target);
 
+        // A RID-specific deps.json names its RID after the framework (".NETCoreApp,Version=v10.0/win-x64").
+        bool ridSpecific = targetName.IndexOf('/') >= 0;
         foreach (IGrouping<string, ITaskItem> library in NativeAssets.GroupBy(LibraryKey, StringComparer.Ordinal))
         {
-            var runtimeTargets = new JsonObject();
+            var assets = new JsonObject();
             foreach (ITaskItem asset in library.OrderBy(a => a.GetMetadata("RelativePath"), StringComparer.Ordinal))
             {
+                string path = asset.GetMetadata("RelativePath").Replace('\\', '/');
                 var entry = new JsonObject();
-                entry["rid"] = new JsonString(asset.GetMetadata("RuntimeIdentifier"));
-                entry["assetType"] = new JsonString("native");
-                runtimeTargets[asset.GetMetadata("RelativePath").Replace('\\', '/')] = entry;
+                if (!ridSpecific)
+                {
+                    entry["rid"] = new JsonString(asset.GetMetadata("RuntimeIdentifier"));
+                    entry["assetType"] = new JsonString("native");
+                }
+
+                entry["localPath"] = new JsonString(path);
+                assets[path] = entry;
             }
 
+            // Replace both shapes: a build that switched between portable and RID-specific, or
+            // that changed folders, must not keep the other shape's stale entries.
             JsonObject targetEntry = target.GetOrAddObject(library.Key);
-            targetEntry["runtimeTargets"] = runtimeTargets;
+            targetEntry["runtimeTargets"] = ridSpecific ? null : assets;
+            targetEntry["native"] = ridSpecific ? assets : null;
 
             if (libraries[library.Key] is not JsonObject)
             {

@@ -97,6 +97,42 @@ Migration from 0.2.0, without a compatibility layer:
   no package (LLVM publishes no binaries for them): `ASM0006` names `AsmToolchain=System`.
   `ASM0004` for a `.s` source with a toolchain without `llvm-mc`, `ASM0005` for a Windows or
   macOS RID, or the Linux RID of the other architecture, with the System toolchain's GNU `ld`.
+- **`BinariesCopyPath`: where a .NET project keeps the asm libraries,** for build and publish:
+  on a `ProjectReference` to an `.asmproj`, on a `PackageReference` to an asm package, or as
+  the project's property. `Runtimes` (`runtimes/<rid>/native/`), `AppFolder`, `RidFolders`
+  (`<rid>/`), `Auto` (the default: NuGet's layout, `runtimes/` portable and the app folder for
+  one RID), or any folder inside the output with an optional `{rid}` (`native/{rid}`). The
+  reference wins, then the property, then the choice of a .NET library the asm library comes
+  through (so the attribute on a wrapper library's reference shapes the app's output too),
+  then `Auto`. Errors `ASM0043` (a value that leaves the output or is malformed) and
+  `ASM0044` (two files on one path: a folder without `{rid}` in a build of several RIDs of one
+  OS); warning `ASM0046` (two libraries in between disagree).
+- **The app finds them wherever they go,** with no code of its own: its `deps.json` lists every
+  asm library with `localPath`, as `runtimeTargets` in a portable app and as plain `native`
+  assets in an app for one RID. Measured with .NET 10 on Windows and Linux: the host loads from
+  any folder so named, framework-dependent and self-contained; a self-contained app ignores
+  `runtimeTargets`, and without `localPath` the host looks only beside the app.
+- **A generated fallback loader** for what reads no `deps.json`: a C# project for .NET 5 or
+  later that puts an asm library anywhere but the app folder gets
+  `obj/.../AsmNativeLibraryLoader.g.cs`, an `AssemblyLoadContext.ResolvingUnmanagedDll`
+  handler that runs only after .NET's own probing and any resolver of yours failed. It is how
+  a NativeAOT program finds `native/x.dll`, and how an app finds a library that reaches it
+  through a class library whose asm reference does not flow (`PrivateAssets="all"`).
+  `AsmGenerateNativeLibraryLoader=false` turns it off.
+- **`PrivateAssets="all"` packs the asm binaries into a .NET library's package:** every RID's
+  library under `runtimes/<rid>/native/`, with no dependency on the asm package; without it,
+  the reference stays a package dependency, as NuGet makes any `ProjectReference`. Within the
+  solution, an app that references such a library by project gets neither the asm reference
+  nor AsmSdk's targets, and copies the files where the library's `BinariesCopyPath` put them:
+  a .NET project hands its asm references' files on already laid out (they are marked
+  `Private="false"` and delivered through its own copy and publish lists, with
+  `ExcludeFromSingleFile` for single-file publishes), because what
+  `GetCopyToOutputDirectoryItems` hands on is fixed before any later target could move it.
+- **Packages with asm libraries carry .NET consumer targets** (`buildTransitive/<tfm>/<id>.targets`,
+  plain MSBuild, named for the package only), which give their .NET consumers
+  `BinariesCopyPath` without depending on AsmFoundation.Sdk (an asm package still does not:
+  NU1605 for consumers on an older SDK). They move NuGet's own items; the .NET SDK then writes
+  the new `localPath` into `deps.json` itself.
 - **Realistic samples,** each a complete program:
   - `samples/Crc32C`: CRC-32C as a freestanding shared library for all seven RIDs: x64 in
     NASM through `asmsdk.inc`, ARM64 in GNU syntax. `ExportsFile` keeps five names (versioned
@@ -125,8 +161,13 @@ Migration from 0.2.0, without a compatibility layer:
   inside it, the publish switches on the command line), `DiagnosticsTests` (NASM's errors at
   their line, `ASM0005` for the System toolchain), `InteropTests` (the interop tour,
   `tests/projects/Interop`: every way C# calls an asm library, 51 checks on x64 and 48 on
-  ARM64, run natively on each of the five CI machines), and `ExampleTests` for every fact the
-  documentation states about the samples. AsmSdk.Tests has 135 tests.
+  ARM64, run natively on each of the five CI machines, and again with `BinariesCopyPath`
+  `native/{rid}` and `RidFolders`), `NativeLayoutTests` (every `BinariesCopyPath` value and
+  where it comes from, builds for one RID, self-contained, single-file and NativeAOT
+  publishes that run, `ASM0043` and `ASM0044`, the generated loader, a private reference
+  through a class library in build, single-file publish and pack, and the .NET consumers of
+  both package kinds), and `ExampleTests` for every fact the documentation states about the
+  samples. AsmSdk.Tests has 165 tests.
 - **Documentation:** a Platforms and runtime identifiers guide; every guide, the reference and
   the toolchain pages for the seven RIDs; an Examples section that walks through the samples;
   and, for AI tools, `llms.txt`, `llms-full.txt` and a Markdown copy of every page

@@ -15,9 +15,12 @@ mapping all work as they do for a `.csproj`, because the SDK rides on `Microsoft
 | From → to | Mechanism | What happens |
 |---|---|---|
 | `.asmproj` → `.asmproj` | `ProjectReference` | the referenced project builds first, for the same RID; its public include folder joins the `-I` path; its static library (else its shared one, through the import library on Windows) is linked |
-| `.csproj` → `.asmproj` | `ProjectReference` | the asm project builds first, for the RIDs the build needs; a portable build gets every RID's library under `runtimes/<rid>/native/` and in `deps.json`, a RID-specific build the best match beside the program (on build and publish); no assembly reference |
+| `.csproj` → `.asmproj` | `ProjectReference` | the asm project builds first, for the RIDs the build needs; a portable build gets every RID's library under `runtimes/<rid>/native/` and in `deps.json`, a RID-specific build the best match beside the program (on build and publish), or wherever `BinariesCopyPath` says; no assembly reference. `dotnet pack` of the .NET project makes it a package dependency, or, with `PrivateAssets="all"`, packs the libraries into the .NET package |
 | package → `.asmproj` | `PackageReference` | the package's `build/<id>.props` adds its `include/` folder and the library of the project's RID (`AsmOrigin="Package"`) |
-| package → `.csproj` | `PackageReference` | NuGet copies the `runtimes/<rid>/native/` libraries, as for any native package; the asm items are ignored outside asm projects |
+| package → `.csproj` | `PackageReference` | NuGet copies the `runtimes/<rid>/native/` libraries, as for any native package; the asm items are ignored outside asm projects. `BinariesCopyPath` on the `PackageReference` (or the property) moves them, by targets inside the package |
+
+See [Where the binaries go](interop.md#where-the-binaries-go-binariescopypath) for
+`BinariesCopyPath` and `PrivateAssets="all"`.
 
 ## ProjectReference between asm projects
 
@@ -94,6 +97,7 @@ mapping all work as they do for a `.csproj`, because the SDK rides on `Microsoft
 | `runtimes/<rid>/nativeassets/<framework>/` | the shared library of each target framework | `Library`, `TargetFrameworks` |
 | `src/**` | `AsmSource` and `AsmInclude` items, with their relative paths | `AsmPackSources=true` |
 | `build/<framework>/<PackageId>.props`, `buildTransitive/<framework>/<PackageId>.props` | generated | one per target framework, always |
+| `build/<framework>/<PackageId>.targets`, `buildTransitive/<framework>/<PackageId>.targets` | generated, plain MSBuild: `BinariesCopyPath` for .NET consumers, and the fallback loader ([Where the binaries go](interop.md#where-the-binaries-go-binariescopypath)) | a shared library is packed under `runtimes/` |
 
 `<tfm>` is `freestanding` or `libc`, and `<framework>` the NuGet framework behind it:
 `netstandard1.0` for `freestanding`, `netstandard2.0` for `libc`. NuGet only knows its own
@@ -118,6 +122,18 @@ dependency every `.asmproj` carries is removed from the `.nuspec`.
 - **The package declares one dependency group per target framework** (`netstandard1.0`,
   `netstandard2.0`), which every .NET consumer accepts. Its own `PackageReference`s become
   package dependencies, as usual.
+- **Its `ProjectReference`s become package dependencies too,** on each referenced project's
+  `PackageId` and version, as NuGet does for any project reference. A static library linked
+  *into* a shared library or a program needs no such dependency, because its code is already
+  inside. Without `PrivateAssets="all"` on that reference, the package still depends on the
+  static library's package. When that package was never published, every consumer fails
+  restore with `NU1101 Unable to find package`:
+
+  ```xml
+  <ProjectReference Include="../CrcCore/CrcCore.asmproj" PrivateAssets="all" />  <!-- linked in -->
+  ```
+
+  A `StaticLibrary` package keeps the dependency: its consumers link both archives.
 
 ## The generated consumer props
 

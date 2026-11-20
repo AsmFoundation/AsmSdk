@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A RID-agnostic .NET class library over the seven-RID Everywhere.asmproj (NativeLayoutTests):
+    the wrapper of most real solutions, and often the only place the asm project is referenced.
+    Its reference takes BinariesCopyPath from NetLayoutLibraryReference and PrivateAssets from
+    NetLayoutLibraryPrivate, so that tests check:
+      - that a program referencing only this library (NetLayoutThrough) lays the asm library out
+        the way this reference says, when the program says nothing itself;
+      - PrivateAssets="all": the reference stops flowing (the program gets no consumer targets
+        and no deps.json entries, and finds the library through this assembly's generated
+        loader), and dotnet pack puts every RID's library INTO this package, with no dependency
+        on Test.Everywhere and with buildTransitive targets for BinariesCopyPath.
+    Packed as Test.NetLayoutLibrary 1.0.0 into the local feed (Directory.Build.props).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PackageId>Test.NetLayoutLibrary</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>AsmFoundation tests</Authors>
+    <Description>Test package: a .NET library that carries its asm library's binaries for seven runtime identifiers.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Everywhere/Everywhere.asmproj" BinariesCopyPath="$(NetLayoutLibraryReference)" PrivateAssets="$(NetLayoutLibraryPrivate)" />
+  </ItemGroup>
+</Project>

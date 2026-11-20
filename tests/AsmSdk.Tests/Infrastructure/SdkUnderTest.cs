@@ -98,6 +98,31 @@ public sealed class SdkUnderTest : IAsyncLifetime
         _environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
         _environment["DOTNET_NOLOGO"] = "1";
 
+        // Git Bash starts Windows programs without ProgramFiles(x86) (it drops variable names
+        // with parentheses), and NativeAOT finds Visual Studio's linker by running vswhere.exe
+        // from the Visual Studio Installer folder: a NativeAOT publish from a suite started in
+        // Git Bash failed with "'vswhere.exe' is not recognized" (measured 2026-11-20, also
+        // with ProgramFiles(x86) restored alone). The variable is restored from the OS, as cmd
+        // and PowerShell would pass it, and the Installer folder goes on PATH, which is what
+        // made the publish work.
+        if (OperatingSystem.IsWindows())
+        {
+            string programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+            if (programFilesX86.Length != 0)
+            {
+                if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ProgramFiles(x86)")))
+                {
+                    _environment["ProgramFiles(x86)"] = programFilesX86;
+                }
+
+                string installer = Path.Combine(programFilesX86, "Microsoft Visual Studio", "Installer");
+                if (File.Exists(Path.Combine(installer, "vswhere.exe")))
+                {
+                    _environment["PATH"] = installer + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH");
+                }
+            }
+        }
+
         Clean();
         Version = Repo.SdkVersion();
         PackSdk = Dotnet("pack", "src/AsmFoundation.Sdk/AsmFoundation.Sdk.csproj", "-c", "Release");

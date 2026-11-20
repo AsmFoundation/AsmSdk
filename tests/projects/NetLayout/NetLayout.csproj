@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A .NET program that references the seven-RID Everywhere.asmproj with BinariesCopyPath on the
+    reference (NativeLayoutTests), taken from the NetLayoutReference property so that each test
+    picks a layout from the command line (-p:NetLayoutReference=native/{rid}). Empty means the
+    default: runtimes/<rid>/native/ in a portable build, the app folder in a RID-specific one.
+    It prints the same line as NetConsumer: "<RID> 42 <ew_platform()> <ew_os()>", so a test
+    knows which RID's library the .NET host (or the generated fallback loader) loaded.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- A test program, never a package: dotnet pack of the solution must skip it. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Everywhere/Everywhere.asmproj" BinariesCopyPath="$(NetLayoutReference)" />
+  </ItemGroup>
+</Project>
