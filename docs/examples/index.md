@@ -18,6 +18,24 @@ The smaller `Hello.*` samples are still the place to start: [Getting started](..
 builds the same kinds of project in a few lines each, and [Samples](../ecosystem/samples.md) lists
 them all.
 
+## A C# gRPC service on an engine in assembly
+
+[GrpcAsm](https://github.com/AsmFoundation/GrpcAsm), built with AsmSdk, is a gRPC server whose
+HTTP/2, HPACK, gRPC and event loops are x86-64 assembly (Linux). It hosts ordinary grpc-dotnet
+service classes, the ones ASP.NET Core maps with `MapGrpcService<T>()`, with one line:
+
+```csharp
+Greeter.BindService(server.ServiceBinder, new GreeterService());
+```
+
+Its `samples/GreeterNet` and `samples/GreeterAspNet` host the same classes on GrpcAsm and on
+ASP.NET Core gRPC, and
+[a measurement in 12 paired rounds](https://github.com/AsmFoundation/GrpcAsm/blob/main/benchmarks/endtoend/2026-11-20-aspnet/README.md)
+compares them. On four vCPUs with both servers saturated, a ~1 KiB order is served at 4.0
+times the calls per second, at 4.0 times less CPU per call. On SayHello, where the server's
+own work dominates, the CPU per call is 12 times lower. That page also covers latency, memory,
+one vCPU, and what GrpcAsm does not do yet.
+
 ## Building and running them
 
 The samples build against the SDK of the checkout they are in: the end-to-end tests pack it into
