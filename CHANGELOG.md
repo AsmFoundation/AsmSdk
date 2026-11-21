@@ -8,7 +8,7 @@ packages. The format follows
 The toolchain packages carry their own version (`toolchain/versions.json`).
 Each SDK release names the one it was tested with.
 
-## [0.3.0] — unreleased
+## [0.3.0] — 2026-11-21
 
 One `.asmproj` now builds for **seven runtime identifiers** from any build machine: `win-x64`,
 `win-arm64`, `linux-x64`, `linux-arm64`, `linux-musl-x64`, `osx-x64` and `osx-arm64`. x64
