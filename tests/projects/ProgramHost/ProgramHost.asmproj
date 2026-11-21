@@ -1,0 +1,23 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    An asm program for all eight RIDs that references another asm program, EverywhereProgram
+    (ProgramTests), and links the library Everywhere itself. Each RID's output gets
+      helpers/everywhere-program, with helpers/<the library>: the referenced program, delivered
+        with what it needs at its paths relative to it (BinariesCopyPath="helpers" on the
+        reference; on Windows too, since a program is started, not loaded)
+      <the library> next to program-host, which links it (Auto)
+    The sources are EverywhereProgram's: this program's own behavior does not matter here.
+  -->
+  <PropertyGroup>
+    <TargetFramework>libc</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>program-host</AssemblyName>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+    <EnableDefaultAsmItems>false</EnableDefaultAsmItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <AsmSource Include="../EverywhereProgram/program.asm;../EverywhereProgram/program.s" />
+    <ProjectReference Include="../EverywhereProgram/EverywhereProgram.asmproj" BinariesCopyPath="helpers" />
+    <ProjectReference Include="../Everywhere/Everywhere.asmproj" />
+  </ItemGroup>
+</Project>

@@ -146,6 +146,42 @@ public sealed class SdkUnderTest : IAsyncLifetime
     public CommandResult Dotnet(params string[] arguments) =>
         Command.Run("dotnet", [.. arguments, "-nologo", "-nodeReuse:false"], Repo.Root, _environment);
 
+    /// <summary>
+    /// Runs a <c>dotnet</c> command that is not an MSBuild build (<c>dotnet tool install</c>,
+    /// <c>dotnet nuget</c>) with the test environment, its arguments exactly as given.
+    /// </summary>
+    /// <param name="arguments">The arguments after <c>dotnet</c>.</param>
+    /// <returns>The command's result.</returns>
+    /// <remarks>
+    /// Not through <see cref="Dotnet"/>: its -nologo and -nodeReuse:false are MSBuild switches,
+    /// and dotnet tool install rejects them with its usage text (measured). The test
+    /// environment still applies: the isolated NuGet cache, no MSBuild variables of the host.
+    /// </remarks>
+    public CommandResult DotnetCommand(params string[] arguments) =>
+        Command.Run("dotnet", arguments, Repo.Root, _environment);
+
+    /// <summary>
+    /// Runs <c>dotnet run</c> of a project with the test environment: its options, then the
+    /// program's own arguments after "--".
+    /// </summary>
+    /// <param name="project">The project file.</param>
+    /// <param name="options">dotnet run options (for example -c Release, -r linux-x64, -p:AsmRunIn=Docker).</param>
+    /// <param name="programArguments">The arguments the program must receive, each as one argument.</param>
+    /// <returns>The command's result: the program's exit status and output when it ran, dotnet's otherwise.</returns>
+    /// <remarks>
+    /// Not through <see cref="Dotnet"/>: its -nologo and -nodeReuse:false go last, and after
+    /// "--" they would be the program's arguments. Node reuse is turned off with
+    /// MSBUILDDISABLENODEREUSE instead, for the reason <see cref="Dotnet"/> gives.
+    /// </remarks>
+    public CommandResult DotnetRun(string project, string[] options, params string[] programArguments)
+    {
+        var environment = new Dictionary<string, string?>(_environment, StringComparer.OrdinalIgnoreCase)
+        {
+            ["MSBUILDDISABLENODEREUSE"] = "1",
+        };
+        return Command.Run("dotnet", ["run", "--project", project, .. options, "--", .. programArguments], Repo.Root, environment);
+    }
+
     /// <summary>Runs a step once and remembers its result for every later caller.</summary>
     /// <param name="name">The step's name (its cache key).</param>
     /// <param name="step">The step.</param>

@@ -57,14 +57,17 @@ public sealed class RunTests(SdkUnderTest sdk)
         Expect(Repo.TestProjectPath("Entry", "bin", "Release", "freestanding", "linux-x64", "entry"), 42, "");
     }
 
-    /// <summary>The libc consumer loads the package's shared library from the NuGet cache and exits 11.</summary>
+    /// <summary>
+    /// The libc consumer loads the package's shared library from its own folder, where the build
+    /// copied it (its DT_RUNPATH is $ORIGIN), and exits 11. No LD_LIBRARY_PATH: before programs
+    /// got their libraries, this test pointed it into the NuGet cache.
+    /// </summary>
     [Fact]
     public void The_libc_package_consumer_runs()
     {
         CommandResult build = ProjectRuleTests.BuildLibcConsumer(sdk);
         Assert.True(build.ExitCode == 0, build.Tail());
-        Expect(Repo.TestProjectPath("LibcConsumer", "bin", "Release", "libc", "linux-x64", "libc-consumer"), 11, "",
-            "artifacts/test-nuget/test.libconly/1.0.0/runtimes/linux-x64/native");
+        Expect(Repo.TestProjectPath("LibcConsumer", "bin", "Release", "libc", "linux-x64", "libc-consumer"), 11, "");
     }
 
     /// <summary>

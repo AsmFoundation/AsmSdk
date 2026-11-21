@@ -46,6 +46,20 @@ public sealed class NativeLayoutTests(SdkUnderTest sdk)
     /// <summary>Everywhere's library key in a deps.json: its PackageId and version.</summary>
     private const string EverywhereLibrary = "Test.Everywhere/1.0.0";
 
+    /// <summary>
+    /// Packs Everywhere as the package Test.Everywhere 1.0.0 into the local feed, once, for its
+    /// consumers here and in ProgramTests.
+    /// </summary>
+    /// <param name="sdk">The SDK under test.</param>
+    /// <returns>The pack's result.</returns>
+    /// <remarks>
+    /// With its static library linked in, not a dependency (EverywhereStaticPrivate=all):
+    /// everywherestatic names no RID and cannot be packed alone, so a package that depended on it
+    /// could not be restored.
+    /// </remarks>
+    internal static CommandResult PackEverywhere(SdkUnderTest sdk) =>
+        sdk.Once("pack Everywhere into the feed", () => sdk.Dotnet("pack", Repo.TestProject("Everywhere"), "-c", "Release", "-p:EverywhereStaticPrivate=all"));
+
     /// <summary>A folder of this run under artifacts/test-run/.</summary>
     /// <param name="name">The folder's name.</param>
     /// <returns>The full path (not created: dotnet's -o creates it).</returns>
@@ -500,9 +514,7 @@ public sealed class NativeLayoutTests(SdkUnderTest sdk)
     public void An_asm_package_consumer_moves_the_binaries()
     {
         string rid = HostRidOrSkip();
-        // With its static library linked in, not a dependency: everywherestatic names no RID and
-        // cannot be packed alone, so a package that depends on it could not be restored.
-        CommandResult pack = sdk.Once("pack Everywhere into the feed", () => sdk.Dotnet("pack", Repo.TestProject("Everywhere"), "-c", "Release", "-p:EverywhereStaticPrivate=all"));
+        CommandResult pack = PackEverywhere(sdk);
         Assert.True(pack.ExitCode == 0, pack.Tail());
         Assert.Contains("buildTransitive/netstandard1.0/Test.Everywhere.targets", SdkUnderTest.PackageEntries(Path.Combine(Repo.Artifacts, "packages", "Test.Everywhere.1.0.0.nupkg")));
         string output = RunFolder("asm-package");

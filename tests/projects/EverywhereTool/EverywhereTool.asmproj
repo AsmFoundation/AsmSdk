@@ -1,0 +1,27 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    EverywhereProgram as a .NET tool (ToolTests): PackAsTool makes dotnet pack write
+    Test.EverywhereTool (PackageType DotnetTool: the command everywhere-tool, and the package of
+    each RID) and Test.EverywhereTool.<rid> for all eight RIDs (PackageType DotnetToolRidPackage:
+    tools/any/<rid>/ with the program, the library it links next to it, and
+    DotnetToolSettings.xml with Runner="executable"). dotnet tool install then installs the
+    package of the machine's RID, and the command starts the program, which exits with
+    10 * ew_platform() + the number of arguments, as EverywhereProgram does.
+  -->
+  <PropertyGroup>
+    <TargetFramework>libc</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>everywhere-tool</AssemblyName>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+    <PackAsTool>true</PackAsTool>
+    <PackageId>Test.EverywhereTool</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>AsmFoundation tests</Authors>
+    <Description>Test package: an assembly program as a .NET tool, for eight runtime identifiers.</Description>
+    <EnableDefaultAsmItems>false</EnableDefaultAsmItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <AsmSource Include="../EverywhereProgram/program.asm;../EverywhereProgram/program.s" />
+    <ProjectReference Include="../Everywhere/Everywhere.asmproj" />
+  </ItemGroup>
+</Project>

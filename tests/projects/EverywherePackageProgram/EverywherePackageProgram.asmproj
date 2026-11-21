@@ -1,0 +1,27 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    EverywhereProgram's twin that gets the library from the package Test.Everywhere instead
+    (ProgramTests packs it into the local feed): the package's props name the file to load at
+    run time (AsmRuntimeFile: on Windows the DLL in runtimes/, behind the import library the
+    program links), and BinariesCopyPath on the PackageReference places it.
+      Linux, macOS  lib/{rid}: the reference's value wins over the project's RidFolders, so the
+                    library lands in lib/<rid>/ and the run path is $ORIGIN/lib/<rid>
+                    (@loader_path/lib/<rid> on macOS)
+      Windows       neither is set (a Windows program finds its DLLs only in its own folder,
+                    ASM0047), so Auto keeps the DLL next to the program
+    Same sources and exit status as EverywhereProgram.
+  -->
+  <PropertyGroup>
+    <TargetFramework>libc</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>everywhere-package-program</AssemblyName>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+    <EnableDefaultAsmItems>false</EnableDefaultAsmItems>
+    <BinariesCopyPath Condition="!$(RuntimeIdentifier.StartsWith('win-'))">RidFolders</BinariesCopyPath>
+    <EverywhereFolder Condition="!$(RuntimeIdentifier.StartsWith('win-'))">lib/{rid}</EverywhereFolder>
+  </PropertyGroup>
+  <ItemGroup>
+    <AsmSource Include="../EverywhereProgram/program.asm;../EverywhereProgram/program.s" />
+    <PackageReference Include="Test.Everywhere" Version="1.0.0" BinariesCopyPath="$(EverywhereFolder)" />
+  </ItemGroup>
+</Project>

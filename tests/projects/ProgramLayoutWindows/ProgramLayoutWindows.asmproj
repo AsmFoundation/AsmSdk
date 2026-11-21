@@ -1,0 +1,19 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    Must fail with ASM0047 (ProgramTests): a Windows program that would keep the DLL it links in
+    a subfolder (here through the BinariesCopyPath property, which applies when the reference
+    names no folder of its own). Windows has no run path: the program would not start.
+  -->
+  <PropertyGroup>
+    <TargetFramework>libc</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>program-layout-windows</AssemblyName>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <BinariesCopyPath>native</BinariesCopyPath>
+    <EnableDefaultAsmItems>false</EnableDefaultAsmItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <AsmSource Include="../EverywhereProgram/program.asm" />
+    <ProjectReference Include="../Everywhere/Everywhere.asmproj" />
+  </ItemGroup>
+</Project>

@@ -33,31 +33,21 @@
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmReadExports" AssemblyFile="$(_AsmTasksAssembly)" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmWriteCLibraryStub" AssemblyFile="$(_AsmTasksAssembly)" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmCheckImage" AssemblyFile="$(_AsmTasksAssembly)" />
+  <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmLayOutProgramDependencies" AssemblyFile="$(_AsmTasksAssembly)" />
+  <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmSelectRunTarget" AssemblyFile="$(_AsmTasksAssembly)" />
 
   <!-- ===================================================================================== -->
   <!-- Items                                                                                  -->
   <!-- ===================================================================================== -->
-  <ItemGroup Condition="'$(EnableDefaultAsmItems)' == 'true'">
-    <!-- DefaultItemExcludes keeps bin/ and obj/ out, as for a .csproj. Every source of either
-         language is an item; AsmPrepare picks, per RID, the ones that build it. -->
-    <AsmSource Include="**/*.asm;**/*.s" Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)" />
-    <AsmInclude Include="**/*.inc" Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)" />
-  </ItemGroup>
 
   <!--
-    Every other file of the project folder is a None item, as in a .csproj: IDEs show a project
-    as its items, so without this a linker script, a C header or a README next to the sources
-    would be invisible. Set EnableDefaultNoneItems=false (.NET's own switch) to list them
-    yourself.
-
-    Why not Microsoft.NET.Sdk's own None glob (EnableDefaultItems stays false in Sdk.props):
-    it removes "**/*$(DefaultLanguageSourceExtension)" from None right after including
-    "**/*", and an .asmproj has no language extension, so that Remove is "**/*" and takes
-    every file away again. The asm items are taken out of None below, so each file is one
-    item: a .asm file is an AsmSource, never also a None.
+    The default items (AsmSource, AsmInclude, None) are declared in Sdk.props, before the project
+    body, so that a project can Update or Remove them (<None Update="data.txt"
+    CopyToOutputDirectory="PreserveNewest" />), as in a .csproj. Here, after the body, the asm
+    files the project listed itself (EnableDefaultAsmItems=false, or a file outside the folder
+    globs) are taken out of None too: each file is one item, an AsmSource never also a None.
   -->
   <ItemGroup Condition="'$(EnableDefaultNoneItems)' != 'false'">
-    <None Include="**/*" Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)" />
     <None Remove="@(AsmSource);@(AsmInclude)" />
   </ItemGroup>
 
@@ -168,6 +158,13 @@
     <!-- The PE machine (lld-link's -machine:), for links and for import libraries alike. -->
     <_AsmPeMachine Condition="'$(_AsmArch)' == 'arm64'">arm64</_AsmPeMachine>
     <_AsmPeMachine Condition="'$(_AsmPeMachine)' == ''">x64</_AsmPeMachine>
+    <!-- A program's run paths, as a file whose text changes only when they do: an input of
+         AsmLink (see _AsmResolveProgramDependencies), so that a new BinariesCopyPath relinks the
+         program even when it came from the command line or a Directory.Build.props. -->
+    <_AsmRunPathFile Condition="'$(_AsmRid)' != '' and '$(_AsmOutputKind)' == 'Executable'">$(AsmIntermediateDirectory)runpaths.txt</_AsmRunPathFile>
+    <!-- The loader a Linux libc program names (PT_INTERP): dotnet run checks that the machine,
+         WSL or a container has it. Empty for a static program, which needs none. -->
+    <_AsmRunLoader Condition="'$(_AsmUsesLibc)' == 'true' and '$(_AsmOs)' == 'Linux' and '$(_AsmOutputKind)' == 'Executable'">$(AsmDynamicLinker)</_AsmRunLoader>
   </PropertyGroup>
 
   <!-- ===================================================================================== -->
@@ -710,6 +707,115 @@
   </Target>
 
   <!-- ===================================================================================== -->
+  <!-- A program's dependencies: shared libraries, referenced programs, run paths             -->
+  <!-- ===================================================================================== -->
+
+  <!--
+    _AsmResolveProgramDependencies: where a program (one RID) keeps what it needs at run time,
+    and the run paths that make the OS loader find its libraries there.
+    AsmLayOutProgramDependencies has the rules; in short:
+      which    the runtime file of each shared link input from a referenced asm project or an asm
+               package (AsmRuntimeFile; on Windows the DLL behind the import library), and its
+               PDB; and the files of each asm program the project references (AsmReferencedProgram:
+               a ProjectReference's, from GetAsmLinkInputs, or a package's, from its props), each
+               at its path relative to that program, so its own run paths keep working
+      where    BinariesCopyPath on the ProjectReference or PackageReference, then the project's
+               BinariesCopyPath property, then Auto, which for a program is its own folder:
+                 <ProjectReference Include="../Calc/Calc.asmproj" BinariesCopyPath="lib/{rid}" />
+      run path one per library folder: $ORIGIN/<folder> (Linux DT_RUNPATH), @loader_path/<folder>
+               (macOS LC_RPATH); Windows has none, so a library folder other than the program's
+               own is ASM0047 (a referenced program may go anywhere: it is started, not loaded)
+    The files are copied by _AsmCopyProgramDependencies (into the build output) and published by
+    _AsmAddOwnPublishFiles, and they travel with the program to whatever references it
+    (_AsmComputeProgramBundle in References.targets). The run paths are linked by AsmLink, and
+    written to _AsmRunPathFile, an input of AsmLink, so that changing them relinks.
+    Only for a program: a shared library's dependencies are laid out by whatever loads it.
+  -->
+  <Target Name="_AsmResolveProgramDependencies"
+          Condition="'$(_AsmRid)' != '' and '$(_AsmOutputKind)' == 'Executable'"
+          DependsOnTargets="AsmPrepare">
+    <ItemGroup>
+      <_AsmProgramProjectReference Include="@(_MSBuildProjectReferenceExistent)" Condition="'%(Extension)' == '.asmproj'" />
+    </ItemGroup>
+    <AsmLayOutProgramDependencies LinkLibraries="@(AsmLinkLibrary)"
+                                  ReferencedPrograms="@(AsmReferencedProgram)"
+                                  ProjectReferences="@(_AsmProgramProjectReference)"
+                                  PackageReferences="@(PackageReference)"
+                                  ProjectBinariesCopyPath="$(BinariesCopyPath)"
+                                  RuntimeIdentifier="$(_AsmRid)"
+                                  TargetOs="$(_AsmOs)"
+                                  ProjectFile="$(MSBuildProjectFullPath)">
+      <Output TaskParameter="Files" ItemName="_AsmProgramDependency" />
+      <Output TaskParameter="RunPathArguments" PropertyName="_AsmRunPathArguments" />
+    </AsmLayOutProgramDependencies>
+    <!-- One line even with no run path: WriteLinesToFile deletes the file when it has no lines
+         to write, and a missing input would make AsmLink relink on every build. -->
+    <WriteLinesToFile File="$(_AsmRunPathFile)" Lines="run paths: $(_AsmRunPathArguments)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <FileWrites Include="$(_AsmRunPathFile)" />
+      <_AsmProgramProjectReference Remove="@(_AsmProgramProjectReference)" />
+    </ItemGroup>
+  </Target>
+
+  <!--
+    _AsmCopyProgramDependencies: the program's shared libraries and referenced programs into the
+    build output, where _AsmResolveProgramDependencies put them, so that the program runs from
+    bin/ as it is (dotnet run included). Skipped in an IDE's design-time build, which links
+    nothing either. Copies only what changed; dotnet clean removes the copies (FileWrites).
+  -->
+  <Target Name="_AsmCopyProgramDependencies"
+          Condition="'$(_AsmRid)' != '' and '$(_AsmOutputKind)' == 'Executable' and '$(DesignTimeBuild)' != 'true' and '$(SkipCompilerExecution)' != 'true'"
+          DependsOnTargets="_AsmResolveProgramDependencies">
+    <Copy Condition="'@(_AsmProgramDependency)' != ''"
+          SourceFiles="@(_AsmProgramDependency)"
+          DestinationFiles="@(_AsmProgramDependency->'$(TargetDir)%(TargetPath)')"
+          SkipUnchangedFiles="true"
+          Retries="$(CopyRetryCount)"
+          RetryDelayMilliseconds="$(CopyRetryDelayMilliseconds)">
+      <Output TaskParameter="DestinationFiles" ItemName="FileWrites" />
+    </Copy>
+  </Target>
+
+  <!--
+    _AsmCopyOwnContent: the project's None and Content items that ask for it with
+    CopyToOutputDirectory, into each RID's output folder at their TargetPath, as a .csproj copies
+    them (a program's data files then sit next to it in bin/, as they will in its publish
+    folder): Always on every build, PreserveNewest and IfDifferent when the source changed (the
+    Copy task's size and time check). AsmSdk 0.3.0 and earlier ignored the metadata: the
+    replaced CopyFilesToOutputDirectory copied nothing.
+  -->
+  <Target Name="_AsmCopyOwnContent"
+          Condition="'$(_AsmRid)' != '' and '$(DesignTimeBuild)' != 'true' and '$(SkipCompilerExecution)' != 'true'"
+          DependsOnTargets="AssignTargetPaths">
+    <ItemGroup>
+      <!-- One line per list, each with qualified metadata: an unqualified %(CopyToOutputDirectory)
+           over two lists requires every item to define it (MSB4096, measured), and most None
+           items (sources' neighbors, a README) define nothing. -->
+      <_AsmOwnCopyItem Include="@(_NoneWithTargetPath)" Condition="'%(_NoneWithTargetPath.CopyToOutputDirectory)' == 'Always' or '%(_NoneWithTargetPath.CopyToOutputDirectory)' == 'PreserveNewest' or '%(_NoneWithTargetPath.CopyToOutputDirectory)' == 'IfDifferent'" />
+      <_AsmOwnCopyItem Include="@(ContentWithTargetPath)" Condition="'%(ContentWithTargetPath.CopyToOutputDirectory)' == 'Always' or '%(ContentWithTargetPath.CopyToOutputDirectory)' == 'PreserveNewest' or '%(ContentWithTargetPath.CopyToOutputDirectory)' == 'IfDifferent'" />
+    </ItemGroup>
+    <!-- Two Copy calls, batched by the metadata: Always must not skip an unchanged file. -->
+    <Copy Condition="'@(_AsmOwnCopyItem)' != '' and '%(_AsmOwnCopyItem.CopyToOutputDirectory)' == 'Always'"
+          SourceFiles="@(_AsmOwnCopyItem)"
+          DestinationFiles="@(_AsmOwnCopyItem->'$(TargetDir)%(TargetPath)')"
+          Retries="$(CopyRetryCount)"
+          RetryDelayMilliseconds="$(CopyRetryDelayMilliseconds)">
+      <Output TaskParameter="DestinationFiles" ItemName="FileWrites" />
+    </Copy>
+    <Copy Condition="'@(_AsmOwnCopyItem)' != '' and '%(_AsmOwnCopyItem.CopyToOutputDirectory)' != 'Always'"
+          SourceFiles="@(_AsmOwnCopyItem)"
+          DestinationFiles="@(_AsmOwnCopyItem->'$(TargetDir)%(TargetPath)')"
+          SkipUnchangedFiles="true"
+          Retries="$(CopyRetryCount)"
+          RetryDelayMilliseconds="$(CopyRetryDelayMilliseconds)">
+      <Output TaskParameter="DestinationFiles" ItemName="FileWrites" />
+    </Copy>
+    <ItemGroup>
+      <_AsmOwnCopyItem Remove="@(_AsmOwnCopyItem)" />
+    </ItemGroup>
+  </Target>
+
+  <!-- ===================================================================================== -->
   <!-- Link                                                                                   -->
   <!-- ===================================================================================== -->
 
@@ -735,11 +841,14 @@
     keep members of objects that no longer exist.
     Every link line ends with the ExportsFile version script and the LinkerArg items, so a
     project's own arguments come last and can override the SDK's defaults.
+    A program that links asm shared libraries gets their run paths ($(_AsmRunPathArguments),
+    from _AsmResolveProgramDependencies) before those, on Linux and macOS: none for a program that
+    links none, so its output stays byte for byte what it was.
   -->
   <Target Name="AsmLink"
           Condition="'$(_AsmOutputKind)' != 'Objects'"
-          DependsOnTargets="AsmAssemble;_AsmBuildSystemLibraries;_AsmBuildCrt"
-          Inputs="@(_AsmObject);@(_AsmLinkInput);$(_AsmExportsFilePath);$(MSBuildProjectFullPath)"
+          DependsOnTargets="AsmAssemble;_AsmBuildSystemLibraries;_AsmBuildCrt;_AsmResolveProgramDependencies"
+          Inputs="@(_AsmObject);@(_AsmLinkInput);$(_AsmExportsFilePath);$(MSBuildProjectFullPath);$(_AsmRunPathFile)"
           Outputs="$(TargetPath);$(AsmStaticLibraryPath)">
     <!--
       A freestanding program cannot exist on macOS: Apple supports no static executables, and
@@ -794,11 +903,13 @@
     <Exec Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmOutputKind)' == 'SharedLibrary'"
           Command="$(_AsmLinker) -shared -soname $(TargetFileName) -Bsymbolic -z relro -z now --hash-style=gnu -o $(_AsmTargetPathArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmLibcArguments) $(_AsmCommonLinkArguments)" />
 
+    <!-- A static program loads no library at all: it gets no run path (and ld.lld would refuse
+         a shared library on its line anyway). -->
     <Exec Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmOutputKind)' == 'Executable' and '$(_AsmRuntime)' != 'Libc'"
           Command="$(_AsmLinker) -static $(_AsmEntryArgument) -o $(_AsmTargetPathArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmCommonLinkArguments)" />
 
     <Exec Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmOutputKind)' == 'Executable' and '$(_AsmRuntime)' == 'Libc'"
-          Command="$(_AsmLinker) -pie --dynamic-linker $(AsmDynamicLinker) -z relro -z now --hash-style=gnu $(_AsmEntryArgument) -o $(_AsmTargetPathArgument) $(_AsmCrtArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmLibcArguments) $(_AsmCommonLinkArguments)" />
+          Command="$(_AsmLinker) -pie --dynamic-linker $(AsmDynamicLinker) -z relro -z now --hash-style=gnu $(_AsmEntryArgument) -o $(_AsmTargetPathArgument) $(_AsmCrtArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmLibcArguments) $(_AsmRunPathArguments) $(_AsmCommonLinkArguments)" />
 
     <!-- Windows (PE/COFF). A DLL has no entry point of its own (-noentry: nothing to run when
          it loads), and its import library goes next to it, for native consumers. -->
@@ -816,9 +927,10 @@
     <Exec Condition="'$(_AsmOs)' == 'MacOS' and '$(_AsmOutputKind)' == 'SharedLibrary'"
           Command="$(_AsmLinker) -dylib -install_name @rpath/$(TargetFileName) -o $(_AsmTargetPathArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmLibcArguments) $(_AsmCommonLinkArguments)" />
 
-    <!-- A program (libc only, ASM0015 above): dyld loads libSystem and calls main. -->
+    <!-- A program (libc only, ASM0015 above): dyld loads libSystem and calls main, and finds
+         the program's @rpath dylibs through its LC_RPATH entries. -->
     <Exec Condition="'$(_AsmOs)' == 'MacOS' and '$(_AsmOutputKind)' == 'Executable'"
-          Command="$(_AsmLinker) -execute $(_AsmEntryArgument) -o $(_AsmTargetPathArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmLibcArguments) $(_AsmCommonLinkArguments)" />
+          Command="$(_AsmLinker) -execute $(_AsmEntryArgument) -o $(_AsmTargetPathArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmLibcArguments) $(_AsmRunPathArguments) $(_AsmCommonLinkArguments)" />
 
     <!--
       The fixups the loader must apply, checked where the linker does not (AsmCheckImage):
@@ -988,6 +1100,10 @@
                   a project file): OutDir is never extended by a RID either.
     A project with several target frameworks (freestanding;libc) gets folder/<tfm>/<rid>/: the
     folder is shared by its frameworks as well, and each builds the same RIDs.
+      PublishDir  in a dotnet publish (_IsPublishing, which the CLI sets): <PublishDir><rid>/,
+                  each RID's own publish folder (see _AsmPublishEachRuntimeIdentifier), given to
+                  the builds as well as to the publishes so that MSBuild runs each inner build
+                  once: a property the build lacked would make the publish a second instance.
     Footgun: these global properties reach the projects an inner build references, as any
     global property does, so a static library this project links lands in folder/<rid>/ too.
     A .NET project that references this one removes all three first (see the SDK package's
@@ -1004,6 +1120,7 @@
       <AdditionalProperties>RuntimeIdentifier=%(Identity)</AdditionalProperties>
       <AdditionalProperties Condition="'$(_CommandLineDefinedOutputPath)' == 'true'">%(AdditionalProperties);OutputPath=$(OutputPath)$(_AsmSharedOutputFramework)%(Identity)/</AdditionalProperties>
       <AdditionalProperties Condition="'$(OutDir)' != '$(OutputPath)'">%(AdditionalProperties);OutDir=$(OutDir)$(_AsmSharedOutputFramework)%(Identity)/</AdditionalProperties>
+      <AdditionalProperties Condition="'$(_IsPublishing)' == 'true'">%(AdditionalProperties);PublishDir=$(PublishDir)%(Identity)/</AdditionalProperties>
     </_AsmInnerBuild>
   </ItemGroup>
 
@@ -1028,6 +1145,169 @@
     <MSBuild Projects="@(_AsmRidCleanProject)" Targets="Clean" BuildInParallel="$(BuildInParallel)" />
   </Target>
 
+  <!-- ===================================================================================== -->
+  <!-- dotnet run                                                                             -->
+  <!-- ===================================================================================== -->
+
+  <!--
+    ComputeRunArguments: the .NET CLI's hook for dotnet run (and for IDEs that use it). After the
+    build, the CLI evaluates the project with the same global properties, runs this target, and
+    starts $(RunCommand) $(RunArguments) in $(RunWorkingDirectory) (empty: the current folder),
+    with the arguments that follow the double dash on its command line appended (an XML comment
+    cannot spell that dash pair). Microsoft.NET.Sdk defines it empty, for SDKs to
+    replace, and computes its own defaults at evaluation only for a .NETCoreApp executable, which
+    an .asmproj never is: dotnet run refused every asm program with "The current OutputType is
+    'Library'" (measured with SDK 11.0.100).
+    Which build runs, and how (this machine, its emulation, WSL or Docker): AsmSelectRunTarget.
+    Settings:
+      AsmRunIn               Auto (default), Host, Wsl or Docker
+      AsmRunWslDistribution  a WSL distribution other than the default one
+      AsmRunDockerImage      an image other than debian:stable-slim (glibc) / alpine:3 (musl)
+      RunArguments           the program's default arguments, as in .NET (StartArguments too)
+    A project that sets RunCommand itself keeps it, as a .csproj does.
+  -->
+  <Target Name="ComputeRunArguments" DependsOnTargets="_AsmComputeRunArguments" />
+
+  <Target Name="_AsmComputeRunArguments"
+          Condition="'$(RunCommand)' == ''"
+          DependsOnTargets="_AsmCheckRunnable;_AsmGetRunCandidates">
+    <AsmSelectRunTarget Programs="@(_AsmRunCandidate)"
+                        RunIn="$(AsmRunIn)"
+                        WslDistribution="$(AsmRunWslDistribution)"
+                        DockerImage="$(AsmRunDockerImage)"
+                        HostIsMusl="$(_AsmSdkRidIsMusl)"
+                        Arguments="$([MSBuild]::ValueOrDefault('$(RunArguments)', '$(StartArguments)'))"
+                        ProjectName="$(MSBuildProjectName)"
+                        ProjectFile="$(MSBuildProjectFullPath)">
+      <Output TaskParameter="RunCommand" PropertyName="RunCommand" />
+      <Output TaskParameter="RunArguments" PropertyName="RunArguments" />
+      <Output TaskParameter="SelectedRuntimeIdentifier" PropertyName="AsmRunRuntimeIdentifier" />
+    </AsmSelectRunTarget>
+  </Target>
+
+  <!--
+    _AsmCheckRunnable: dotnet run starts programs. A library, a static library or object files
+    stop here with ASM0090, which says what to change, rather than with the CLI's "The current
+    OutputType is 'Library'", which named the managed SDK's view of the project (it sees every
+    .asmproj as a Library) and was wrong for a StaticLibrary or Objects project.
+  -->
+  <Target Name="_AsmCheckRunnable">
+    <PropertyGroup>
+      <_AsmOutputKindText Condition="'$(_AsmOutputKind)' == 'SharedLibrary'">a shared library (OutputType Library)</_AsmOutputKindText>
+      <_AsmOutputKindText Condition="'$(_AsmOutputKind)' == 'StaticLibrary'">a static library (OutputType StaticLibrary)</_AsmOutputKindText>
+      <_AsmOutputKindText Condition="'$(_AsmOutputKind)' == 'Objects'">object files only (OutputType Objects)</_AsmOutputKindText>
+    </PropertyGroup>
+    <Error Code="ASM0090"
+           Condition="'$(_AsmOutputKind)' != 'Executable'"
+           Text="$(MSBuildProjectName) builds $(_AsmOutputKindText), and dotnet run starts programs. Set &lt;OutputType&gt;Exe&lt;/OutputType&gt; to build a program; a library runs inside the program that loads it." />
+  </Target>
+
+  <!--
+    _AsmGetRunCandidates: the program of each RID this build covers, with what AsmSelectRunTarget
+    needs to know about it (its OS, CPU, C library and loader). An inner build answers for its
+    own RID; the RID outer build asks each inner build with the dispatch's global properties
+    (_AsmInnerBuild), so the paths are those the builds wrote.
+  -->
+  <Target Name="_AsmGetRunCandidates" Returns="@(_AsmRunCandidate)">
+    <ItemGroup Condition="'$(_AsmRid)' != '' and '$(_AsmOutputKind)' == 'Executable'">
+      <_AsmRunCandidate Include="$(TargetPath)"
+                        RuntimeIdentifier="$(_AsmRid)"
+                        AsmOs="$(_AsmOs)"
+                        AsmArch="$(_AsmArch)"
+                        AsmMusl="$(_AsmMusl)"
+                        AsmDynamicLinker="$(_AsmRunLoader)" />
+    </ItemGroup>
+    <ItemGroup Condition="'$(_AsmRid)' == ''">
+      <_AsmRunQueryProject Include="$(MSBuildProjectFullPath)" Condition="'@(_AsmInnerBuild)' != ''">
+        <AdditionalProperties>%(_AsmInnerBuild.AdditionalProperties)</AdditionalProperties>
+      </_AsmRunQueryProject>
+    </ItemGroup>
+    <MSBuild Condition="'@(_AsmRunQueryProject)' != ''" Projects="@(_AsmRunQueryProject)" Targets="_AsmGetRunCandidates" BuildInParallel="$(BuildInParallel)">
+      <Output TaskParameter="TargetOutputs" ItemName="_AsmRunCandidate" />
+    </MSBuild>
+  </Target>
+
+  <!-- ===================================================================================== -->
+  <!-- dotnet publish                                                                         -->
+  <!-- ===================================================================================== -->
+
+  <!--
+    dotnet publish of an asm project rides on the managed publish pipeline, as a .csproj's does
+    (PublishDir and -o, publish profiles, NoBuild, the incremental copy and clean of the publish
+    folder), with this project's own files in its list:
+      one RID (dotnet publish -r <rid>, an inner build): _AsmAddOwnPublishFiles below; the folder
+        is .NET's, bin/<Configuration>/<tfm>/<rid>/publish/, or the -o folder itself
+      the RID outer build (no -r): every RID this build covers (the project's RuntimeIdentifiers,
+        or those a referencing project asks for), each published by its inner build into
+        <PublishDir><rid>/: bin/<Configuration>/<tfm>/publish/<rid>/, or <-o folder>/<rid>/
+        (_AsmPublishEachRuntimeIdentifier)
+    Release by default, as for .NET 8 projects (PublishRelease in Sdk.props).
+  -->
+  <PropertyGroup Condition="'$(_AsmRid)' == ''">
+    <!-- The core publish steps of the RID outer build, which links nothing of its own: the
+         managed Publish target still runs around them (its "Project -> folder" line, the build
+         first unless NoBuild), and they publish each RID instead. -->
+    <_CorePublishTargets>_AsmPublishEachRuntimeIdentifier</_CorePublishTargets>
+    <_PublishNoBuildAlternativeDependsOn>_AsmPublishEachRuntimeIdentifier</_PublishNoBuildAlternativeDependsOn>
+  </PropertyGroup>
+
+  <!--
+    _AsmPublishEachRuntimeIdentifier: the RID outer build's publish. Each RID's inner build runs
+    Publish with its own folder, <PublishDir><rid>/. With dotnet publish, which sets the global
+    property _IsPublishing, the inner builds already got that folder when the outer Build built
+    them (_AsmInnerBuild), so MSBuild reuses those builds; through -t:Publish they are evaluated
+    again with the folder, and their Build finds everything up to date.
+    Conditioned on a RID to publish for the reason _AsmBuildEachRuntimeIdentifier gives (an
+    empty batch would call this project with its own properties: MSB4006).
+  -->
+  <Target Name="_AsmPublishEachRuntimeIdentifier" DependsOnTargets="_AsmCheckRuntimeIdentifiers">
+    <ItemGroup>
+      <_AsmRidPublishProject Include="$(MSBuildProjectFullPath)" Condition="'@(_AsmInnerBuild)' != ''">
+        <AdditionalProperties>%(_AsmInnerBuild.AdditionalProperties)</AdditionalProperties>
+        <AsmRid>%(_AsmInnerBuild.Identity)</AsmRid>
+      </_AsmRidPublishProject>
+      <!-- Without _IsPublishing the inner builds have no folder yet: give each its own. -->
+      <_AsmRidPublishProject Condition="'$(_IsPublishing)' != 'true'">
+        <AdditionalProperties>%(AdditionalProperties);PublishDir=$(PublishDir)%(AsmRid)/</AdditionalProperties>
+      </_AsmRidPublishProject>
+    </ItemGroup>
+    <MSBuild Condition="'@(_AsmRidPublishProject)' != ''" Projects="@(_AsmRidPublishProject)" Targets="Publish" BuildInParallel="$(BuildInParallel)" />
+  </Target>
+
+  <!--
+    _AsmAddOwnPublishFiles: one RID's publish list, completed after the managed SDK computed it
+    (and before anything copies it):
+      the output (program, shared library or static library), and its PDB unless
+        CopyOutputSymbolsToPublishDirectory=false, as .NET publishes its own
+      a program's shared libraries, where BinariesCopyPath put them (_AsmResolveProgramDependencies),
+        their PDBs unless PublishReferencesSymbols=false, as .NET treats a reference's
+      None and Content items with CopyToPublishDirectory (or only CopyToOutputDirectory, which
+        .NET's DefaultCopyToPublishDirectoryMetadata extends to publish), at their TargetPath
+    Taken out: NuGet's copy-local files of the project's packages (_ResolvedCopyLocalPublishAssets),
+    which the managed SDK publishes flat. An asm package's library is published by the
+    BinariesCopyPath rule above instead, where the program's run path expects it, and its import
+    library or static library is nothing to deploy. Objects projects publish nothing.
+  -->
+  <Target Name="_AsmAddOwnPublishFiles"
+          AfterTargets="ComputeResolvedFilesToPublishList"
+          DependsOnTargets="_AsmResolveProgramDependencies;DefaultCopyToPublishDirectoryMetadata"
+          Condition="'$(_AsmRid)' != '' and '$(_AsmOutputKind)' != 'Objects'">
+    <PropertyGroup>
+      <_AsmPublishSymbols Condition="'$(_AsmOs)' == 'Windows' and '$(CopyOutputSymbolsToPublishDirectory)' != 'false' and Exists('$(TargetDir)$(TargetName).pdb') and '$(_AsmOutputKind)' != 'StaticLibrary'">$(TargetDir)$(TargetName).pdb</_AsmPublishSymbols>
+    </PropertyGroup>
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(_ResolvedCopyLocalPublishAssets)" />
+      <ResolvedFileToPublish Include="$(TargetPath)" RelativePath="$(TargetFileName)" CopyToPublishDirectory="PreserveNewest" />
+      <ResolvedFileToPublish Include="$(_AsmPublishSymbols)" Condition="'$(_AsmPublishSymbols)' != ''" RelativePath="$(TargetName).pdb" CopyToPublishDirectory="PreserveNewest" />
+      <ResolvedFileToPublish Include="@(_AsmProgramDependency)" Condition="'%(_AsmProgramDependency.AsmSymbols)' != 'true' or '$(PublishReferencesSymbols)' != 'false'" RelativePath="%(_AsmProgramDependency.TargetPath)" CopyToPublishDirectory="PreserveNewest" />
+      <!-- Qualified, one list per line, for the reason _AsmCopyOwnContent gives (MSB4096). -->
+      <_AsmOwnPublishItem Include="@(_NoneWithTargetPath)" Condition="'%(_NoneWithTargetPath.CopyToPublishDirectory)' == 'Always' or '%(_NoneWithTargetPath.CopyToPublishDirectory)' == 'PreserveNewest' or '%(_NoneWithTargetPath.CopyToPublishDirectory)' == 'IfDifferent'" />
+      <_AsmOwnPublishItem Include="@(ContentWithTargetPath)" Condition="'%(ContentWithTargetPath.CopyToPublishDirectory)' == 'Always' or '%(ContentWithTargetPath.CopyToPublishDirectory)' == 'PreserveNewest' or '%(ContentWithTargetPath.CopyToPublishDirectory)' == 'IfDifferent'" />
+      <ResolvedFileToPublish Include="@(_AsmOwnPublishItem)" RelativePath="%(_AsmOwnPublishItem.TargetPath)" />
+      <_AsmOwnPublishItem Remove="@(_AsmOwnPublishItem)" />
+    </ItemGroup>
+  </Target>
+
   <!-- An unknown project extension gets no language targets, and the common targets call
        this one unconditionally; there are no resources to name. -->
   <Target Name="CreateManifestResourceNames" />
@@ -1037,8 +1317,10 @@
        "Project -> path" line at normal verbosity, here once per RID (each inner build runs
        this target; the RID outer build's Build does not), so a build of eight RIDs says where
        each platform's output went. Objects projects write no output, and an IDE's design-time
-       build links nothing, so neither prints one. -->
-  <Target Name="CopyFilesToOutputDirectory">
+       build links nothing, so neither prints one. A program's shared libraries are copied next
+       to it (or below it) first (_AsmCopyProgramDependencies), and the project's files marked
+       CopyToOutputDirectory (_AsmCopyOwnContent). -->
+  <Target Name="CopyFilesToOutputDirectory" DependsOnTargets="_AsmCopyProgramDependencies;_AsmCopyOwnContent">
     <Message Importance="high"
              Condition="'$(_AsmRid)' != '' and '$(_AsmOutputKind)' != 'Objects' and '$(DesignTimeBuild)' != 'true' and '$(SkipCompilerExecution)' != 'true'"
              Text="$(MSBuildProjectName) -> $(TargetPath)" />

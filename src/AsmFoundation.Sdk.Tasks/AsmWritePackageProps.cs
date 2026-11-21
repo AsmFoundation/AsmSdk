@@ -60,9 +60,20 @@ public sealed class AsmWritePackageProps : Task
 
     /// <summary>
     /// The library a consumer links, one per packed RID: the item is the path inside the
-    /// package (native/linux-x64/freestanding/libfoo.a), with RuntimeIdentifier metadata.
+    /// package (native/linux-x64/freestanding/libfoo.a), with RuntimeIdentifier metadata, and
+    /// AsmRuntimePackagePath when it is a shared library or its import library (the path of the
+    /// file to load at run time, runtimes/&lt;rid&gt;/native/foo.dll), which a consuming program
+    /// copies next to itself.
     /// </summary>
     public ITaskItem[] LinkLibraries { get; set; } = Array.Empty<ITaskItem>();
+
+    /// <summary>
+    /// The files of the program the package carries, per packed RID: the item is the path inside
+    /// the package (runtimes/linux-x64/native/hello), with RuntimeIdentifier, AsmBundlePath (its
+    /// path relative to the program) and AsmProgramName. A consuming asm program delivers them
+    /// next to itself (AsmReferencedProgram items); empty for a library package.
+    /// </summary>
+    public ITaskItem[] ProgramFiles { get; set; } = Array.Empty<ITaskItem>();
 
     /// <summary>Every RID AsmSdk builds: the consumer RIDs the props answer for.</summary>
     [Required]
@@ -107,7 +118,9 @@ public sealed class AsmWritePackageProps : Task
         // A property-name-safe form of the id: Hello.Static -> Hello_Static.
         string id = Regex.Replace(PackageId, "[^A-Za-z0-9_]", "_");
         string ridProperty = $"_AsmPackageRid_{id}";
-        string[] packed = LinkLibraries.Select(l => l.GetMetadata("RuntimeIdentifier")).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        // The RIDs the package has something for: a library to link, or a program to deliver (a
+        // program package has no link input at all, and must not read as packed for nothing).
+        string[] packed = LinkLibraries.Concat(ProgramFiles).Select(l => l.GetMetadata("RuntimeIdentifier")).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         const string IsAsm = "'$(UsingAsmFoundationSdk)' == 'true'";
 
         var project = new XElement("Project");
@@ -145,11 +158,35 @@ public sealed class AsmWritePackageProps : Task
 
         foreach (ITaskItem library in LinkLibraries.OrderBy(l => l.GetMetadata("RuntimeIdentifier"), StringComparer.Ordinal))
         {
-            items.Add(new XElement("AsmLinkLibrary",
+            var link = new XElement("AsmLinkLibrary",
                 new XAttribute("Include", "$(MSBuildThisFileDirectory)../../" + library.ItemSpec.Replace('\\', '/')),
                 new XAttribute("Condition", $"'$({ridProperty})' == '{library.GetMetadata("RuntimeIdentifier")}'"),
                 new XAttribute("AsmOrigin", "Package"),
-                new XAttribute("AsmPackage", PackageId)));
+                new XAttribute("AsmPackage", PackageId));
+
+            // A shared link input names the file a consuming program loads at run time (on
+            // Windows the DLL behind the import library it links), so the program can copy it
+            // next to itself. A static library has none.
+            string runtime = library.GetMetadata("AsmRuntimePackagePath");
+            if (runtime.Length != 0)
+            {
+                link.Add(new XAttribute("AsmRuntimeFile", "$(MSBuildThisFileDirectory)../../" + runtime.Replace('\\', '/')));
+            }
+
+            items.Add(link);
+        }
+
+        // A program's files, for a consuming asm program to deliver next to itself, by the same
+        // RID choice as the libraries. AsmBundlePath keeps them where the program expects them.
+        foreach (ITaskItem file in ProgramFiles.OrderBy(f => f.GetMetadata("RuntimeIdentifier"), StringComparer.Ordinal).ThenBy(f => f.ItemSpec, StringComparer.Ordinal))
+        {
+            items.Add(new XElement("AsmReferencedProgram",
+                new XAttribute("Include", "$(MSBuildThisFileDirectory)../../" + file.ItemSpec.Replace('\\', '/')),
+                new XAttribute("Condition", $"'$({ridProperty})' == '{file.GetMetadata("RuntimeIdentifier")}'"),
+                new XAttribute("AsmOrigin", "Package"),
+                new XAttribute("AsmPackage", PackageId),
+                new XAttribute("AsmBundlePath", file.GetMetadata("AsmBundlePath")),
+                new XAttribute("AsmProgramName", file.GetMetadata("AsmProgramName"))));
         }
 
         project.Add(items);

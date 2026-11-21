@@ -51,7 +51,8 @@ public sealed class AsmResolveNativeLayouts : Task
     /// One item per asm project: AsmImportName, BinariesCopyPath (normalized: Auto, "" for the app
     /// folder, or a folder pattern), Folder (resolved for this build: Auto made concrete),
     /// BinariesCopyPathSource (Reference, Project, Library or Default) and Explicit ("true" unless
-    /// Default: what a referencing project may inherit).
+    /// Default: what a referencing project may inherit), and AsmKind (Program for an asm program,
+    /// Library otherwise; the generated loader lists libraries only).
     /// </summary>
     [Output]
     public ITaskItem[] Layouts { get; set; } = Array.Empty<ITaskItem>();
@@ -127,6 +128,9 @@ public sealed class AsmResolveNativeLayouts : Task
 
             var layout = new TaskItem(library.Key);
             layout.SetMetadata("AsmImportName", targetName);
+            // Program or Library: the generated loader lists libraries only (a program is
+            // started, never loaded through [DllImport]). Library when no report says.
+            layout.SetMetadata("AsmKind", library.Select(l => l.GetMetadata("AsmKind")).FirstOrDefault(k => k.Length != 0) ?? "Library");
             layout.SetMetadata("BinariesCopyPath", value);
             layout.SetMetadata("Folder", NativeLayout.Resolve(value, ridSpecific));
             layout.SetMetadata("BinariesCopyPathSource", source);

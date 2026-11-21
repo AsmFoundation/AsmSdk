@@ -170,13 +170,20 @@ public sealed class ProjectRuleTests(SdkUnderTest sdk)
         ExpectFailure("FreestandingConsumer", ["NU1202"]);
     }
 
-    /// <summary>A libc project links a package's shared library: DT_NEEDED libtestlibconly.so.</summary>
+    /// <summary>
+    /// A libc project links a package's shared library: DT_NEEDED libtestlibconly.so, the library
+    /// copied next to the program from the package's runtimes/ folder, and DT_RUNPATH $ORIGIN so
+    /// that the loader finds it there.
+    /// </summary>
     [Fact]
     public void A_libc_project_links_a_packages_shared_library()
     {
         CommandResult build = BuildLibcConsumer(sdk);
         Assert.True(build.ExitCode == 0, build.Tail());
-        Assert.Contains("Shared library: [libtestlibconly.so]",
-            sdk.ReadElf(Repo.TestProjectPath("LibcConsumer", "bin", "Release", "libc", "linux-x64", "libc-consumer"), "-d"));
+        string folder = Repo.TestProjectPath("LibcConsumer", "bin", "Release", "libc", "linux-x64");
+        string dynamic = sdk.ReadElf(Path.Combine(folder, "libc-consumer"), "-d");
+        Assert.Contains("Shared library: [libtestlibconly.so]", dynamic);
+        Assert.Contains("Library runpath: [$ORIGIN]", dynamic);
+        Assert.True(File.Exists(Path.Combine(folder, "libtestlibconly.so")), $"no libtestlibconly.so next to the program: {string.Join(", ", Directory.GetFiles(folder).Select(Path.GetFileName))}");
     }
 }

@@ -143,6 +143,16 @@
     -->
     <OutputType>Library</OutputType>
 
+    <!--
+      PackAsTool: dotnet pack makes a program a .NET tool (dotnet tool install), the package
+      kinds the .NET 10 SDK writes for a platform-specific tool: a top-level package that lists
+      one package per RID, each holding that RID's program (see AsmFoundation.Pack.targets).
+      Captured, then hidden: Microsoft.NET.Sdk would import its own PackTool targets, which stop
+      any project that is not .NETCoreApp (NETSDK: "DotnetToolOnlySupportNetcoreapp").
+    -->
+    <_AsmPackAsTool Condition="'$(PackAsTool)' == 'true'">true</_AsmPackAsTool>
+    <PackAsTool Condition="'$(_AsmPackAsTool)' == 'true'">false</PackAsTool>
+
     <!-- Also archive the objects into lib<name>.a next to a shared library, for a library
          that ships both: programs that load it (P/Invoke, dlopen) take the .so, and
          assembly consumers that link statically take the .a. -->
@@ -389,8 +399,32 @@
       for RID-specific builds (the flat copy), and nothing in deps.json.
   -->
   <ItemGroup Condition="'$(AsmFoundationSdkVersion)' != '' and '$(DisableAsmConsumerTargets)' != 'true'">
-    <PackageReference Include="AsmFoundation.Sdk" Version="$(AsmFoundationSdkVersion)" IsImplicitlyDefined="true" />
+    <!-- PrivateAssets spelled out, NuGet's own default: a program makes every other reference
+         private (the ItemDefinitionGroup below), and this one must still flow, or a .NET
+         project that references only a program would get no consumer targets, and so not the
+         program either. -->
+    <PackageReference Include="AsmFoundation.Sdk" Version="$(AsmFoundationSdkVersion)" IsImplicitlyDefined="true" PrivateAssets="contentfiles;analyzers;build" />
   </ItemGroup>
+
+  <!--
+    A program's references are private by default (PrivateAssets="all", what a ProjectReference
+    or PackageReference may say itself): a program takes the libraries and programs it needs
+    along (its bundle; see _AsmComputeProgramBundle), so neither a project that references it nor
+    its package needs them. Without this, NuGet's transitive project references made a .NET app
+    that references a program also reference the program's asm libraries, and deliver them a
+    second time, by its own layout (measured: libcalc.so in runtimes/<rid>/native/ besides the
+    program's own copy in tools/<rid>/), and the program's package depended on packages whose
+    files it already holds. A reference that writes PrivateAssets itself keeps its value.
+    MSBuild evaluates item definitions after every property, so _AsmOutputKind is final here.
+  -->
+  <ItemDefinitionGroup Condition="'$(_AsmOutputKind)' == 'Executable'">
+    <ProjectReference>
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <PackageReference>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemDefinitionGroup>
 
   <!-- Restore downloads the toolchain for this build machine. PackageDownload (not
        PackageReference) because the tools are not a dependency of the project's output. -->

@@ -12,6 +12,88 @@ Each SDK release names the one it was tested with.
 
 ### Added
 
+- **Programs get the asm shared libraries they link.** A program that links an asm shared
+  library (a `ProjectReference`, or a package) gets it in each RID's output folder, with the
+  run path that finds it there:
+  - Linux: `DT_RUNPATH` `$ORIGIN`;
+  - macOS: `LC_RPATH` `@loader_path`;
+  - Windows: the program's own folder, which the loader searches first.
+
+  On Windows the program links the import library, and the DLL behind it is copied: referenced
+  projects and packages now name that file (`AsmRuntimeFile` metadata).
+  - `BinariesCopyPath` places the libraries, as it does for a .NET app: the reference's value,
+    then the property, then `Auto`, which for a program means its own folder. The run path
+    follows the folder (`$ORIGIN/lib/linux-x64`).
+  - On Windows a folder other than the program's own is `ASM0047`, since Windows has no run
+    path.
+  - A program that links no shared library is linked as before.
+  - `ASM0048` (a warning) names an import library whose DLL a 0.3.0 package does not name.
+
+  Tests no longer set `LD_LIBRARY_PATH` to run such a program.
+- **`dotnet run` runs asm programs.** It builds the program and starts the build this
+  machine can run, with the arguments after `--` unchanged. The order:
+  1. this machine's own RID, or another build it runs natively (on Linux, one whose loader is
+     installed);
+  2. one it emulates: `win-x64` on Windows on Arm, `osx-x64` under Rosetta 2;
+  3. on Windows, a Linux build through WSL;
+  4. a Linux build in a Docker container (`debian:stable-slim`, `alpine:3`, another CPU under
+     QEMU).
+
+  `dotnet run -r <rid>` runs that RID. Settings: `AsmRunIn` (`Auto`, `Host`, `Wsl`,
+  `Docker`), `AsmRunWslDistribution`, `AsmRunDockerImage`, and `RunArguments` and
+  `RunCommand` as in .NET. Errors: `ASM0090` (not a program), `ASM0091` (nothing here can
+  run any build, with what was tried), `ASM0092` (not built), `ASM0093` (unknown `AsmRunIn`).
+  Measured on Windows x64: `win-x64` natively, `linux-x64` through WSL, `linux-musl-x64`,
+  `linux-arm64` and `linux-musl-arm64` in Docker, with quotes and spaces in the arguments
+  intact.
+- **`dotnet publish` publishes asm programs and libraries:**
+  - `-r <rid>` publishes that RID into .NET's folder (or `-o`);
+  - without `-r`, every RID the project lists, each into `publish/<rid>/` (`-o <folder>`
+    gives `<folder>/<rid>/`), or only the RIDs a referencing project asks for.
+
+  A publish holds the output, its PDB, a program's libraries where `BinariesCopyPath` put
+  them, and the files marked `CopyToPublishDirectory` or `CopyToOutputDirectory`. It holds
+  nothing the managed pipeline would add: not `obj/<name>.dll` (the MSB3030 of 0.3.0), and
+  not a package's `runtimes/` files copied flat. Release by default, as for .NET 8 projects
+  (`PublishRelease`).
+- **A program as a dependency, the helper-process case:**
+  - A .NET project that references an asm program, or its package, gets it with the libraries
+    it links. A portable build gets every RID's program in `runtimes/<rid>/native/`, listed in
+    `deps.json`; a RID-specific build gets its RID's next to the app. `BinariesCopyPath`
+    places it, and its libraries keep their place relative to it, because its run path
+    depends on that. The app finds it through `NATIVE_DLL_SEARCH_DIRECTORIES` (the
+    [guide](docs/guide/programs.md) has the code).
+  - An asm program that references an asm program copies it, with its libraries, where its
+    `BinariesCopyPath` says, on Windows too.
+  - `dotnet pack` of a program puts each RID's program and libraries in
+    `runtimes/<rid>/native/`, with props that deliver it to an asm consumer
+    (`AsmReferencedProgram` items).
+  - `PrivateAssets="all"` on a .NET library's reference to a program puts the program inside
+    the library's package.
+  - A program's own references default to `PrivateAssets="all"`, since it carries what it
+    needs. A consumer no longer gets the program's libraries a second time as references of
+    its own, and the program's package depends on nothing.
+  - A packed program keeps its libraries next to it: NuGet copies `runtimes/` files flat into
+    an app built for one RID. Libraries in a subfolder stop the pack with `ASM0051`.
+  - Two files with the same bytes on one path (a library that the app references and that a
+    program's bundle also holds) are one file, not an `ASM0044`.
+
+  Measured: a .NET app (portable, RID-specific, and `tools/{rid}`) and an asm program started
+  or carried the program, from a project reference, its package, and a .NET library's package.
+- **`PackAsTool` packs a program as a .NET tool,** in the package kinds the .NET 10 SDK writes
+  for a platform-specific tool:
+  - the top-level `DotnetTool` package (`tools/any/any/`) names the command and the package of
+    each RID;
+  - one `DotnetToolRidPackage` per RID (`tools/any/<rid>/`) holds the program, its libraries
+    and data files, with `Runner="executable"`.
+
+  `dotnet tool install -g <id>` installs the machine's package, and the command starts the
+  program, with no .NET runtime. `ToolCommandName` names the command. `dotnet pack -r <rid>`
+  packs one RID's package. Errors: `ASM0052` (settings file), `ASM0053` (not a program, or
+  several target frameworks). Measured: installed and run on Windows x64, and in the .NET SDK
+  containers for glibc and Alpine, where the command is a symbolic link into the tool store
+  and `$ORIGIN` still finds the library.
+
 - **`linux-musl-arm64`, the eighth runtime identifier:** musl distributions such as Alpine on
   ARM64 (AWS Graviton, Ampere, Linux VMs on Apple silicon). It works like `linux-musl-x64`:
   - ARM64 code is assembled for llvm-mc's `aarch64-linux-musl`, with the `MUSL` define;
@@ -40,6 +122,18 @@ Each SDK release names the one it was tested with.
   the machine can: natively, in Linux containers, and for ARM64 under QEMU. On a Windows x64
   machine with Docker that is 94 cases with `linux-musl-arm64` (84 before it), all passing,
   with a negative control (NativeAOT without the generated loader must fail).
+
+### Fixed
+
+- **`Update` and `Remove` of default items work in an `.asmproj`.** The default `AsmSource`,
+  `AsmInclude` and `None` globs were declared after the project body, so
+  `<None Update="data.txt" CopyToOutputDirectory="PreserveNewest" />` matched nothing and was
+  silently ignored. They are now declared in `Sdk.props`, before the body, where .NET declares
+  its own. `EnableDefaultAsmItems` and `EnableDefaultNoneItems` set in the body still turn them
+  off: MSBuild evaluates every property before any item.
+- **`CopyToOutputDirectory` and `CopyToPublishDirectory` work in an `.asmproj`.** The SDK's
+  `CopyFilesToOutputDirectory` copied nothing but printed the output's path. Marked files now
+  reach every RID's output folder and publish folder, at their `TargetPath`.
 
 ## [0.3.0] — 2026-11-21
 

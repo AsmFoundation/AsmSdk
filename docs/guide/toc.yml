@@ -12,6 +12,8 @@
   href: runtimes-and-linking.md
 - name: References and packages
   href: references-and-packages.md
+- name: "Programs: run, publish, deliver and pack"
+  href: programs.md
 - name: Calling assembly from .NET, Python and C
   href: interop.md
 - name: IDEs

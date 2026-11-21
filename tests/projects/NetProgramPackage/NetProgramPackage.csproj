@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    NetProgram's twin that gets the asm program from its package, Test.EverywhereProgram
+    (EverywhereProgram.asmproj, packed by ProgramTests): NuGet's runtimes/ rules deliver the
+    program and its library, and the package's buildTransitive targets give BinariesCopyPath.
+    The package depends on nothing (a program carries what it needs), and this project gets no
+    AsmFoundation.Sdk. Same source and exit status as NetProgram.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../NetProgram/Program.cs" />
+    <PackageReference Include="Test.EverywhereProgram" Version="1.0.0" />
+  </ItemGroup>
+</Project>

@@ -233,6 +233,30 @@ it, and `<rid>` each RID the project builds. `dotnet pack` builds them all:
 The implicit `AsmFoundation.Sdk` dependency is removed from the `.nuspec`: a package's
 consumers need nothing from the SDK.
 
+## Program properties
+
+> [!NOTE]
+> **Not released yet:** this section describes the main branch. AsmFoundation.Sdk 0.3.0 has
+> none of it. See [Programs](guide/programs.md).
+
+| Property | Default | Meaning and footguns |
+|---|---|---|
+| `BinariesCopyPath` | `Auto`, which for a program is its own folder | where a program keeps the asm shared libraries and programs it references, as in a .NET project. The reference's `BinariesCopyPath` metadata wins. The program's run path follows each library folder (`$ORIGIN/<folder>`, `@loader_path/<folder>`). On Windows a library folder other than the program's own is `ASM0047`. |
+| `AsmRunIn` | `Auto` | how `dotnet run` runs the program: `Auto` (this machine's RID, another it runs natively, one it emulates, then WSL, then Docker), `Host`, `Wsl` or `Docker`. |
+| `AsmRunWslDistribution` | WSL's default | the WSL distribution `dotnet run` uses. |
+| `AsmRunDockerImage` | `debian:stable-slim` (glibc), `alpine:3` (musl) | the image `dotnet run` uses for a Linux build. The program's folder is mounted at `/app`, its working directory. |
+| `RunArguments`, `RunCommand` | empty | as in .NET: the program's default arguments, and a command of your own that `dotnet run` starts instead. |
+| `PublishRelease` | `true` | `dotnet publish` builds Release unless `-c` says otherwise, as for a .NET 8 project. |
+| `PackAsTool` | `false` | `true`: `dotnet pack` writes a .NET tool: `<PackageId>` (`DotnetTool`, `tools/any/any/`) and `<PackageId>.<rid>` per RID (`DotnetToolRidPackage`, `tools/any/<rid>/`, `Runner="executable"`). The managed SDK never sees it (its own tool targets refuse a project that is not .NETCoreApp). `ASM0053` for anything but a program with one target framework. |
+| `ToolCommandName` | the program's name | the command a `PackAsTool` package installs. |
+
+**A program's package** (`dotnet pack`, without `PackAsTool`): `runtimes/<rid>/native/` holds
+each RID's program and the libraries it links next to it (a folder of their own would be
+`ASM0051`: NuGet copies these files flat into an app built for one RID). The props deliver
+them to a consuming asm program (`AsmReferencedProgram` items), and the targets give a .NET
+consumer `BinariesCopyPath`. A program's `ProjectReference` and `PackageReference` items
+default to `PrivateAssets="all"`: it carries what it needs, so its package depends on nothing.
+
 ## Toolchain properties
 
 | Property | Default | Meaning and footguns |
@@ -306,6 +330,8 @@ Read-only in practice.
 | `RuntimeIdentifiers` | a `ProjectReference` to an `.asmproj`, in a .NET project | the RIDs a portable build of the .NET project carries (passed on as `AsmRequestedRuntimeIdentifiers`) |
 | `BinariesCopyPath` | a `ProjectReference` to an `.asmproj`, or a `PackageReference` to an asm package, in a .NET project | where that library goes in the .NET project's output and publish folder: `Auto`, `Runtimes`, `AppFolder`, `RidFolders`, or a folder with an optional `{rid}` (see [Where the binaries go](guide/interop.md#where-the-binaries-go-binariescopypath)). Wins over the project's `BinariesCopyPath` property |
 | `PrivateAssets` | a `ProjectReference` to an `.asmproj`, in a .NET library | `all`: `dotnet pack` puts every RID's library into the .NET package (`runtimes/<rid>/native/`) instead of depending on the asm package, and the reference does not flow to referencing projects |
+| `AsmRuntimeFile`, `AsmRuntimeSymbols` | a shared link input from `GetAsmLinkInputs` or a package's props (not released yet) | the file a program loads at run time (on Windows the DLL behind the import library it links) and its PDB: what the program copies next to it |
+| `AsmBundlePath`, `AsmProgramName` | a program's files, from `GetAsmLinkInputs` (`AsmItemType` `Program`), `GetAsmNativeRuntimeAssets` (`AsmKind` `Program`) or a package's `AsmReferencedProgram` items (not released yet) | each file's path relative to the program, which a consumer keeps under the folder it puts the program in, and the program's file name |
 
 **In a referencing .NET project:**
 
@@ -407,13 +433,22 @@ by `dotnet clean` only if you add it to `FileWrites` too.
 | `ASM0044` | Two different files would be copied to one path: a folder without `{rid}` in a build of several RIDs of one OS (`win-x64` and `win-arm64` both give `x.dll`), or two libraries with one file name. | Add `{rid}` to the folder, narrow the reference's `RuntimeIdentifiers`, or give the libraries different names or folders. |
 | `ASM0045` | The generated loader cannot be written. | Check the `obj/` folder's permissions. |
 | `ASM0046` (warning) | Two .NET libraries the project references deploy one asm library with different `BinariesCopyPath` values; the first reported is used. | Set `BinariesCopyPath` on a reference to it in this project, or as this project's property. |
+| `ASM0047` (not released yet) | A Windows program would keep a DLL it links in a subfolder: Windows has no run path. | `AppFolder` (or `Auto`) on Windows RIDs. |
+| `ASM0048` (warning, not released yet) | A program links an import library whose DLL its project or package does not name (a 0.3.0 package), so the DLL is not copied. | Repack the package with this SDK, or copy the DLL yourself. |
 | `ASM0050` | Pack cannot remove the SDK dependency from the `.nuspec`. | Report it. |
+| `ASM0051` (not released yet) | A program to pack keeps libraries in a subfolder, which NuGet would flatten. | Keep them next to the program. |
+| `ASM0052` (not released yet) | A .NET tool's settings file cannot be written. | Check the `obj/` folder's permissions. |
+| `ASM0053` (not released yet) | `PackAsTool` on a project that is not a program, or that has several target frameworks. | `OutputType=Exe`, one `TargetFramework`. |
 | `ASM0060` | A package has no build for the consuming asm project's RID. | Build for a RID the message lists, or use a package packed for yours. |
 | `ASM0061` | The consumer props or targets of a package cannot be written. | Check the `obj/` folder's permissions. |
 | `ASM0070` | A C library stand-in cannot be written. | Check the `obj/` folder's permissions; report it otherwise. |
 | `ASM0080` | A 64-bit Windows image needs a 32-bit absolute address fixup, which cannot work above 4 GB. The image was deleted. | `default rel`; `dq` in data tables. |
 | `ASM0081` | A macOS image needs a fixup in a read-only segment (a text relocation). The image was deleted. | `lea rax, [rel label]`, `ADDRESS`; pointer tables in `.data`. |
 | `ASM0082` | The linked image could not be read or parsed for the check. | Rebuild; report it if it persists. |
+| `ASM0090` (not released yet) | `dotnet run` of a library, static library or object files project. | Run a program (`OutputType=Exe`). |
+| `ASM0091` (not released yet) | No build of the program runs here: not natively, not under emulation, not through WSL or Docker. The message lists what it tried. | Build a RID this machine runs, install WSL, or start Docker. |
+| `ASM0092` (not released yet) | `dotnet run --no-build` before a build. | Build first. |
+| `ASM0093` (not released yet) | `AsmRunIn` is not `Auto`, `Host`, `Wsl` or `Docker`. | One of those. |
 | `ASM0100` to `ASM0107` | A setting of AsmFoundation.Sdk 0.1.0 that 0.2.0 replaced. Each error names its replacement: `AsmLibraryName` → `AssemblyName`, `AsmRuntime` → `TargetFramework`, `AsmDefineConstants` and `AsmDefine` items → `DefineConstants`, `AsmDebugInfo` → `DebugSymbols`, `AsmEntryPoint` → `StartupObject`, `AsmLinkFlags` → `LinkerArg` items and `ExportsFile`, `AsmOutputKind` → `OutputType`. | Make the change the error names. One build lists every removed setting. |
 | `ASM0108` | The summary that stops the build after `ASM0100` to `ASM0107`. | Fix those. |
 | `NU1201` | A project references an `.asmproj` whose target frameworks it cannot use: a `freestanding` project and a `libc`-only reference. | Make the reference target `freestanding` too (or both), or make this project `libc`. |

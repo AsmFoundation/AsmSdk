@@ -1,0 +1,30 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A libc program for all eight RIDs that links the shared library Everywhere (ProgramTests).
+    BinariesCopyPath is not set, so Auto applies, which for a program is its own folder: each
+    RID's library is copied next to the program, and the program finds it there through
+    DT_RUNPATH $ORIGIN (Linux), LC_RPATH @loader_path (macOS), or Windows' own folder rule.
+    main prints its last argument (its own path when it has none) and exits with
+    10 * ew_platform() + the number of arguments: the status names the build that ran (see
+    Everywhere.asmproj for the codes) and proves the arguments arrived. dotnet run runs it in
+    the tests: on this machine, through WSL, and in Docker; dotnet publish publishes it, with
+    the library and data/settings.txt (CopyToOutputDirectory, which publish follows), per RID.
+  -->
+  <PropertyGroup>
+    <TargetFramework>libc</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>everywhere-program</AssemblyName>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+    <!-- Packed as Test.EverywhereProgram by ProgramTests: runtimes/<rid>/native/ gets the
+         program and the library next to it, and no dependency on Everywhere (a program's
+         references are private: it carries what it needs). -->
+    <PackageId>Test.EverywhereProgram</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>AsmFoundation tests</Authors>
+    <Description>Test package: an assembly program for eight runtime identifiers, with the library it links.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Everywhere/Everywhere.asmproj" />
+    <None Update="data/settings.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

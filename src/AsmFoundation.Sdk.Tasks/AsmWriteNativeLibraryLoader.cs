@@ -20,7 +20,7 @@ namespace AsmFoundation.Sdk.Tasks;
 /// </remarks>
 public sealed class AsmWriteNativeLibraryLoader : Task
 {
-    /// <summary>The layouts (item = asm project path, metadata AsmImportName and Folder).</summary>
+    /// <summary>The layouts (item = asm project path, metadata AsmImportName, Folder and AsmKind; programs are skipped).</summary>
     [Required]
     public ITaskItem[] Layouts { get; set; } = Array.Empty<ITaskItem>();
 
@@ -47,6 +47,13 @@ public sealed class AsmWriteNativeLibraryLoader : Task
         var libraries = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (ITaskItem layout in Layouts)
         {
+            // A program is started, never loaded through [DllImport]: it has no place in a
+            // loader's table (and a library of the same name would lose its entry to it).
+            if (layout.GetMetadata("AsmKind") == "Program")
+            {
+                continue;
+            }
+
             string name = layout.GetMetadata("AsmImportName");
             string folder = layout.GetMetadata("Folder");
             if (name.Length != 0 && folder.Length != 0 && !libraries.ContainsKey(name))

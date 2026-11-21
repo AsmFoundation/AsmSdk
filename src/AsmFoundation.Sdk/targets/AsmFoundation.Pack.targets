@@ -62,7 +62,9 @@
     <!-- What a consuming .asmproj links by default: Static (the static library when there is
          one) or Shared (the shared library; on Windows its import library). -->
     <AsmPackageLinkKind Condition="'$(AsmPackageLinkKind)' == ''">Static</AsmPackageLinkKind>
-    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);_AsmPackNativeContent</TargetsForTfmSpecificContentInPackage>
+    <!-- A .NET tool's packages (PackAsTool, below) hold the tool layout instead. -->
+    <TargetsForTfmSpecificContentInPackage Condition="'$(_AsmPackAsTool)' != 'true'">$(TargetsForTfmSpecificContentInPackage);_AsmPackNativeContent</TargetsForTfmSpecificContentInPackage>
+    <TargetsForTfmSpecificContentInPackage Condition="'$(_AsmPackAsTool)' == 'true'">$(TargetsForTfmSpecificContentInPackage);_AsmPackToolContent</TargetsForTfmSpecificContentInPackage>
     <_AsmGeneratedPropsPath>$(AsmIntermediateDirectory)pack/$(PackageId).props</_AsmGeneratedPropsPath>
     <_AsmGeneratedConsumerTargetsPath>$(AsmIntermediateDirectory)pack/$(PackageId).targets</_AsmGeneratedConsumerTargetsPath>
     <_AsmEmptyLibMarkerPath>$(AsmIntermediateDirectory)pack/_._</_AsmEmptyLibMarkerPath>
@@ -76,6 +78,140 @@
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmWritePackageProps" AssemblyFile="$(_AsmTasksAssembly)" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmWritePackageConsumerTargets" AssemblyFile="$(_AsmTasksAssembly)" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmRemovePackageDependency" AssemblyFile="$(_AsmTasksAssembly)" />
+  <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmWriteToolSettings" AssemblyFile="$(_AsmTasksAssembly)" />
+
+  <!-- ===================================================================================== -->
+  <!-- .NET tools: PackAsTool                                                                 -->
+  <!-- ===================================================================================== -->
+
+  <!--
+    <PackAsTool>true</PackAsTool> on an asm program makes dotnet pack write a .NET tool, in the
+    kinds the .NET 10 SDK writes for a platform-specific tool (measured with SDK 11.0.100 and a
+    C# tool with RuntimeIdentifiers):
+      <PackageId>.<version>.nupkg        PackageType DotnetTool, tools/any/any/DotnetToolSettings.xml:
+                                         the command, and one package per RID
+      <PackageId>.<rid>.<version>.nupkg  PackageType DotnetToolRidPackage, one per RID this build
+                                         covers, tools/any/<rid>/: DotnetToolSettings.xml (the
+                                         command, EntryPoint, Runner="executable") and what a
+                                         publish of that RID holds (the program, its libraries and
+                                         programs at their paths, its data files)
+    Then: dotnet tool install -g <PackageId> (from any NuGet feed; dotnet nuget push each
+    .nupkg to publish), and the command (ToolCommandName, the program's name by default) runs
+    the program for the machine, which needs no .NET runtime. "any" for the framework folder,
+    as the SDK packs a self-contained tool. Folders survive inside tools/ (dotnet tool install
+    extracts the package as it is), so a program's library folder and run path work there.
+    The RID packages are the RID inner builds packed (_AsmPackToolRidPackages), the way
+    Microsoft.NET.Sdk orchestrates its own per-RID tool packs; dotnet pack -r <rid> packs that
+    RID's package alone, as it does for a .NET tool.
+    Errors: ASM0053 (PackAsTool on something that is not a program, or on several target
+    frameworks).
+  -->
+  <!-- A program only: PackAsTool on anything else packs nothing but ASM0053 (_AsmCheckToolPack
+       through _AsmPackToolContent), and must not rename it on the way. -->
+  <PropertyGroup Condition="'$(_AsmPackAsTool)' == 'true' and '$(_AsmOutputKind)' == 'Executable'">
+    <!-- A RID inner build of a tool packs that RID's package. -->
+    <_AsmToolRidPack Condition="'$(_AsmRid)' != ''">true</_AsmToolRidPack>
+    <ToolCommandName Condition="'$(ToolCommandName)' == ''">$(TargetName)</ToolCommandName>
+    <!-- A tool carries everything it needs: no package dependency, as for a .NET tool. -->
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <!-- DotnetTool first, as Microsoft.NET.Sdk's AddPackageType keeps a type of the project's
+         own after it. -->
+    <PackageType Condition="'$(_AsmToolRidPack)' != 'true' and '$(PackageType)' == ''">DotnetTool</PackageType>
+    <PackageType Condition="'$(_AsmToolRidPack)' != 'true' and !$(PackageType.Contains('DotnetTool'))">DotnetTool;$(PackageType)</PackageType>
+    <PackageType Condition="'$(_AsmToolRidPack)' == 'true'">DotnetToolRidPackage</PackageType>
+    <!-- The top-level id, before a RID package appends its RID: the pointer names them. -->
+    <_AsmToolPackageId>$(PackageId)</_AsmToolPackageId>
+    <PackageId Condition="'$(_AsmToolRidPack)' == 'true'">$(PackageId).$(_AsmRid)</PackageId>
+    <GenerateNuspecDependsOn Condition="'$(_AsmToolRidPack)' != 'true' and '$(_AsmRid)' == ''">$(GenerateNuspecDependsOn);_AsmPackToolRidPackages</GenerateNuspecDependsOn>
+    <_AsmToolSettingsPath>$(AsmIntermediateDirectory)tool/DotnetToolSettings.xml</_AsmToolSettingsPath>
+  </PropertyGroup>
+
+  <!--
+    _AsmCheckToolPack: ASM0053 for PackAsTool on a project that is not a program (a tool is
+    something to run), or that has several target frameworks (one tool, one command: a tool's
+    packages cannot hold two builds of it).
+  -->
+  <Target Name="_AsmCheckToolPack" Condition="'$(_AsmPackAsTool)' == 'true'">
+    <Error Code="ASM0053"
+           Condition="'$(_AsmOutputKind)' != 'Executable'"
+           Text="PackAsTool makes a program a .NET tool, and $(MSBuildProjectName) builds a $(_AsmOutputKind). Set &lt;OutputType&gt;Exe&lt;/OutputType&gt;, or remove PackAsTool." />
+    <Error Code="ASM0053"
+           Condition="$(TargetFrameworks.Contains(';'))"
+           Text="PackAsTool packs one program per RID, and $(MSBuildProjectName) builds several target frameworks ($(TargetFrameworks)). Give the tool one TargetFramework." />
+  </Target>
+
+  <!--
+    _AsmPackToolRidPackages: the RID packages, from the top-level pack (GenerateNuspec of the RID
+    outer build): Pack of each RID's inner build (_AsmInnerBuild: the RIDs this build covers,
+    with the dispatch's own global properties, so MSBuild reuses the builds it already ran).
+    Each builds first unless NoBuild, as any pack does.
+  -->
+  <Target Name="_AsmPackToolRidPackages" DependsOnTargets="_AsmCheckToolPack;_AsmCheckRuntimeIdentifiers">
+    <ItemGroup>
+      <_AsmToolRidProject Include="$(MSBuildProjectFullPath)" Condition="'@(_AsmInnerBuild)' != ''">
+        <AdditionalProperties>%(_AsmInnerBuild.AdditionalProperties)</AdditionalProperties>
+      </_AsmToolRidProject>
+    </ItemGroup>
+    <MSBuild Condition="'@(_AsmToolRidProject)' != ''" Projects="@(_AsmToolRidProject)" Targets="Pack" BuildInParallel="$(BuildInParallel)" />
+  </Target>
+
+  <!--
+    _AsmPackToolContent: a tool package's files (NuGet's TargetsForTfmSpecificContentInPackage,
+    replacing _AsmPackNativeContent for a tool): the pointer in the top-level package
+    (_AsmPackToolPointer), or a RID package's files (_AsmPackToolRidContent). Two targets with
+    conditions, not one with CallTarget: a target's condition, false, also skips its
+    dependencies (the publish-list targets run for a RID package only), and items a CallTarget'ed
+    target creates would not be visible here.
+  -->
+  <Target Name="_AsmPackToolContent" DependsOnTargets="_AsmCheckToolPack;_AsmPackToolPointer;_AsmPackToolRidContent" />
+
+  <!-- _AsmPackToolPointer: the top-level package (the RID outer build): DotnetToolSettings.xml
+       with the command and one RuntimeIdentifierPackage per RID, in tools/any/any/. -->
+  <Target Name="_AsmPackToolPointer" Condition="'$(_AsmRid)' == ''">
+    <ItemGroup>
+      <_AsmToolRid Include="$(_AsmBuildRuntimeIdentifiers)" />
+      <_AsmToolRid PackageId="$(_AsmToolPackageId).%(_AsmToolRid.Identity)" />
+    </ItemGroup>
+    <AsmWriteToolSettings CommandName="$(ToolCommandName)"
+                          RuntimeIdentifierPackages="@(_AsmToolRid)"
+                          OutputPath="$(_AsmToolSettingsPath)" />
+    <ItemGroup>
+      <TfmSpecificPackageFile Include="$(_AsmToolSettingsPath)" PackagePath="tools/any/any/" />
+      <FileWrites Include="$(_AsmToolSettingsPath)" />
+    </ItemGroup>
+  </Target>
+
+  <!--
+    _AsmPackToolRidContent: one RID package (a RID inner build): DotnetToolSettings.xml with
+    EntryPoint and Runner="executable", and what a publish of that RID holds (the program and its
+    PDB, its dependencies at their paths, its data files with CopyToPublishDirectory or
+    CopyToOutputDirectory), all under tools/any/<rid>/. PackagePath names each file's folder, not
+    the file: NuGet takes a PackagePath without the source's extension for a folder and appends
+    the name, which doubled an extensionless program (hello/hello, measured).
+  -->
+  <Target Name="_AsmPackToolRidContent"
+          Condition="'$(_AsmToolRidPack)' == 'true'"
+          DependsOnTargets="_AsmResolveProgramDependencies;DefaultCopyToPublishDirectoryMetadata">
+    <AsmWriteToolSettings CommandName="$(ToolCommandName)"
+                          EntryPoint="$(TargetFileName)"
+                          OutputPath="$(_AsmToolSettingsPath)" />
+    <ItemGroup>
+      <_AsmToolFile Include="$(TargetPath)" AsmToolPath="$(TargetFileName)" />
+      <_AsmToolFile Include="$(TargetDir)$(TargetName).pdb" Condition="'$(_AsmOs)' == 'Windows' and Exists('$(TargetDir)$(TargetName).pdb')" AsmToolPath="$(TargetName).pdb" />
+      <!-- Batched on each dependency's place; the condition keeps an empty list from adding a
+           bare folder (batching over nothing still runs once). -->
+      <_AsmToolFile Include="$(TargetDir)%(_AsmProgramDependency.TargetPath)" Condition="'@(_AsmProgramDependency)' != ''" AsmToolPath="%(_AsmProgramDependency.TargetPath)" />
+      <_AsmToolFile Include="@(_NoneWithTargetPath)" Condition="'%(_NoneWithTargetPath.CopyToPublishDirectory)' == 'Always' or '%(_NoneWithTargetPath.CopyToPublishDirectory)' == 'PreserveNewest' or '%(_NoneWithTargetPath.CopyToPublishDirectory)' == 'IfDifferent'" AsmToolPath="%(_NoneWithTargetPath.TargetPath)" />
+      <_AsmToolFile Include="@(ContentWithTargetPath)" Condition="'%(ContentWithTargetPath.CopyToPublishDirectory)' == 'Always' or '%(ContentWithTargetPath.CopyToPublishDirectory)' == 'PreserveNewest' or '%(ContentWithTargetPath.CopyToPublishDirectory)' == 'IfDifferent'" AsmToolPath="%(ContentWithTargetPath.TargetPath)" />
+      <_AsmToolFile>
+        <AsmToolFolder>$([System.IO.Path]::GetDirectoryName('%(AsmToolPath)').Replace('\', '/'))</AsmToolFolder>
+      </_AsmToolFile>
+      <TfmSpecificPackageFile Include="$(_AsmToolSettingsPath)" PackagePath="tools/any/$(_AsmRid)/" />
+      <TfmSpecificPackageFile Include="@(_AsmToolFile)" Condition="'%(_AsmToolFile.AsmToolFolder)' == ''" PackagePath="tools/any/$(_AsmRid)/" />
+      <TfmSpecificPackageFile Include="@(_AsmToolFile)" Condition="'%(_AsmToolFile.AsmToolFolder)' != ''" PackagePath="tools/any/$(_AsmRid)/%(_AsmToolFile.AsmToolFolder)/" />
+      <FileWrites Include="$(_AsmToolSettingsPath)" />
+    </ItemGroup>
+  </Target>
 
   <!--
     _AsmComputePackLayout: facts every pack step needs, in the outer and the inner builds alike.
@@ -103,10 +239,16 @@
     _AsmGetRidPackContent: one RID's package files (an inner build, called by
     _AsmPackNativeContent), each with PackagePath and RuntimeIdentifier, and AsmLink=true on the
     one a consuming .asmproj links (by AsmPackageLinkKind): the static library, or the shared
-    library (on Windows its import library, the file a PE program links against). Executables
-    and object files are not packed.
+    library (on Windows its import library, the file a PE program links against). Object files
+    are not packed.
+    A program goes to runtimes/<rid>/native/ with what it needs at run time (its bundle, from
+    _AsmComputeProgramBundle, without PDBs), each file AsmPackProgram=true: a .NET consumer gets
+    it there as NuGet gives native files, and an asm program consumer through the generated
+    props (AsmReferencedProgram). The bundle must be flat (ASM0051): NuGet copies runtimes/
+    files flat into a consumer built for one RID (measured with the .NET 11 SDK), where a run
+    path to a subfolder would find nothing.
   -->
-  <Target Name="_AsmGetRidPackContent" DependsOnTargets="_AsmComputePackLayout" Returns="@(_AsmRidPackFile)">
+  <Target Name="_AsmGetRidPackContent" DependsOnTargets="_AsmComputePackLayout;_AsmComputeProgramBundle" Returns="@(_AsmRidPackFile)">
     <PropertyGroup>
       <_AsmPackNativeFolder>native/$(RuntimeIdentifier)/$(_AsmTargetFrameworkName)/</_AsmPackNativeFolder>
       <_AsmPackStaticPath Condition="'$(AsmStaticLibraryPath)' != ''">$(_AsmPackNativeFolder)$([System.IO.Path]::GetFileName('$(AsmStaticLibraryPath)'))</_AsmPackStaticPath>
@@ -119,14 +261,32 @@
       <_AsmPackSharedLink>$([MSBuild]::ValueOrDefault('$(_AsmPackImportPath)', '$(_AsmPackSharedPath)'))</_AsmPackSharedLink>
       <_AsmPackLink Condition="'$(AsmPackageLinkKind)' == 'Static'">$([MSBuild]::ValueOrDefault('$(_AsmPackStaticPath)', '$(_AsmPackSharedLink)'))</_AsmPackLink>
       <_AsmPackLink Condition="'$(AsmPackageLinkKind)' != 'Static'">$([MSBuild]::ValueOrDefault('$(_AsmPackSharedLink)', '$(_AsmPackStaticPath)'))</_AsmPackLink>
+      <!-- A consumer that links the shared library (or its import library) needs the library
+           itself at run time: an asm program copies it next to itself (AsmRuntimeFile in the
+           generated props, AsmLayOutProgramDependencies). -->
+      <_AsmPackRuntimePath Condition="'$(_AsmPackLink)' != '' and '$(_AsmPackLink)' == '$(_AsmPackSharedLink)'">$(_AsmPackSharedPath)</_AsmPackRuntimePath>
+      <!-- A program's folder in the package: runtimes/<rid>/native/, or nativeassets/<tfm>/ when
+           the project multi-targets, as for a shared library. -->
+      <_AsmPackProgramFolder Condition="'$(_AsmPackIsMultiTargeted)' != 'true'">runtimes/$(RuntimeIdentifier)/native/</_AsmPackProgramFolder>
+      <_AsmPackProgramFolder Condition="'$(_AsmPackIsMultiTargeted)' == 'true'">runtimes/$(RuntimeIdentifier)/nativeassets/$(_AsmNuGetFramework)/</_AsmPackProgramFolder>
     </PropertyGroup>
     <ItemGroup>
       <_AsmRidPackFile Include="$(AsmStaticLibraryPath)" Condition="'$(_AsmPackStaticPath)' != ''" PackagePath="$(_AsmPackStaticPath)" />
       <_AsmRidPackFile Include="$(AsmSharedLibraryPath)" Condition="'$(_AsmPackSharedPath)' != ''" PackagePath="$(_AsmPackSharedPath)" />
       <_AsmRidPackFile Include="$(AsmImportLibraryPath)" Condition="'$(_AsmPackImportPath)' != ''" PackagePath="$(_AsmPackImportPath)" />
+      <!-- PackagePath is the folder, not the file: NuGet takes a PackagePath without the source's
+           extension for a folder and appends the file's name, so a Linux or macOS program (no
+           extension) came out as runtimes/linux-x64/native/hello/hello (measured). A bundle is
+           flat (ASM0051 below), so each file keeps its own name there. AsmPackageFile is the
+           file's path in the package, for the props. -->
+      <_AsmRidPackFile Include="@(_AsmProgramBundleFile)" Condition="'%(_AsmProgramBundleFile.AsmSymbols)' != 'true'" PackagePath="$(_AsmPackProgramFolder)" AsmPackageFile="$(_AsmPackProgramFolder)%(_AsmProgramBundleFile.AsmBundlePath)" AsmPackProgram="true" />
       <_AsmRidPackFile RuntimeIdentifier="$(RuntimeIdentifier)" />
-      <_AsmRidPackFile Condition="'%(PackagePath)' == '$(_AsmPackLink)'" AsmLink="true" />
+      <_AsmRidPackFile Condition="'%(PackagePath)' == '$(_AsmPackLink)'" AsmLink="true" AsmRuntimePackagePath="$(_AsmPackRuntimePath)" />
+      <_AsmPackNestedProgramFile Include="@(_AsmRidPackFile)" Condition="'%(_AsmRidPackFile.AsmPackProgram)' == 'true' and $([System.String]::Copy('%(_AsmRidPackFile.AsmBundlePath)').Contains('/'))" />
     </ItemGroup>
+    <Error Code="ASM0051"
+           Condition="'@(_AsmPackNestedProgramFile)' != ''"
+           Text="A packed program keeps the libraries and programs it needs next to it, and these are in subfolders: @(_AsmPackNestedProgramFile->'%(AsmBundlePath)', ', ') ($(RuntimeIdentifier)). NuGet copies a package's runtimes/ files flat into a consumer built for one RID, where the program's run path would then find nothing. Keep them next to the program: BinariesCopyPath=&quot;AppFolder&quot; (the default) on its references." />
   </Target>
 
   <!--
@@ -149,6 +309,9 @@
 
     <ItemGroup>
       <_AsmPackedLink Include="@(_AsmPackedRidFile->'%(PackagePath)')" Condition="'%(_AsmPackedRidFile.AsmLink)' == 'true'" />
+      <!-- A program's files, for an asm program that references the package: it delivers them
+           next to itself (AsmReferencedProgram in the props). -->
+      <_AsmPackedProgram Include="@(_AsmPackedRidFile->'%(AsmPackageFile)')" Condition="'%(_AsmPackedRidFile.AsmPackProgram)' == 'true'" />
       <_AsmSupportedRidItem Include="$(_AsmSupportedRuntimeIdentifiers)" />
     </ItemGroup>
     <PropertyGroup>
@@ -160,6 +323,7 @@
                           NuGetFramework="$(_AsmNuGetFramework)"
                           HasIncludes="$(_AsmPackHasIncludes)"
                           LinkLibraries="@(_AsmPackedLink)"
+                          ProgramFiles="@(_AsmPackedProgram)"
                           SupportedRuntimeIdentifiers="@(_AsmSupportedRidItem)"
                           RuntimeIdentifierGraphPath="$(RuntimeIdentifierGraphPath)"
                           OutputPath="$(_AsmGeneratedPropsPath)" />
@@ -167,16 +331,20 @@
          task deletes the file instead of writing an empty one. -->
     <Touch Files="$(_AsmEmptyLibMarkerPath)" AlwaysCreate="true" />
 
-    <!-- A shared library is something a .NET consumer loads: give it BinariesCopyPath. A
-         package of static libraries only has nothing for .NET to move. -->
+    <!-- A shared library is something a .NET consumer loads, and a program something it starts:
+         give it BinariesCopyPath for either. The loader is for a library only. A package of
+         static libraries only has nothing for .NET to move. -->
     <ItemGroup>
       <_AsmPackedSharedLibrary Include="@(_AsmPackedRidFile)" Condition="$([System.String]::Copy('%(_AsmPackedRidFile.PackagePath)').StartsWith('runtimes/'))" />
     </ItemGroup>
+    <PropertyGroup>
+      <_AsmPackLoaderName Condition="'$(_AsmOutputKind)' == 'SharedLibrary'">$(AssemblyName)</_AsmPackLoaderName>
+    </PropertyGroup>
     <AsmWritePackageConsumerTargets Condition="'@(_AsmPackedSharedLibrary)' != ''"
                                     PackageId="$(PackageId)"
                                     PackageVersion="$(PackageVersion)"
                                     Origin="AsmFoundation.Sdk"
-                                    LibraryNames="$(AssemblyName)"
+                                    LibraryNames="$(_AsmPackLoaderName)"
                                     OutputPath="$(_AsmGeneratedConsumerTargetsPath)" />
 
     <ItemGroup>

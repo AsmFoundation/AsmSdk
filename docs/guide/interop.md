@@ -88,6 +88,12 @@ let .NET's own RID rules choose the library.
 
 ## Where the binaries go: BinariesCopyPath
 
+> [!NOTE]
+> **Not released yet:** on the main branch, a `ProjectReference` or `PackageReference` to an
+> asm *program* delivers it the same way, with the libraries it links, for a .NET app that
+> starts it as a helper process. `BinariesCopyPath` also places the libraries that an asm
+> program links. See [Programs](programs.md#a-program-as-a-dependency).
+
 By default the asm libraries go where NuGet puts a package's native files: `runtimes/<rid>/native/`
 in a portable build, beside the app in a RID-specific one. `BinariesCopyPath` puts them
 elsewhere, for build and publish alike:

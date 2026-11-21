@@ -106,6 +106,14 @@ Graviton). AsmFoundation.Sdk 0.3.0 on nuget.org builds the seven RIDs above; see
 `OutputType` picks the kind: `Library` (the default), `StaticLibrary`, `Exe`, or `Objects`
 for object files another project links. Outputs go to `bin/<Configuration>/<tfm>/<rid>/`.
 
+Not released yet: on `main`, a program (`Exe`) gets the asm shared libraries it links next to
+it, and the run path to find them there. `dotnet run` starts it on this machine, through WSL
+or in Docker. `dotnet publish` writes one folder per RID. A .NET app or another program can
+reference it, or its package, and gets it with its libraries. `<PackAsTool>true</PackAsTool>`
+packs it as a .NET tool for `dotnet tool install`. See
+[Programs](https://asmfoundation.github.io/AsmSdk/guide/programs.html) and the
+[changelog](CHANGELOG.md).
+
 - **The platform layer:** `asmsdk.inc` (NASM) names each OS's argument registers (`ARG1`..),
   shadow space and PLT, and its `FUNCTION` macro exports a function the way each object format
   does; `asmsdk-gnu.inc` does the same for ARM64. The SDK defines `WINDOWS`, `LINUX`, `MACOS`,

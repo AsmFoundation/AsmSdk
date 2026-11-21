@@ -11,8 +11,16 @@
   point on: the PropertyGroup below sets them to false, and every later import (all of
   Microsoft.NET.Sdk) sees false. Projects this one builds still inherit the original global
   values; each asm project resets them the same way, and .NET projects keep them.
+
+  PackAsTool too, for another reason: AsmFoundation.Properties.targets captures it (an asm
+  program packs as a .NET tool by the SDK's own targets) and then hides it, because
+  Microsoft.NET.Sdk would import its own tool targets, which stop any project that is not
+  .NETCoreApp. Given on the command line (dotnet pack -p:PackAsTool=true), a global property
+  would outrank that hiding: measured, NETSDK1054 "only supports .NET Core" instead of the
+  asm pack (or ASM0053 for a library). Its value here is left alone; only the hiding needs it
+  local.
 -->
-<Project TreatAsLocalProperty="PublishAot;PublishTrimmed;PublishSingleFile;PublishReadyToRun;SelfContained">
+<Project TreatAsLocalProperty="PublishAot;PublishTrimmed;PublishSingleFile;PublishReadyToRun;SelfContained;PackAsTool">
   <!--
     AsmFoundation.Sdk - Sdk.props.
 
@@ -81,6 +89,19 @@
     <CopyBuildOutputToOutputDirectory>false</CopyBuildOutputToOutputDirectory>
     <CopyOutputSymbolsToOutputDirectory>false</CopyOutputSymbolsToOutputDirectory>
     <SkipCopyBuildProduct>true</SkipCopyBuildProduct>
+    <!-- The same for dotnet publish: the managed pipeline would publish obj/<name>.dll, which
+         an asm project never writes (MSB3030, measured with SDK 11.0.100). The native outputs
+         are added to the publish list by AsmFoundation.Build.targets (_AsmAddOwnPublishFiles). -->
+    <CopyBuildOutputToPublishDirectory>false</CopyBuildOutputToPublishDirectory>
+
+    <!--
+      dotnet publish builds Release unless told otherwise, as it does for a .NET 8 or later
+      project: the CLI reads PublishRelease in an evaluation of its own, before the build, and
+      Microsoft.NET.Sdk defaults it only for net8.0+ target frameworks, which an asm project's
+      netstandard aliases are not. A project, or -c, still chooses otherwise. dotnet pack has
+      PackRelease from Microsoft.NET.Sdk already.
+    -->
+    <PublishRelease Condition="'$(PublishRelease)' == ''">true</PublishRelease>
 
     <!--
       Output folders follow .NET: bin/<Configuration>/<TargetFramework>/<RuntimeIdentifier>/
@@ -101,4 +122,41 @@
   </PropertyGroup>
 
   <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+
+  <!--
+    The default items, here before the project body, where .NET declares its own (in
+    Microsoft.NET.Sdk.DefaultItems.props): a project can then Update or Remove them, as in a
+    .csproj (<None Update="data.txt" CopyToOutputDirectory="PreserveNewest" />, <AsmSource
+    Remove="old/**" />). Declared in AsmFoundation.Build.targets, after the body, as before, an
+    Update matched nothing and was silently ignored (measured: a None item's
+    CopyToOutputDirectory never arrived). The conditions still see the project's settings:
+    MSBuild evaluates every property before any item, so EnableDefaultAsmItems=false in the body
+    turns the globs off, and DefaultItemExcludes holds its final value (bin/ and obj/).
+  -->
+  <ItemGroup Condition="'$(EnableDefaultAsmItems)' == 'true'">
+    <!-- DefaultItemExcludes keeps bin/ and obj/ out, as for a .csproj. Every source of either
+         language is an item; AsmPrepare picks, per RID, the ones that build it.
+         EnableDefaultAsmItems defaults to true in AsmFoundation.Properties.targets, imported
+         after the body: the condition sees that default, properties being evaluated first. -->
+    <AsmSource Include="**/*.asm;**/*.s" Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)" />
+    <AsmInclude Include="**/*.inc" Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)" />
+  </ItemGroup>
+
+  <!--
+    Every other file of the project folder is a None item, as in a .csproj: IDEs show a project
+    as its items, so without this a linker script, a C header or a README next to the sources
+    would be invisible. Set EnableDefaultNoneItems=false (.NET's own switch) to list them
+    yourself.
+
+    Why not Microsoft.NET.Sdk's own None glob (EnableDefaultItems stays false above): it removes
+    "**/*$(DefaultLanguageSourceExtension)" from None right after including "**/*", and an
+    .asmproj has no language extension, so that Remove is "**/*" and takes every file away
+    again. The asm items are taken out of None, so each file is one item: a .asm file is an
+    AsmSource, never also a None (AsmFoundation.Build.targets repeats the Remove after the
+    body, for the asm files a project lists itself).
+  -->
+  <ItemGroup Condition="'$(EnableDefaultNoneItems)' != 'false'">
+    <None Include="**/*" Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)" />
+    <None Remove="@(AsmSource);@(AsmInclude)" />
+  </ItemGroup>
 </Project>

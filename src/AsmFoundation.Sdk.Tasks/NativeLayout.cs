@@ -144,6 +144,12 @@ internal static class NativeLayout
     internal static string Destination(string folder, string rid, string fileName) =>
         folder.Length == 0 ? fileName : ReplaceRid(folder, rid) + "/" + fileName;
 
+    /// <summary>A resolved folder pattern for one RID: every {rid} replaced, as it is on disk.</summary>
+    /// <param name="folder">A resolved folder pattern ("" for the app's own folder).</param>
+    /// <param name="rid">The RID the files were built for.</param>
+    /// <returns>The relative folder, with forward slashes ("" for the app's own folder).</returns>
+    internal static string FolderFor(string folder, string rid) => ReplaceRid(folder, rid);
+
     /// <summary>Whether a folder pattern separates RIDs ({rid} somewhere in it).</summary>
     /// <param name="folder">A resolved folder pattern.</param>
     /// <returns>True when it contains {rid}.</returns>

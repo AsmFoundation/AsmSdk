@@ -146,3 +146,24 @@ See [Platforms and runtime identifiers](platforms.md) for how a project chooses 
 | a crash (`SIGSEGV`, or `0xC0000005` on Windows) inside `printf` or another C library function | the stack not 16-byte aligned at the call (`movaps` faults); `al` not set for a System V variadic call; no shadow space on Windows | `sub rsp, SHADOW_SPACE + 8` (or a push) before calling; `xor eax, eax` before variadic calls on Linux and macOS |
 | a crash after returning from your function into C# or Python | a callee-saved register was clobbered: `rbx`, `rbp`, `r12`–`r15`, and on Windows also `rdi`, `rsi`, `xmm6`–`xmm15` | list them in `FUNCTION`, which saves those this OS expects back |
 | wrong results only for negative `int` arguments | the code read the 64-bit register for a 32-bit `int` | `movsxd rax, ARG1d` |
+
+## Programs: run, publish, deliver and pack
+
+> [!NOTE]
+> **Not released yet:** these come from the main branch (see [Programs](programs.md)). With
+> AsmFoundation.Sdk 0.3.0, `dotnet run` of a program says "The current OutputType is
+> 'Library'" and `dotnet publish` fails with `MSB3030`.
+
+| Message | Cause | Fix |
+|---|---|---|
+| `ASM0090: X builds a shared library (OutputType Library), and dotnet run starts programs` | `dotnet run` of a library, static library or object files project | run a program; a library runs inside the program that loads it |
+| `ASM0091: This machine (win-x64) cannot run any build of X (osx-arm64): …` | no build of the program runs here, natively, emulated, through WSL or in Docker; the message lists what it tried | build a RID this machine runs (`dotnet run -r <rid>` with the RID in `RuntimeIdentifiers`), install WSL with a distribution, or start Docker |
+| `ASM0092: X has no built program to run` | `dotnet run --no-build` before any build | build first |
+| `ASM0093: AsmRunIn 'x' is not a way to run a program` | a typo | `Auto`, `Host`, `Wsl` or `Docker` |
+| `exec format error` from `dotnet run` in Docker | a build for another CPU on a Linux machine without QEMU in `binfmt_misc` | install it (`docker run --privileged --rm tonistiigi/binfmt --install all`), or run the build of the machine's CPU |
+| `error while loading shared libraries: libcalc.so` | a program run from somewhere other than its build or publish folder, without its library next to it; or a program built by AsmSdk 0.3.0, which set no run path | copy the whole folder; rebuild with the main branch |
+| `ASM0047: calc.dll would be copied to lib/, but a Windows program finds the DLLs it links only in its own folder` | `BinariesCopyPath` other than `AppFolder` for a Windows RID | set the value for the other RIDs only (a condition on `$(RuntimeIdentifier)`) |
+| `ASM0048` (warning): `… links calc.dll.lib, the import library of calc.dll, but the package … does not say where calc.dll is` | a package packed by AsmSdk 0.3.0, whose props do not name the DLL | repack the package with the main branch, or copy the DLL next to the program |
+| `ASM0051: A packed program keeps the libraries and programs it needs next to it, and these are in subfolders` | `dotnet pack` of a program (or a .NET library that carries one) whose libraries are in a `BinariesCopyPath` folder: NuGet copies `runtimes/` files flat into an app built for one RID | keep them next to the program (`AppFolder`, the default) |
+| `ASM0053: PackAsTool makes a program a .NET tool, and X builds a SharedLibrary` | `PackAsTool` on something that is not a program, or with several target frameworks | `OutputType=Exe`, one `TargetFramework` |
+| a .NET app does not find the program it references | it looked only in its own folder, and a portable build keeps the program in `runtimes/<rid>/native/` | search `NATIVE_DLL_SEARCH_DIRECTORIES`, then the app folder (the code is in [Programs](programs.md#a-net-app-starts-it)) |

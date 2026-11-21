@@ -1,0 +1,2 @@
+A data file of EverywhereProgram, marked CopyToOutputDirectory: ProgramTests expects it in every
+RID's build output and publish folder, at data/settings.txt.

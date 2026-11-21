@@ -28,7 +28,8 @@ namespace AsmFoundation.Sdk.Tasks;
 /// </para>
 /// <para>
 /// Errors: ASM0044 (two different files would land on one path: a folder without {rid} in a
-/// portable build that has two RIDs of one OS, or two libraries with one file name);
+/// portable build that has two RIDs of one OS, or two libraries with one file name; two files
+/// with the same bytes, a library the app references and a program's copy of it, are one file);
 /// ASM0040 (a RID-specific build, and no build of a library serves its RID: possible for a
 /// library that reaches the project only through a .NET library); ASM0041 (the RID graph).
 /// </para>
@@ -36,9 +37,11 @@ namespace AsmFoundation.Sdk.Tasks;
 public sealed class AsmLayOutNativeAssets : Task
 {
     /// <summary>
-    /// Every asm file known to this project (libraries and their PDBs), each with RuntimeIdentifier,
-    /// AsmProject (the asm project's full path), AsmLibraryName, AsmLibraryVersion and, for a PDB,
-    /// AsmSymbols=true. A file may appear more than once; the first wins.
+    /// Every asm file known to this project (libraries, programs and their PDBs), each with
+    /// RuntimeIdentifier, AsmProject (the asm project's full path), AsmLibraryName,
+    /// AsmLibraryVersion, for a PDB AsmSymbols=true, and for a program's file AsmKind=Program and
+    /// AsmBundlePath (its path relative to the program, kept under the folder). A file may appear
+    /// more than once; the first wins.
     /// </summary>
     [Required]
     public ITaskItem[] Assets { get; set; } = Array.Empty<ITaskItem>();
@@ -71,7 +74,7 @@ public sealed class AsmLayOutNativeAssets : Task
     public ITaskItem[] LaidOut { get; set; } = Array.Empty<ITaskItem>();
 
     /// <summary>The metadata copied from an asset onto a laid-out list item.</summary>
-    private static readonly string[] AssetMetadata = { "RuntimeIdentifier", "AsmProject", "AsmLibraryName", "AsmLibraryVersion", "AsmSymbols", "AsmImportName" };
+    private static readonly string[] AssetMetadata = { "RuntimeIdentifier", "AsmProject", "AsmLibraryName", "AsmLibraryVersion", "AsmSymbols", "AsmImportName", "AsmKind", "AsmBundlePath" };
 
     /// <summary>Lays the files out.</summary>
     /// <returns>True on success; false after logging ASM0040, ASM0041 or ASM0044.</returns>
@@ -161,9 +164,20 @@ public sealed class AsmLayOutNativeAssets : Task
             }
 
             string folder = folders.TryGetValue(project, out string? chosenFolder) ? chosenFolder : NativeLayout.Resolve(NativeLayout.Auto, ridSpecific);
-            string destination = NativeLayout.Destination(folder, rid, Path.GetFileName(entry.Key));
+            // A program's files keep their paths relative to the program (AsmBundlePath), so the
+            // program's run paths still find its libraries under whatever folder it goes to.
+            string bundlePath = asset.GetMetadata("AsmBundlePath");
+            string destination = NativeLayout.Destination(folder, rid, bundlePath.Length != 0 ? bundlePath : Path.GetFileName(entry.Key));
             if (claimedBy.TryGetValue(destination, out ITaskItem? other))
             {
+                // The same bytes on one path are one file: a library the app references and a
+                // program's copy of it, both placed next to each other by Auto. The first copy
+                // serves both; anything that differs is a real collision.
+                if (SameBytes(other.ItemSpec, asset.ItemSpec))
+                {
+                    continue;
+                }
+
                 LogCollision(destination, other, asset, folder);
                 ok = false;
                 continue;
@@ -239,6 +253,24 @@ public sealed class AsmLayOutNativeAssets : Task
     /// <returns>For example "Calc.Native.asmproj's linux-x64 build of libcalc.so".</returns>
     private static string Describe(ITaskItem asset) =>
         $"{Path.GetFileName(asset.GetMetadata("AsmProject"))}'s {asset.GetMetadata("RuntimeIdentifier")} build of {Path.GetFileName(asset.ItemSpec)}";
+
+    /// <summary>Whether two files hold the same bytes (two copies of one library build).</summary>
+    /// <param name="first">A file.</param>
+    /// <param name="second">Another file.</param>
+    /// <returns>True when both can be read and are equal; false otherwise, unreadable included (the collision is then reported).</returns>
+    private static bool SameBytes(string first, string second)
+    {
+        try
+        {
+            var a = new FileInfo(first);
+            var b = new FileInfo(second);
+            return a.Exists && b.Exists && a.Length == b.Length && File.ReadAllBytes(first).SequenceEqual(File.ReadAllBytes(second));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
 
     /// <summary>A path in the form used as a key: full, with the OS's separators.</summary>
     /// <param name="path">A path as an item names it.</param>

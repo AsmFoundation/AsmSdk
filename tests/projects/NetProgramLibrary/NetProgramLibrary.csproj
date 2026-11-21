@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A .NET library whose package carries the asm program EverywhereProgram inside it
+    (ProgramTests packs it): PrivateAssets="all" on the reference puts every RID's program and
+    library in runtimes/<rid>/native/ (flat: NuGet copies those files flat into a consumer built
+    for one RID), with buildTransitive targets for BinariesCopyPath, and no dependency.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PackageId>Test.NetProgramLibrary</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>AsmFoundation tests</Authors>
+    <Description>Test package: a .NET library that carries an assembly program.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../EverywhereProgram/EverywhereProgram.asmproj" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

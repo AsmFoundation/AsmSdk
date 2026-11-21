@@ -46,8 +46,12 @@ public sealed class AsmWritePackageConsumerTargets : Task
     /// <summary>The SDK that writes it, for the header ("AsmFoundation.Sdk 0.3.0").</summary>
     public string Origin { get; set; } = "AsmFoundation.Sdk";
 
-    /// <summary>The library names the package's native files derive from (AssemblyNames: calc for calc.dll, libcalc.so, libcalc.dylib).</summary>
-    [Required]
+    /// <summary>
+    /// The library names the package's native files derive from (AssemblyNames: calc for calc.dll,
+    /// libcalc.so, libcalc.dylib), for the fallback loader. Empty for a package that carries asm
+    /// programs only: the targets then move the files and write no loader (a program is started,
+    /// never loaded through [DllImport]).
+    /// </summary>
     public ITaskItem[] LibraryNames { get; set; } = Array.Empty<ITaskItem>();
 
     /// <summary>The .targets file to write (written only when its text changes).</summary>
@@ -90,9 +94,11 @@ public sealed class AsmWritePackageConsumerTargets : Task
 
         // The loader's C# lines, one MSBuild item each. The folder is the consumer's choice, known
         // only in its build: a marker replaced by the property AFTER escaping, so it expands.
+        // None for a package of programs only (see LibraryNames).
         const string folderMarker = "@@ASMSDK_FOLDER@@";
-        string loader = NativeLoaderSource.Generate("AsmNativeLibraryLoader_" + s, names.Select(n => new KeyValuePair<string, string>(n, folderMarker)), $"{Origin} for the package {PackageId}");
-        string lines = string.Join(";", loader.Split('\n').Where(l => l.Length != 0).Select(EscapeLine))
+        string lines = names.Length == 0 ? "" : string.Join(";",
+                NativeLoaderSource.Generate("AsmNativeLibraryLoader_" + s, names.Select(n => new KeyValuePair<string, string>(n, folderMarker)), $"{Origin} for the package {PackageId}")
+                    .Split('\n').Where(l => l.Length != 0).Select(EscapeLine))
             .Replace(EscapeText(folderMarker), $"$(_AsmPackageFolder_{s})");
 
         var x = new StringBuilder();
@@ -170,19 +176,24 @@ public sealed class AsmWritePackageConsumerTargets : Task
         // The fallback loader, for what reads no deps.json (NativeAOT). Before BeforeCompile:
         // _GenerateCompileDependencyCache hashes @(Compile) right after it, and only that hash
         // makes CoreCompile run again when the loader leaves the list (a layout back to Auto).
-        x.Append($"  <Target Name=\"_AsmPackageNativeLoader_{s}\" BeforeTargets=\"BeforeCompile\" DependsOnTargets=\"_AsmPackageLayout_{s}\"\n");
-        x.Append("          Condition=\"'$(UsingAsmFoundationSdk)' != 'true' and '$(Language)' == 'C#' and '$(AsmGenerateNativeLibraryLoader)' != 'false' and '$(TargetFrameworkIdentifier)' == '.NETCoreApp' and $([MSBuild]::VersionGreaterThanOrEquals('$(TargetFrameworkVersion.TrimStart(`vV`))', '5.0'))\">\n");
-        x.Append("    <PropertyGroup>\n");
-        x.Append($"      <_AsmPackageLoaderPath_{s}>$(IntermediateOutputPath)AsmNativeLibraryLoader.{s}.g.cs</_AsmPackageLoaderPath_{s}>\n");
-        x.Append("    </PropertyGroup>\n");
-        x.Append($"    <WriteLinesToFile Condition=\"'$(_AsmPackageActive_{s})' == 'true' and '$(_AsmPackageInvalid_{s})' != 'true' and '$(_AsmPackageFolder_{s})' != ''\"\n");
-        x.Append($"                      File=\"$(_AsmPackageLoaderPath_{s})\" Overwrite=\"true\" WriteOnlyWhenDifferent=\"true\"\n");
-        x.Append($"                      Lines=\"{lines}\" />\n");
-        x.Append($"    <ItemGroup Condition=\"'$(_AsmPackageActive_{s})' == 'true' and '$(_AsmPackageInvalid_{s})' != 'true' and '$(_AsmPackageFolder_{s})' != ''\">\n");
-        x.Append($"      <Compile Include=\"$(_AsmPackageLoaderPath_{s})\" />\n");
-        x.Append($"      <FileWrites Include=\"$(_AsmPackageLoaderPath_{s})\" />\n");
-        x.Append("    </ItemGroup>\n");
-        x.Append("  </Target>\n");
+        // A package of programs only has no library to load, and gets no loader target.
+        if (names.Length != 0)
+        {
+            x.Append($"  <Target Name=\"_AsmPackageNativeLoader_{s}\" BeforeTargets=\"BeforeCompile\" DependsOnTargets=\"_AsmPackageLayout_{s}\"\n");
+            x.Append("          Condition=\"'$(UsingAsmFoundationSdk)' != 'true' and '$(Language)' == 'C#' and '$(AsmGenerateNativeLibraryLoader)' != 'false' and '$(TargetFrameworkIdentifier)' == '.NETCoreApp' and $([MSBuild]::VersionGreaterThanOrEquals('$(TargetFrameworkVersion.TrimStart(`vV`))', '5.0'))\">\n");
+            x.Append("    <PropertyGroup>\n");
+            x.Append($"      <_AsmPackageLoaderPath_{s}>$(IntermediateOutputPath)AsmNativeLibraryLoader.{s}.g.cs</_AsmPackageLoaderPath_{s}>\n");
+            x.Append("    </PropertyGroup>\n");
+            x.Append($"    <WriteLinesToFile Condition=\"'$(_AsmPackageActive_{s})' == 'true' and '$(_AsmPackageInvalid_{s})' != 'true' and '$(_AsmPackageFolder_{s})' != ''\"\n");
+            x.Append($"                      File=\"$(_AsmPackageLoaderPath_{s})\" Overwrite=\"true\" WriteOnlyWhenDifferent=\"true\"\n");
+            x.Append($"                      Lines=\"{lines}\" />\n");
+            x.Append($"    <ItemGroup Condition=\"'$(_AsmPackageActive_{s})' == 'true' and '$(_AsmPackageInvalid_{s})' != 'true' and '$(_AsmPackageFolder_{s})' != ''\">\n");
+            x.Append($"      <Compile Include=\"$(_AsmPackageLoaderPath_{s})\" />\n");
+            x.Append($"      <FileWrites Include=\"$(_AsmPackageLoaderPath_{s})\" />\n");
+            x.Append("    </ItemGroup>\n");
+            x.Append("  </Target>\n");
+        }
+
         x.Append("</Project>\n");
         return x.ToString();
     }

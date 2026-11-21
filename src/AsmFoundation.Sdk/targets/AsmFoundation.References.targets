@@ -44,20 +44,65 @@
     Called by _AsmResolveProjectReferences after ResolveProjectReferences has built us, in the
     referencing project's RID: an inner build of one RID asks for that RID's files (the RID
     reaches us because asm projects are not RID-agnostic; see Properties.targets).
+
+    A shared link input also says what a program that links it needs at run time:
+      AsmRuntimeFile     the shared library itself (.so, .dylib, .dll). On Windows the link input
+                         is the import library (foo.dll.lib), so without this a referencing
+                         program could not know which file to copy next to itself.
+      AsmRuntimeSymbols  its PDB, when the link wrote one (Windows, debug information on).
+    A referencing program copies them where its BinariesCopyPath says (AsmLayOutProgramDependencies
+    in Build.targets). A static library has no run-time file: the program contains its code.
+
+    A program links into nothing, but a referencing program can deliver it: its files come back
+    as Program items (_AsmComputeProgramBundle below: the program, its PDB, and what it needs at
+    run time, each with AsmBundlePath, its path relative to the program), which the referencing
+    program copies where its BinariesCopyPath says, keeping their paths relative to each other.
   -->
-  <Target Name="GetAsmLinkInputs" DependsOnTargets="AsmPrepare" Returns="@(_AsmExportedLinkInput)">
+  <Target Name="GetAsmLinkInputs" DependsOnTargets="AsmPrepare;_AsmComputeProgramBundle" Returns="@(_AsmExportedLinkInput)">
     <PropertyGroup>
       <_AsmSharedLinkInput>$(AsmSharedLibraryPath)</_AsmSharedLinkInput>
       <_AsmSharedLinkInput Condition="'$(AsmImportLibraryPath)' != ''">$(AsmImportLibraryPath)</_AsmSharedLinkInput>
+      <!-- Checked when a referencing project asks, after this project was built: the PDB exists
+           only for a Windows link with debug information. -->
+      <_AsmSharedLinkSymbols Condition="'$(_AsmOs)' == 'Windows' and '$(AsmSharedLibraryPath)' != '' and Exists('$(TargetDir)$(TargetName).pdb')">$(TargetDir)$(TargetName).pdb</_AsmSharedLinkSymbols>
     </PropertyGroup>
     <ItemGroup>
       <_AsmExportedLinkInput Include="@(AsmPublicIncludeDirectory->'%(FullPath)')" AsmItemType="IncludeDirectory" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" />
       <_AsmExportedLinkInput Include="$(AsmStaticLibraryPath)" Condition="'$(AsmStaticLibraryPath)' != ''" AsmItemType="LinkInput" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" />
-      <_AsmExportedLinkInput Include="$(_AsmSharedLinkInput)" Condition="'$(AsmStaticLibraryPath)' == '' and '$(_AsmSharedLinkInput)' != ''" AsmItemType="LinkInput" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" />
+      <_AsmExportedLinkInput Include="$(_AsmSharedLinkInput)" Condition="'$(AsmStaticLibraryPath)' == '' and '$(_AsmSharedLinkInput)' != ''" AsmItemType="LinkInput" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" AsmRuntimeFile="$(AsmSharedLibraryPath)" AsmRuntimeSymbols="$(_AsmSharedLinkSymbols)" />
       <!-- ObjectToolPath, the absolute path: ObjectFile is relative to THIS project's folder,
            and a referencing project would look for it in its own (the 0.1.0 and 0.2.0 bug:
            "cannot open <referencing project>/obj/.../x.o"). -->
       <_AsmExportedLinkInput Include="@(_AsmSelectedSource->'%(ObjectToolPath)')" Condition="'$(_AsmOutputKind)' == 'Objects'" AsmItemType="LinkInput" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" />
+      <_AsmExportedLinkInput Include="@(_AsmProgramBundleFile)" AsmItemType="Program" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" />
+    </ItemGroup>
+  </Target>
+
+  <!--
+    _AsmComputeProgramBundle: what a program (one RID) takes along to whatever references it,
+    as _AsmProgramBundleFile items: the program, its PDB when the link wrote one, and every file
+    _AsmResolveProgramDependencies put next to (or below) it, the copies in this program's own
+    output folder. Each has AsmBundlePath (its path relative to the program, forward slashes),
+    AsmProgramName (the program's file name) and, on a PDB, AsmSymbols=true. Keeping the paths
+    relative to each other is what keeps the program's run paths valid wherever a consumer puts
+    it. Data files (CopyToOutputDirectory) stay behind: they are the program's own business, and
+    NuGet would flatten their folders for a consumer built for one RID.
+    Nothing for anything but a program, and nothing in the RID outer build.
+  -->
+  <Target Name="_AsmComputeProgramBundle"
+          Condition="'$(_AsmRid)' != '' and '$(_AsmOutputKind)' == 'Executable'"
+          DependsOnTargets="_AsmResolveProgramDependencies">
+    <PropertyGroup>
+      <_AsmProgramPdb Condition="'$(_AsmOs)' == 'Windows' and Exists('$(TargetDir)$(TargetName).pdb')">$(TargetDir)$(TargetName).pdb</_AsmProgramPdb>
+    </PropertyGroup>
+    <ItemGroup>
+      <_AsmProgramBundleFile Include="$(TargetPath)" AsmBundlePath="$(TargetFileName)" />
+      <_AsmProgramBundleFile Include="$(_AsmProgramPdb)" Condition="'$(_AsmProgramPdb)' != ''" AsmBundlePath="$(TargetName).pdb" AsmSymbols="true" />
+      <!-- One item per dependency (batched on its TargetPath, the place it got here); the
+           condition keeps an empty list from adding a bare folder (batching over nothing still
+           runs once). -->
+      <_AsmProgramBundleFile Include="$(TargetDir)%(_AsmProgramDependency.TargetPath)" Condition="'@(_AsmProgramDependency)' != ''" AsmBundlePath="%(_AsmProgramDependency.TargetPath)" AsmSymbols="%(_AsmProgramDependency.AsmSymbols)" />
+      <_AsmProgramBundleFile AsmProgramName="$(TargetFileName)" />
     </ItemGroup>
   </Target>
 
@@ -107,6 +152,9 @@
     <ItemGroup>
       <AsmIncludeDirectory Include="@(_AsmReferencedOutput)" Condition="'%(_AsmReferencedOutput.AsmItemType)' == 'IncludeDirectory'" />
       <AsmLinkLibrary Include="@(_AsmReferencedOutput)" Condition="'%(_AsmReferencedOutput.AsmItemType)' == 'LinkInput'" />
+      <!-- A referenced program's files: a program delivers them (_AsmResolveProgramDependencies);
+           anything else ignores them. -->
+      <AsmReferencedProgram Include="@(_AsmReferencedOutput)" Condition="'%(_AsmReferencedOutput.AsmItemType)' == 'Program'" />
     </ItemGroup>
   </Target>
 
@@ -147,8 +195,9 @@
   <!--
     GetAsmConsumerInfo: what a referencing .NET project needs to know before it builds this
     project, as one item (the project file) with metadata:
-      AsmOutputKind        SharedLibrary, StaticLibrary, Executable or Objects; only a shared
-                           library is something a .NET app can load
+      AsmOutputKind        SharedLibrary, StaticLibrary, Executable or Objects; a .NET app loads
+                           a shared library and starts a program (Executable), and gets both;
+                           a static library or object files are for asm projects to link
       RuntimeIdentifiers   the declared RIDs (as GetAsmRuntimeIdentifiers), ";"-separated
       AsmImportName        the library's name without "lib" or an extension (its AssemblyName):
                            the name [DllImport] uses, which the generated loader looks for
@@ -171,11 +220,14 @@
       AsmProject         this project file: which library a file belongs to
       AsmImportName      the name [DllImport] uses (AssemblyName: calc for calc.dll, libcalc.so)
     An inner build returns its own RID's library; the RID outer build asks each inner build.
-    Nothing for a project that produces no shared library (a static library or an executable
-    is nothing a .NET app can load). On Windows the PDB goes along when there is one, as .NET
-    copies a referenced project's PDB.
+    On Windows the PDB goes along when there is one, as .NET copies a referenced project's PDB.
+    A program returns its bundle (_AsmComputeProgramBundle: the program, its PDB, the libraries
+    and programs it needs), each file with AsmKind=Program and AsmBundlePath, its path relative
+    to the program, which a consumer keeps under whatever folder it puts the program in (so the
+    program's run paths keep finding its libraries). Nothing for a static library or object
+    files: nothing a .NET app can load or start.
   -->
-  <Target Name="GetAsmNativeRuntimeAssets" Returns="@(_AsmNativeRuntimeAsset)">
+  <Target Name="GetAsmNativeRuntimeAssets" DependsOnTargets="_AsmComputeProgramBundle" Returns="@(_AsmNativeRuntimeAsset)">
     <PropertyGroup>
       <_AsmPdbPath Condition="'$(_AsmOs)' == 'Windows' and '$(AsmSharedLibraryPath)' != ''">$(TargetDir)$(TargetName).pdb</_AsmPdbPath>
       <_AsmNativeLibraryName>$([MSBuild]::ValueOrDefault('$(PackageId)', '$(AssemblyName)'))</_AsmNativeLibraryName>
@@ -184,6 +236,11 @@
     <ItemGroup Condition="'$(_AsmRid)' != '' and '$(AsmSharedLibraryPath)' != ''">
       <_AsmNativeRuntimeAsset Include="$(AsmSharedLibraryPath)" RelativePath="runtimes/$(RuntimeIdentifier)/native/$(TargetFileName)" />
       <_AsmNativeRuntimeAsset Include="$(_AsmPdbPath)" Condition="'$(_AsmPdbPath)' != '' and Exists('$(_AsmPdbPath)')" RelativePath="runtimes/$(RuntimeIdentifier)/native/$(TargetName).pdb" AsmSymbols="true" />
+    </ItemGroup>
+    <ItemGroup Condition="'$(_AsmRid)' != '' and '$(_AsmOutputKind)' == 'Executable'">
+      <_AsmNativeRuntimeAsset Include="@(_AsmProgramBundleFile)" RelativePath="runtimes/$(RuntimeIdentifier)/native/%(_AsmProgramBundleFile.AsmBundlePath)" AsmKind="Program" />
+    </ItemGroup>
+    <ItemGroup Condition="'$(_AsmRid)' != ''">
       <_AsmNativeRuntimeAsset RuntimeIdentifier="$(RuntimeIdentifier)" AsmLibraryName="$(_AsmNativeLibraryName)" AsmLibraryVersion="$(_AsmNativeLibraryVersion)" AsmProject="$(MSBuildProjectFullPath)" AsmImportName="$(AssemblyName)" />
     </ItemGroup>
 
@@ -209,11 +266,14 @@
         collide, those of one OS's RIDs would).
       RID outer build: every RID's library under runtimes/<rid>/native/, the layout NuGet gives
         a package's native files; the consumer targets list them in deps.json.
+    A program's files keep their paths relative to the program (AsmBundlePath) in an inner
+    build, where a library goes flat.
   -->
   <Target Name="GetCopyToOutputDirectoryItems" DependsOnTargets="GetAsmNativeRuntimeAssets" Returns="@(_AsmCopyToOutputItem)">
     <ItemGroup>
       <_AsmCopyToOutputItem Include="@(_AsmNativeRuntimeAsset)">
         <TargetPath Condition="'$(_AsmRid)' != ''">%(Filename)%(Extension)</TargetPath>
+        <TargetPath Condition="'$(_AsmRid)' != '' and '%(_AsmNativeRuntimeAsset.AsmBundlePath)' != ''">%(_AsmNativeRuntimeAsset.AsmBundlePath)</TargetPath>
         <TargetPath Condition="'$(_AsmRid)' == ''">%(RelativePath)</TargetPath>
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </_AsmCopyToOutputItem>
@@ -225,6 +285,7 @@
     <ItemGroup>
       <_AsmCopyToPublishItem Include="@(_AsmNativeRuntimeAsset)">
         <TargetPath Condition="'$(_AsmRid)' != ''">%(Filename)%(Extension)</TargetPath>
+        <TargetPath Condition="'$(_AsmRid)' != '' and '%(_AsmNativeRuntimeAsset.AsmBundlePath)' != ''">%(_AsmNativeRuntimeAsset.AsmBundlePath)</TargetPath>
         <TargetPath Condition="'$(_AsmRid)' == ''">%(RelativePath)</TargetPath>
         <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
       </_AsmCopyToPublishItem>

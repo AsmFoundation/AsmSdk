@@ -203,6 +203,12 @@ docker run --rm -v "$PWD:/w" -w /w mcr.microsoft.com/dotnet/runtime:10.0 \
   sh -c 'chmod +x HelloApp/bin/Debug/libc/linux-x64/hello-app && ./HelloApp/bin/Debug/libc/linux-x64/hello-app'
 ```
 
+> [!NOTE]
+> **Not released yet:** on the main branch, `dotnet run --project HelloApp` builds the
+> program and runs the build for this machine, and `dotnet run -r linux-x64` runs a Linux
+> build through WSL or in Docker. `dotnet publish` writes one folder per RID, and
+> `PackAsTool` packs the program as a .NET tool. See [Programs](programs.md).
+
 - **`SHADOW_SPACE`** is 32 on Windows and 0 elsewhere. An x64 call needs `rsp` 16-byte aligned,
   and on Windows the caller also reserves 32 bytes above the return address for the callee.
   `puts PLT` calls through the PLT on Linux, and is a plain call elsewhere.
