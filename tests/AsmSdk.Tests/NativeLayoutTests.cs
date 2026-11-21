@@ -154,7 +154,7 @@ public sealed class NativeLayoutTests(SdkUnderTest sdk)
             .Order(StringComparer.Ordinal).ToList();
 
     /// <summary>
-    /// BinariesCopyPath on the ProjectReference: a portable build puts each of the seven RIDs'
+    /// BinariesCopyPath on the ProjectReference: a portable build puts each of the eight RIDs'
     /// libraries where the value says (presets and folders alike, "./a//b/{RID}/" read as
     /// a/b/{rid}), deps.json lists each with its localPath, the generated loader knows the
     /// folder, and the program loads this machine's build.
@@ -299,8 +299,8 @@ public sealed class NativeLayoutTests(SdkUnderTest sdk)
     }
 
     /// <summary>
-    /// A folder without {rid} in a portable build of seven RIDs: win-x64 and win-arm64 (and the
-    /// three Linux RIDs) give one file name, and the build stops with ASM0044 before anything
+    /// A folder without {rid} in a portable build of eight RIDs: win-x64 and win-arm64 (and the
+    /// four Linux RIDs) give one file name, and the build stops with ASM0044 before anything
     /// overwrites anything.
     /// </summary>
     [Fact]

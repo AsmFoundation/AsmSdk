@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
-    A RID-agnostic .NET class library over the seven-RID Everywhere.asmproj (NativeLayoutTests):
+    A RID-agnostic .NET class library over the eight-RID Everywhere.asmproj (NativeLayoutTests):
     the wrapper of most real solutions, and often the only place the asm project is referenced.
     Its reference takes BinariesCopyPath from NetLayoutLibraryReference and PrivateAssets from
     NetLayoutLibraryPrivate, so that tests check:
@@ -26,7 +26,7 @@
     <NetLayoutLibraryVersion Condition="'$(NetLayoutLibraryVersion)' == ''">1.0.0</NetLayoutLibraryVersion>
     <Version>$(NetLayoutLibraryVersion)</Version>
     <Authors>AsmFoundation tests</Authors>
-    <Description>Test package: a .NET library that carries its asm library's binaries for seven runtime identifiers.</Description>
+    <Description>Test package: a .NET library that carries its asm library's binaries for eight runtime identifiers.</Description>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Everywhere/Everywhere.asmproj" BinariesCopyPath="$(NetLayoutLibraryReference)" PrivateAssets="$(NetLayoutLibraryPrivate)" />

@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
-    A RID-agnostic .NET class library over the seven-RID Everywhere.asmproj (DotnetAppTests),
+    A RID-agnostic .NET class library over the eight-RID Everywhere.asmproj (DotnetAppTests),
     the middle of most real solutions: app -> wrapper library -> asm project. NetThroughLibrary
     reaches Everywhere only through it.
 

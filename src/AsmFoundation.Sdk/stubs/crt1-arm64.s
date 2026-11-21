@@ -1,6 +1,8 @@
 // =============================================================================
 // crt1-arm64.s - the process entry of an executable for TargetFramework=libc
-// on linux-arm64 (glibc), the AArch64 twin of crt1.asm.
+// on linux-arm64 (glibc) and linux-musl-arm64, the AArch64 twin of crt1.asm.
+// musl's __libc_start_main takes main, argc and argv the same way, and
+// ignores init, fini and the loader's fini, so one entry serves both.
 //
 // The dynamic loader has loaded and initialized glibc when it jumps here.
 // _start hands control to __libc_start_main, which runs the program's

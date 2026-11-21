@@ -46,6 +46,9 @@ public sealed class RuntimeTarget
         new RuntimeTarget("linux-x64", TargetOs.Linux, TargetArchitecture.X64, musl: false),
         new RuntimeTarget("linux-arm64", TargetOs.Linux, TargetArchitecture.Arm64, musl: false),
         new RuntimeTarget("linux-musl-x64", TargetOs.Linux, TargetArchitecture.X64, musl: true),
+        // Alpine on ARM64 (Graviton, Ampere, Apple silicon's Linux VMs): musl's
+        // ld-musl-aarch64.so.1 and libc.musl-aarch64.so.1 (AsmFoundation.Build.targets).
+        new RuntimeTarget("linux-musl-arm64", TargetOs.Linux, TargetArchitecture.Arm64, musl: true),
         new RuntimeTarget("osx-x64", TargetOs.MacOS, TargetArchitecture.X64, musl: false),
         new RuntimeTarget("osx-arm64", TargetOs.MacOS, TargetArchitecture.Arm64, musl: false),
     }.ToDictionary(t => t.Name, StringComparer.OrdinalIgnoreCase);

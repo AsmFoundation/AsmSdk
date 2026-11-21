@@ -11,7 +11,11 @@ os:     .asciz "win-arm64"
 os:     .asciz "osx-arm64"
 .endif
 .ifdef LINUX
+.ifdef MUSL
+os:     .asciz "linux-musl-arm64"
+.else
 os:     .asciz "linux-arm64"
+.endif
 .endif
 bye:    .asciz "bye from atexit"
 

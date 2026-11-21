@@ -1,7 +1,9 @@
 // =============================================================================
 // nonshared-arm64.s - the AArch64 twin of nonshared-x64.asm: the C library
 // functions glibc links statically from libc_nonshared.a instead of exporting
-// them (TargetFramework=libc on linux-arm64). Archived into
+// them (TargetFramework=libc on linux-arm64 and linux-musl-arm64; musl
+// exports atexit itself, and this definition works there too, through
+// __cxa_atexit). Archived into
 // libasmsdk_nonshared.a, so a function is linked only when called.
 // =============================================================================
 

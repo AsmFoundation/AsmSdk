@@ -12,6 +12,22 @@ Each SDK release names the one it was tested with.
 
 ### Added
 
+- **`linux-musl-arm64`, the eighth runtime identifier:** musl distributions such as Alpine on
+  ARM64 (AWS Graviton, Ampere, Linux VMs on Apple silicon). It works like `linux-musl-x64`:
+  - ARM64 code is assembled for llvm-mc's `aarch64-linux-musl`, with the `MUSL` define;
+  - a qualified `.s` file builds every RID its qualifier names, x64 ones too (as GNU-syntax
+    x86-64). So a `.s` qualified `linux-musl` now applies to both musl RIDs, and musl ARM64
+    code beside a `name.linux-musl.asm` takes the RID qualifier, `name.linux-musl-arm64.s`.
+    Otherwise both files claim `linux-musl-x64`, and ASM0020 names the fix;
+  - a `libc` build links against musl's `libc.musl-aarch64.so.1`, and its programs start
+    with `/lib/ld-musl-aarch64.so.1`. The SDK's ARM64 `crt1` and `atexit` serve musl as they
+    serve glibc: musl's `__libc_start_main` takes the same first three arguments and ignores
+    the rest.
+
+  A .NET app built for `linux-musl-arm64` now gets that build itself. Until now NuGet's
+  fallback gave it the `linux-arm64` build, which serves code without the C library but
+  names glibc's `libc.so.6` otherwise. Measured on Alpine ARM64 (under QEMU): a `libc`
+  program, and a .NET app that loads the RID's library.
 - **`tests/qa/delivery-matrix.cs`, the delivery QA matrix that proved 0.3.0,** as a .NET
   file-based app: `dotnet run tests/qa/delivery-matrix.cs`. It covers every way a .NET
   project gets an asm library:
@@ -22,8 +38,8 @@ Each SDK release names the one it was tested with.
   Each is built and published for every RID, in every layout. Every case is then checked by
   file, by object format (llvm-readobj), by `deps.json`, and by running the program wherever
   the machine can: natively, in Linux containers, and for ARM64 under QEMU. On a Windows x64
-  machine with Docker that is 84 cases, all passing, with a negative control (NativeAOT
-  without the generated loader must fail).
+  machine with Docker that is 94 cases with `linux-musl-arm64` (84 before it), all passing,
+  with a negative control (NativeAOT without the generated loader must fail).
 
 ## [0.3.0] — 2026-11-21
 

@@ -7,7 +7,7 @@ using Xunit;
 namespace AsmSdk.Tests;
 
 /// <summary>
-/// The runtime identifiers of 0.3.0, end to end: one .asmproj built for all seven RIDs
+/// The runtime identifiers, end to end: one .asmproj built for all eight RIDs
 /// (tests/projects/Everywhere, EverywhereStatic, EverywhereLibc, EverywhereLibcLibrary), the
 /// .NET project that references it (NetConsumer), its package, and the RID rules' errors.
 /// </summary>
@@ -22,20 +22,20 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
 {
     /// <summary>Every RID AsmSdk builds, in the order the projects list them.</summary>
     public static readonly TheoryData<string> AllRids =
-        ["win-x64", "win-arm64", "linux-x64", "linux-arm64", "linux-musl-x64", "osx-x64", "osx-arm64"];
+        ["win-x64", "win-arm64", "linux-x64", "linux-arm64", "linux-musl-x64", "linux-musl-arm64", "osx-x64", "osx-arm64"];
 
     /// <summary>What Everywhere's ew_platform() returns per RID (see Everywhere.asmproj); also the .NET program tests' expectation.</summary>
     internal static readonly Dictionary<string, int> PlatformCode = new()
     {
         ["win-x64"] = 1, ["win-arm64"] = 2, ["linux-x64"] = 3, ["linux-arm64"] = 4,
-        ["linux-musl-x64"] = 5, ["osx-x64"] = 6, ["osx-arm64"] = 7,
+        ["linux-musl-x64"] = 5, ["osx-x64"] = 6, ["osx-arm64"] = 7, ["linux-musl-arm64"] = 8,
     };
 
     /// <summary>What ew_os() returns per RID: 100 + the osname() variant its qualifier picked.</summary>
     internal static readonly Dictionary<string, int> OsNameCode = new()
     {
         ["win-x64"] = 111, ["win-arm64"] = 121, ["linux-x64"] = 112, ["linux-arm64"] = 120,
-        ["linux-musl-x64"] = 113, ["osx-x64"] = 110, ["osx-arm64"] = 120,
+        ["linux-musl-x64"] = 113, ["osx-x64"] = 110, ["osx-arm64"] = 120, ["linux-musl-arm64"] = 122,
     };
 
     /// <summary>The object file EverywhereStatic assembles per RID (its qualified variants).</summary>
@@ -43,7 +43,7 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
     {
         ["win-x64"] = "osname.win.o", ["win-arm64"] = "osname.win-arm64.o", ["linux-x64"] = "osname.linux.o",
         ["linux-arm64"] = "osname.o", ["linux-musl-x64"] = "osname.linux-musl.o", ["osx-x64"] = "osname.o",
-        ["osx-arm64"] = "osname.o",
+        ["osx-arm64"] = "osname.o", ["linux-musl-arm64"] = "osname.linux-musl-arm64.o",
     };
 
     /// <summary>llvm-readobj's "Format:" line per RID.</summary>
@@ -51,7 +51,7 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
     {
         ["win-x64"] = "COFF-x86-64", ["win-arm64"] = "COFF-ARM64", ["linux-x64"] = "elf64-x86-64",
         ["linux-arm64"] = "elf64-littleaarch64", ["linux-musl-x64"] = "elf64-x86-64",
-        ["osx-x64"] = "Mach-O 64-bit x86-64", ["osx-arm64"] = "Mach-O arm64",
+        ["osx-x64"] = "Mach-O 64-bit x86-64", ["osx-arm64"] = "Mach-O arm64", ["linux-musl-arm64"] = "elf64-littleaarch64",
     };
 
     /// <summary>The NetConsumer project file.</summary>
@@ -67,7 +67,7 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
         : $"lib{name}.so";
 
     /// <summary>The build of this test process's own platform, when AsmSdk builds that RID.</summary>
-    /// <returns>The host RID, or null on a platform none of the seven covers.</returns>
+    /// <returns>The host RID, or null on a platform none of the eight covers.</returns>
     internal static string? HostBuildRid() => PlatformCode.ContainsKey(Repo.HostRid) ? Repo.HostRid : null;
 
     /// <summary>Builds Everywhere (and EverywhereStatic through its reference) once.</summary>
@@ -80,8 +80,8 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
     }
 
     /// <summary>
-    /// One build, seven object formats: PE/COFF x64 and ARM64, ELF x86-64 and AArch64 (glibc and
-    /// musl), Mach-O x86-64 and arm64, each named the way its OS names libraries. The build
+    /// One build, eight RIDs in six object formats: PE/COFF x64 and ARM64, ELF x86-64 and AArch64
+    /// (each for glibc and musl), Mach-O x86-64 and arm64, each named the way its OS names libraries. The build
     /// says where each went, with .NET's "Project -> path" line per RID.
     /// </summary>
     /// <param name="rid">The runtime identifier.</param>
@@ -97,7 +97,7 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
     }
 
     /// <summary>
-    /// dotnet build -o of a seven-RID project puts each RID in a folder of its own,
+    /// dotnet build -o of an eight-RID project puts each RID in a folder of its own,
     /// &lt;folder&gt;/&lt;rid&gt;/, with the static library it links beside it. -o sets a global
     /// OutputPath, which the .NET SDK does not extend by the RID: before 0.3.0 every inner build
     /// wrote to the one folder, a library of one OS overwrote another's of the same name, and a
@@ -230,10 +230,16 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
         else
         {
             string needed = sdk.ReadObj(program, "--needed-libs");
-            Assert.Contains(rid == "linux-musl-x64" ? "libc.musl-x86_64.so.1" : "libc.so.6", needed);
+            Assert.Contains(rid switch
+            {
+                "linux-musl-x64" => "libc.musl-x86_64.so.1",
+                "linux-musl-arm64" => "libc.musl-aarch64.so.1",
+                _ => "libc.so.6",
+            }, needed);
             string interpreter = rid switch
             {
                 "linux-musl-x64" => "/lib/ld-musl-x86_64.so.1",
+                "linux-musl-arm64" => "/lib/ld-musl-aarch64.so.1",
                 "linux-arm64" => "/lib/ld-linux-aarch64.so.1",
                 _ => "/lib64/ld-linux-x86-64.so.2",
             };
@@ -270,25 +276,39 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
     }
 
     /// <summary>
-    /// The linux-musl-x64 program runs on Alpine (Docker's alpine image), where glibc programs
-    /// cannot: musl's SONAME and loader are right. Skipped unless Docker runs Linux containers
-    /// on an x64 machine (GitHub's Windows runners run Windows containers only).
+    /// Each musl program runs on Alpine (Docker's alpine image), where glibc programs cannot:
+    /// musl's SONAME and loader are right, and the SDK's crt1 and atexit serve musl as they
+    /// serve glibc. linux-musl-arm64 runs natively on an ARM64 machine and under QEMU on an x64
+    /// one (Docker Desktop includes it); linux-musl-x64 on an x64 machine.
     /// </summary>
-    [Fact]
-    public void The_musl_program_runs_on_alpine()
+    /// <param name="rid">linux-musl-x64 or linux-musl-arm64.</param>
+    /// <param name="platform">Docker's platform for that RID's CPU.</param>
+    /// <remarks>
+    /// Skipped where Docker runs no Linux containers (GitHub's Windows and macOS runners), and
+    /// where it cannot run that CPU's containers: an image of the other CPU without QEMU's
+    /// binfmt handlers fails even "true" (exec format error), which says nothing about the SDK.
+    /// </remarks>
+    [Theory]
+    [InlineData("linux-musl-x64", "linux/amd64")]
+    [InlineData("linux-musl-arm64", "linux/arm64")]
+    public void The_musl_program_runs_on_alpine(string rid, string platform)
     {
         CommandResult build = sdk.BuildTestProject("EverywhereLibc");
         Assert.True(build.ExitCode == 0, build.Tail());
-        if (RuntimeInformation.OSArchitecture != Architecture.X64 || !Command.OnPath("docker")
-            || Command.Run("docker", ["info", "--format", "{{.OSType}}"], Repo.Root).StdOut.Trim() != "linux")
+        if (!Command.OnPath("docker") || Command.Run("docker", ["info", "--format", "{{.OSType}}"], Repo.Root).StdOut.Trim() != "linux")
         {
-            Assert.Skip("No Docker running Linux containers on an x64 machine here");
+            Assert.Skip("No Docker running Linux containers here");
         }
 
-        string folder = Repo.TestProjectPath("EverywhereLibc", "bin", "Release", "libc", "linux-musl-x64");
-        CommandResult run = Command.Run("docker", ["run", "--rm", "--platform", "linux/amd64", "-v", $"{folder}:/app:ro", "alpine:3", "/app/everywhere-libc"], Repo.Root);
+        if (Command.Run("docker", ["run", "--rm", "--platform", platform, "alpine:3", "true"], Repo.Root).ExitCode != 0)
+        {
+            Assert.Skip($"Docker here runs no {platform} containers (no emulation for that CPU)");
+        }
+
+        string folder = Repo.TestProjectPath("EverywhereLibc", "bin", "Release", "libc", rid);
+        CommandResult run = Command.Run("docker", ["run", "--rm", "--platform", platform, "-v", $"{folder}:/app:ro", "alpine:3", "/app/everywhere-libc"], Repo.Root);
         Assert.Equal(3, run.ExitCode);
-        Assert.Contains("hello from linux-musl-x64, 40 + 2 = 42", run.StdOut);
+        Assert.Contains($"hello from {rid}, 40 + 2 = 42", run.StdOut);
         Assert.Contains("bye from atexit", run.StdOut);
     }
 
@@ -464,7 +484,7 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
     }
 
     /// <summary>
-    /// A .NET project that references the seven-RID project gets every RID's library in
+    /// A .NET project that references the eight-RID project gets every RID's library in
     /// runtimes/&lt;rid&gt;/native/, each listed in deps.json, with no setup of its own.
     /// </summary>
     [Fact]
@@ -526,18 +546,57 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
     }
 
     /// <summary>
+    /// A .NET app built for a musl RID gets that RID's own build, not a fallback (the build
+    /// names no "is served by"), and runs in .NET's Alpine image: the app prints its RID's
+    /// line, so the musl build was loaded. linux-musl-arm64 runs under QEMU on an x64 machine.
+    /// </summary>
+    /// <param name="rid">linux-musl-x64 or linux-musl-arm64.</param>
+    /// <param name="platform">Docker's platform for that RID's CPU.</param>
+    /// <param name="image">The .NET runtime image on Alpine for that CPU.</param>
+    /// <remarks>
+    /// Skipped where Docker runs no Linux containers, or no containers of that CPU (see
+    /// <see cref="The_musl_program_runs_on_alpine"/>).
+    /// </remarks>
+    [Theory]
+    [InlineData("linux-musl-x64", "linux/amd64", "mcr.microsoft.com/dotnet/runtime:10.0-alpine")]
+    [InlineData("linux-musl-arm64", "linux/arm64", "mcr.microsoft.com/dotnet/runtime:10.0-alpine-arm64v8")]
+    public void A_dotnet_app_for_a_musl_rid_gets_its_own_build_and_runs_on_alpine(string rid, string platform, string image)
+    {
+        CommandResult build = sdk.Once($"build NetConsumer -r {rid}", () => sdk.Dotnet("build", NetConsumer, "-c", "Release", "-r", rid, "-v:n"));
+        Assert.True(build.ExitCode == 0, build.Tail());
+        Assert.DoesNotContain($"{rid} is served by", build.StdOut);
+        string output = Repo.TestProjectPath("NetConsumer", "bin", "Release", "net10.0", rid);
+        Assert.Contains($"Format: {Format[rid]}", sdk.ReadObj(Path.Combine(output, "libeverywhere.so"), "--file-headers"));
+        if (!Command.OnPath("docker") || Command.Run("docker", ["info", "--format", "{{.OSType}}"], Repo.Root).StdOut.Trim() != "linux")
+        {
+            Assert.Skip("No Docker running Linux containers here");
+        }
+
+        if (Command.Run("docker", ["run", "--rm", "--platform", platform, "alpine:3", "true"], Repo.Root).ExitCode != 0)
+        {
+            Assert.Skip($"Docker here runs no {platform} containers (no emulation for that CPU)");
+        }
+
+        CommandResult run = Command.Run("docker", ["run", "--rm", "--platform", platform, "-v", $"{output}:/app:ro", image, "dotnet", "/app/NetConsumer.dll"], Repo.Root);
+        Assert.True(run.ExitCode == 0, run.Output);
+        Assert.Equal($"{rid} 42 {PlatformCode[rid]} {OsNameCode[rid]}", run.StdOut.Trim());
+    }
+
+    /// <summary>
     /// A RID no asm build matches exactly gets the one NuGet's fallback order picks:
-    /// linux-musl-arm64 is served by linux-arm64 (an AArch64 library, flat in the output).
+    /// linux-bionic-arm64 (Android's C library, which .NET builds for and AsmSdk does not) is
+    /// served by linux-arm64 (an AArch64 library, flat in the output). Until linux-musl-arm64
+    /// became an AsmSdk RID, this test used it; it now gets its own build.
     /// </summary>
     [Fact]
     public void The_rid_graph_picks_the_build_that_serves_an_unlisted_rid()
     {
-        // linux-musl-arm64 is no AsmSdk RID; NuGet's graph falls back to linux-arm64.
-        CommandResult build = sdk.Once("build NetConsumer -r linux-musl-arm64",
-            () => sdk.Dotnet("build", NetConsumer, "-c", "Release", "-r", "linux-musl-arm64", "-v:n"));
+        // .NET's graph: linux-bionic-arm64 -> linux-bionic, linux-arm64, ...
+        CommandResult build = sdk.Once("build NetConsumer -r linux-bionic-arm64",
+            () => sdk.Dotnet("build", NetConsumer, "-c", "Release", "-r", "linux-bionic-arm64", "-v:n"));
         Assert.True(build.ExitCode == 0, build.Tail());
-        Assert.Contains("linux-musl-arm64 is served by its linux-arm64 build", build.StdOut);
-        string library = Repo.TestProjectPath("NetConsumer", "bin", "Release", "net10.0", "linux-musl-arm64", "libeverywhere.so");
+        Assert.Contains("linux-bionic-arm64 is served by its linux-arm64 build", build.StdOut);
+        string library = Repo.TestProjectPath("NetConsumer", "bin", "Release", "net10.0", "linux-bionic-arm64", "libeverywhere.so");
         Assert.Contains("Format: elf64-littleaarch64", sdk.ReadObj(library, "--file-headers"));
     }
 

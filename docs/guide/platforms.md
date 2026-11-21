@@ -19,6 +19,12 @@ output looks like. Everything here was measured with the 0.3.0 targets, NASM 3.0
 x64 code is NASM (`.asm`). ARM64 code is GNU syntax (`.s`), which the bundled `llvm-mc`
 assembles. The two can live side by side in one project.
 
+> [!NOTE]
+> **Not released yet:** the main branch adds an eighth RID, `linux-musl-arm64`: musl on ARM64,
+> such as Alpine on Graviton. It behaves like `linux-musl-x64`, with `libc.musl-aarch64.so.1`
+> and the loader `/lib/ld-musl-aarch64.so.1`. AsmFoundation.Sdk 0.3.0 on nuget.org builds the
+> seven RIDs above. See the [changelog](changelog.md).
+
 
 ## Choosing the RIDs
 

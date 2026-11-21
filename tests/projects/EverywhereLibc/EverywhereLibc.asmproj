@@ -1,6 +1,6 @@
 <Project Sdk="AsmFoundation.Sdk">
   <!--
-    A libc program for all seven RIDs (CrossPlatformTests): an ordinary main() that registers an
+    A libc program for all eight RIDs (CrossPlatformTests): an ordinary main() that registers an
     atexit handler, prints with printf (five arguments) and returns 3. It exercises each C
     library's stand-in and startup code: crt1 and the glibc/musl stubs (with atexit from the
     SDK's nonshared archive), libSystem.tbd and LC_MAIN on macOS, the UCRT import library,
@@ -12,6 +12,6 @@
     <TargetFramework>libc</TargetFramework>
     <OutputType>Exe</OutputType>
     <AssemblyName>everywhere-libc</AssemblyName>
-    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
   </PropertyGroup>
 </Project>

@@ -1,12 +1,13 @@
 <Project Sdk="AsmFoundation.Sdk">
   <!--
-    One shared library for all seven RIDs (CrossPlatformTests): everywhere.asm (NASM, the x64
+    One shared library for all eight RIDs (CrossPlatformTests): everywhere.asm (NASM, the x64
     RIDs, through asmsdk.inc's calling-convention macros) and everywhere.s (GNU syntax for
     llvm-mc, the ARM64 RIDs, through asmsdk-gnu.inc). It links EverywhereStatic, which names
     no RID, for the RID of each inner build. Exports, by FUNCTION:
       ew_add(a, b)    a + b
       ew_platform()   the RID it was built for: 1 win-x64, 2 win-arm64, 3 linux-x64,
-                      4 linux-arm64, 5 linux-musl-x64, 6 osx-x64, 7 osx-arm64 (from the SDK's
+                      4 linux-arm64, 5 linux-musl-x64, 6 osx-x64, 7 osx-arm64, 8
+                      linux-musl-arm64 (from the SDK's
                       WINDOWS / LINUX / MACOS / MUSL and X64 / ARM64 defines)
       ew_os()         100 + EverywhereStatic's osname(), reached through a LOCAL_FUNCTION and a
                       table in read-only data (ADDRESS on ARM64)
@@ -14,11 +15,11 @@
   -->
   <PropertyGroup>
     <AssemblyName>everywhere</AssemblyName>
-    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
     <PackageId>Test.Everywhere</PackageId>
     <Version>1.0.0</Version>
     <Authors>AsmFoundation tests</Authors>
-    <Description>Test package: one assembly shared library for seven runtime identifiers.</Description>
+    <Description>Test package: one assembly shared library for eight runtime identifiers.</Description>
   </PropertyGroup>
   <ItemGroup>
     <!-- No PrivateAssets="all" on purpose, though a real project that links a static library

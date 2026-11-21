@@ -7,7 +7,7 @@ An `.asmproj` sits in a solution next to `.csproj` projects and builds with
 `dotnet build`:
 
 - Assembly becomes a **shared library**, **static library** or **program** for **Windows,
-  Linux and macOS, on x64 and ARM64**: seven runtime identifiers, from any build machine.
+  Linux and macOS, on x64 and ARM64**: eight runtime identifiers, from any build machine.
   x64 code is NASM (`.asm`), ARM64 code GNU syntax (`.s`).
 - A **C# project that references it** gets the binary of the platform it is built or run for,
   chosen by .NET's own runtime identifier rules, with no setup of its own.
@@ -89,7 +89,7 @@ next to a shared one.
 
 | Property / item | Default | Meaning |
 |---|---|---|
-| `RuntimeIdentifiers` | none: required | the platforms to build: `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `linux-musl-x64`, `osx-x64`, `osx-arm64`. Or let a referencing project, or `-r`, choose. |
+| `RuntimeIdentifiers` | none: required | the platforms to build: `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `linux-musl-x64`, `linux-musl-arm64`, `osx-x64`, `osx-arm64`. Or let a referencing project, or `-r`, choose. |
 | `TargetFramework` | `freestanding` | `libc`: link the platform's C library (glibc or musl, the Universal C Runtime, libSystem) through stand-ins the SDK writes, so no sysroot is needed. A program then starts in `main`. `TargetFrameworks=freestanding;libc` builds both, like a multi-targeted `.csproj`. |
 | `AssemblyName` | project name | base name of the output |
 | `StartupObject` | `_start` | entry symbol of an `Exe` |

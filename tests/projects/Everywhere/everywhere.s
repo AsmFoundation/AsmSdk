@@ -15,7 +15,11 @@ FUNCTION ew_platform
     mov     w0, #2
 .endif
 .ifdef LINUX
+.ifdef MUSL
+    mov     w0, #8
+.else
     mov     w0, #4
+.endif
 .endif
 .ifdef MACOS
     mov     w0, #7

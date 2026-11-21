@@ -78,7 +78,7 @@
   <PropertyGroup Condition="'$(UsingAsmFoundationSdk)' != 'true'">
     <_AsmConsumerTasksAssembly>$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', '..', 'tasks', 'netstandard2.0', 'AsmFoundation.Sdk.Tasks.dll'))</_AsmConsumerTasksAssembly>
     <!-- Every RID AsmSdk builds: what a RID-less asm project can be built for. -->
-    <_AsmConsumerSupportedRuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;osx-x64;osx-arm64</_AsmConsumerSupportedRuntimeIdentifiers>
+    <_AsmConsumerSupportedRuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</_AsmConsumerSupportedRuntimeIdentifiers>
     <!-- The app's publish switches, and its output folder: OutputPath and
          _CommandLineDefinedOutputPath from dotnet build -o, OutDir from -p:OutDir. A global
          output folder made every RID of a portable asm build write into the app's folder, one

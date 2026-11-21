@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
-    A .NET program that references the seven-RID Everywhere.asmproj with BinariesCopyPath on the
+    A .NET program that references the eight-RID Everywhere.asmproj with BinariesCopyPath on the
     reference (NativeLayoutTests), taken from the NetLayoutReference property so that each test
     picks a layout from the command line (-p:NetLayoutReference=native/{rid}). Empty means the
     default: runtimes/<rid>/native/ in a portable build, the app folder in a RID-specific one.

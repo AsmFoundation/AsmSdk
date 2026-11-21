@@ -36,7 +36,8 @@
 // run; single-file publishes (direct and private) for this machine and linux-x64; NativeAOT
 // publishes of three paths for this machine, and a negative control: NativeAOT with the
 // generated loader turned off, which must fail with DllNotFoundException (proving that the
-// passing NativeAOT cases depend on the loader). On a Windows x64 machine with Docker: 84.
+// passing NativeAOT cases depend on the loader). On a Windows x64 machine with Docker: 94
+// (84 before linux-musl-arm64, the eighth RID).
 //
 // Each case is built or published into artifacts/qa/delivery/<case>/ and checked four ways:
 //   files    exactly the expected builds of Everywhere's library, at the layout's place: every
@@ -59,7 +60,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json.Nodes;
 
-return DeliveryMatrix.Main(args);
+return DeliveryMatrix.Run(args);
 
 /// <summary>The command line of the delivery QA matrix; see the file header.</summary>
 internal static class DeliveryMatrix
@@ -67,7 +68,7 @@ internal static class DeliveryMatrix
     /// <summary>Parses the arguments, prepares the packages, runs the cases and writes the report.</summary>
     /// <param name="args">The command line (see the file header).</param>
     /// <returns>The exit code: 0 when no case failed, 1 when one did or preparing failed, 2 on a usage error.</returns>
-    public static int Main(string[] args)
+    public static int Run(string[] args)
     {
         string? only = null;
         bool list = false;
@@ -281,12 +282,13 @@ internal sealed class MatrixException(string message) : Exception(message);
 internal sealed class Matrix
 {
     /// <summary>Every RID AsmSdk builds: a portable build of Everywhere holds one library for each.</summary>
-    private static readonly string[] Rids = ["win-x64", "win-arm64", "linux-x64", "linux-arm64", "linux-musl-x64", "osx-x64", "osx-arm64"];
+    private static readonly string[] Rids = ["win-x64", "win-arm64", "linux-x64", "linux-arm64", "linux-musl-x64", "linux-musl-arm64", "osx-x64", "osx-arm64"];
 
     /// <summary>What Everywhere's ew_platform() returns for each RID: the second number the programs print.</summary>
     private static readonly Dictionary<string, int> PlatformCode = new(StringComparer.Ordinal)
     {
         ["win-x64"] = 1, ["win-arm64"] = 2, ["linux-x64"] = 3, ["linux-arm64"] = 4, ["linux-musl-x64"] = 5, ["osx-x64"] = 6, ["osx-arm64"] = 7,
+        ["linux-musl-arm64"] = 8,
     };
 
     /// <summary>
@@ -298,6 +300,7 @@ internal sealed class Matrix
     {
         ["win-x64"] = "COFF-x86-64", ["win-arm64"] = "COFF-ARM64",
         ["linux-x64"] = "elf64-x86-64", ["linux-musl-x64"] = "elf64-x86-64", ["linux-arm64"] = "elf64-littleaarch64",
+        ["linux-musl-arm64"] = "elf64-littleaarch64",
         ["osx-x64"] = "Mach-O 64-bit x86-64", ["osx-arm64"] = "Mach-O arm64",
     };
 
@@ -307,6 +310,7 @@ internal sealed class Matrix
         ["linux-x64"] = new("mcr.microsoft.com/dotnet/runtime:10.0", "mcr.microsoft.com/dotnet/runtime-deps:10.0", "linux/amd64"),
         ["linux-musl-x64"] = new("mcr.microsoft.com/dotnet/runtime:10.0-alpine", "mcr.microsoft.com/dotnet/runtime-deps:10.0-alpine", "linux/amd64"),
         ["linux-arm64"] = new("mcr.microsoft.com/dotnet/runtime:10.0-noble-arm64v8", "mcr.microsoft.com/dotnet/runtime-deps:10.0-noble-arm64v8", "linux/arm64"),
+        ["linux-musl-arm64"] = new("mcr.microsoft.com/dotnet/runtime:10.0-alpine-arm64v8", "mcr.microsoft.com/dotnet/runtime-deps:10.0-alpine-arm64v8", "linux/arm64"),
     };
 
     /// <summary>The six delivery paths, by name (see the file header).</summary>

@@ -133,7 +133,8 @@
          lld-link writes it next to the DLL as foo.dll.lib (see Properties.targets for the name). -->
     <AsmImportLibraryPath Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmOutputKind)' == 'SharedLibrary'">$(TargetDir)$(AssemblyName).dll.lib</AsmImportLibraryPath>
     <!-- The dynamic loader each Linux C library installs, recorded as PT_INTERP in libc
-         executables: glibc on x64 and ARM64, musl on x64. -->
+         executables: glibc and musl, each on x64 and ARM64. -->
+    <AsmDynamicLinker Condition="'$(AsmDynamicLinker)' == '' and '$(_AsmMusl)' == 'true' and '$(_AsmArch)' == 'arm64'">/lib/ld-musl-aarch64.so.1</AsmDynamicLinker>
     <AsmDynamicLinker Condition="'$(AsmDynamicLinker)' == '' and '$(_AsmMusl)' == 'true'">/lib/ld-musl-x86_64.so.1</AsmDynamicLinker>
     <AsmDynamicLinker Condition="'$(AsmDynamicLinker)' == '' and '$(_AsmOs)' == 'Linux' and '$(_AsmArch)' == 'arm64'">/lib/ld-linux-aarch64.so.1</AsmDynamicLinker>
     <AsmDynamicLinker Condition="'$(AsmDynamicLinker)' == ''">/lib64/ld-linux-x86-64.so.2</AsmDynamicLinker>
@@ -145,8 +146,8 @@
       as stand-ins the SDK writes itself (_AsmBuildSystemLibraries), so that no build machine
       needs the target's sysroot or SDK:
         Linux libc    a stub of the C library under its SONAME: libc.so.6 (glibc, x64 and
-                      ARM64) or libc.musl-x86_64.so.1 (musl), plus libasmsdk_nonshared.a
-                      (atexit, which glibc keeps out of libc.so.6)
+                      ARM64) or libc.musl-x86_64.so.1 / libc.musl-aarch64.so.1 (musl), plus
+                      libasmsdk_nonshared.a (atexit, which glibc keeps out of libc.so.6)
         macOS libc    libSystem.tbd, a text stub of /usr/lib/libSystem.B.dylib
         Windows       kernel32.lib, always: kernel32 is a Windows program's way to the OS, as
                       system calls are a Linux program's (Windows system call numbers change
@@ -161,7 +162,8 @@
     <_AsmIsLinked Condition="'$(_AsmRid)' != '' and ('$(_AsmOutputKind)' == 'SharedLibrary' or '$(_AsmOutputKind)' == 'Executable')">true</_AsmIsLinked>
     <_AsmUsesLibc Condition="'$(_AsmIsLinked)' == 'true' and '$(_AsmRuntime)' == 'Libc'">true</_AsmUsesLibc>
     <_AsmUsesCrt Condition="'$(_AsmUsesLibc)' == 'true' and '$(_AsmOutputKind)' == 'Executable' and '$(StartupObject)' == '' and '$(_AsmOs)' != 'MacOS'">true</_AsmUsesCrt>
-    <_AsmLibcStubName Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmMusl)' == 'true'">libc.musl-x86_64.so.1</_AsmLibcStubName>
+    <_AsmLibcStubName Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmMusl)' == 'true' and '$(_AsmArch)' == 'arm64'">libc.musl-aarch64.so.1</_AsmLibcStubName>
+    <_AsmLibcStubName Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmMusl)' == 'true' and '$(_AsmArch)' == 'x64'">libc.musl-x86_64.so.1</_AsmLibcStubName>
     <_AsmLibcStubName Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmMusl)' != 'true'">libc.so.6</_AsmLibcStubName>
     <!-- The PE machine (lld-link's -machine:), for links and for import libraries alike. -->
     <_AsmPeMachine Condition="'$(_AsmArch)' == 'arm64'">arm64</_AsmPeMachine>
@@ -1033,7 +1035,7 @@
   <!-- Outputs are written straight to the output folder by AsmLink; there is no managed
        assembly in obj/ to copy. What the .NET SDK's version also does is kept: the
        "Project -> path" line at normal verbosity, here once per RID (each inner build runs
-       this target; the RID outer build's Build does not), so a build of seven RIDs says where
+       this target; the RID outer build's Build does not), so a build of eight RIDs says where
        each platform's output went. Objects projects write no output, and an IDE's design-time
        build links nothing, so neither prints one. -->
   <Target Name="CopyFilesToOutputDirectory">

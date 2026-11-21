@@ -44,7 +44,8 @@
         libc         - the code links the platform's C library, and an executable is an
                        ordinary main(argc, argv) that the SDK's startup code enters:
                          Linux    glibc 2.34+ (libc.so.6; x64 and ARM64) or musl
-                                  (libc.musl-x86_64.so.1), a PIE with the C library's loader
+                                  (libc.musl-x86_64.so.1, libc.musl-aarch64.so.1), a PIE with
+                                  the C library's loader
                          macOS    libSystem, started by dyld through LC_MAIN
                          Windows  the Universal C Runtime (ucrtbase.dll, Windows 10+), with
                                   the printf family and atexit from the SDK's wrappers
@@ -160,10 +161,11 @@
 
   <!--
     RuntimeIdentifiers and RuntimeIdentifier mean what they mean in .NET: the platforms to build
-    for, with .NET's names. AsmSdk builds these seven:
+    for, with .NET's names. AsmSdk builds these eight:
       win-x64, win-arm64          PE/COFF (lld-link): Windows PCs and servers
       linux-x64, linux-arm64      ELF (ld.lld), glibc: most servers and containers, Graviton
-      linux-musl-x64              ELF (ld.lld), musl: Alpine containers
+      linux-musl-x64,             ELF (ld.lld), musl: Alpine containers, on x64 and on ARM64
+      linux-musl-arm64
       osx-x64, osx-arm64          Mach-O (ld64.lld): Intel and Apple silicon Macs
     x86-64 code is NASM (.asm); ARM64 code is GNU syntax (.s) for the bundled llvm-mc.
 
@@ -193,13 +195,13 @@
     <_AsmBuildRuntimeIdentifiers Condition="'$(_AsmBuildRuntimeIdentifiers)' == ''">$(_AsmDeclaredRuntimeIdentifiers)</_AsmBuildRuntimeIdentifiers>
 
     <!-- Every RID AsmSdk supports, for messages and for restore. -->
-    <_AsmSupportedRuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;osx-x64;osx-arm64</_AsmSupportedRuntimeIdentifiers>
+    <_AsmSupportedRuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</_AsmSupportedRuntimeIdentifiers>
 
     <!--
       Restore writes a target per RID into project.assets.json only for the RIDs listed in
       RuntimeIdentifiers, and an inner build with RuntimeIdentifier=<rid> fails with NETSDK1047
       when its target is missing. A project may name no RID and be built for whatever a
-      referencing project asks, so restore always lists all seven (it costs nothing: an .asmproj
+      referencing project asks, so restore always lists all eight (it costs nothing: an .asmproj
       has no runtime packs). The project's own list was captured above.
     -->
     <RuntimeIdentifiers>$(_AsmSupportedRuntimeIdentifiers)</RuntimeIdentifiers>
@@ -218,6 +220,7 @@
   <PropertyGroup Condition="'$(_AsmRid)' == 'linux-x64'"><_AsmOs>Linux</_AsmOs><_AsmArch>x64</_AsmArch></PropertyGroup>
   <PropertyGroup Condition="'$(_AsmRid)' == 'linux-arm64'"><_AsmOs>Linux</_AsmOs><_AsmArch>arm64</_AsmArch></PropertyGroup>
   <PropertyGroup Condition="'$(_AsmRid)' == 'linux-musl-x64'"><_AsmOs>Linux</_AsmOs><_AsmArch>x64</_AsmArch><_AsmMusl>true</_AsmMusl></PropertyGroup>
+  <PropertyGroup Condition="'$(_AsmRid)' == 'linux-musl-arm64'"><_AsmOs>Linux</_AsmOs><_AsmArch>arm64</_AsmArch><_AsmMusl>true</_AsmMusl></PropertyGroup>
   <PropertyGroup Condition="'$(_AsmRid)' == 'osx-x64'"><_AsmOs>MacOS</_AsmOs><_AsmArch>x64</_AsmArch></PropertyGroup>
   <PropertyGroup Condition="'$(_AsmRid)' == 'osx-arm64'"><_AsmOs>MacOS</_AsmOs><_AsmArch>arm64</_AsmArch></PropertyGroup>
 
@@ -280,7 +283,7 @@
 
     <!--
       The platform symbols of the RID being built, the owner's "And Defines": WINDOWS, LINUX or
-      MACOS, MUSL on linux-musl-x64 (LINUX too), and X64 or ARM64. They are for what truly
+      MACOS, MUSL on linux-musl-x64 and linux-musl-arm64 (LINUX too), and X64 or ARM64. They are for what truly
       differs per platform (system calls, the C library's names); the calling convention has the
       SDK's macros instead (asmsdk.inc). The same switch as the framework symbol turns them off.
     -->

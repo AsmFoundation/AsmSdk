@@ -1,9 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
-    A .NET program that references the seven-RID Everywhere.asmproj (CrossPlatformTests). It
+    A .NET program that references the eight-RID Everywhere.asmproj (CrossPlatformTests). It
     has no setup of its own: the consumer targets reach it through the asm project's implicit
     AsmFoundation.Sdk reference.
-      Portable build: runtimes/<rid>/native/ for all seven RIDs, listed in deps.json, so the
+      Portable build: runtimes/<rid>/native/ for all eight RIDs, listed in deps.json, so the
         same output loads the right library on every OS it runs on.
       dotnet build -r <rid>: the asm project is built for the RID that serves <rid> best (by
         the .NET SDK's runtime identifier graph), and its library is copied next to the app.

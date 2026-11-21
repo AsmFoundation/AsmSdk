@@ -9,6 +9,9 @@
       osname.linux-musl.asm  musl, closer than linux                           -> 13
       osname.s               every ARM64 RID without a closer match            -> 20
       osname.win-arm64.s     exactly win-arm64, the closest qualifier there is -> 21
+      osname.linux-musl-arm64.s  exactly linux-musl-arm64                       -> 22
+                             (a .s qualified linux-musl would claim linux-musl-x64 too,
+                             as GNU-syntax x86-64, and tie with osname.linux-musl.asm)
     osname is a HIDDEN_FUNCTION: Everywhere calls it, and exports it on no OS (a FUNCTION of a
     static library would be exported again by every shared library that links it).
   -->

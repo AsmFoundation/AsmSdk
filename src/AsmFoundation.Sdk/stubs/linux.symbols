@@ -1,8 +1,9 @@
 # linux.symbols - the C library names of the SDK's link-time stand-in for glibc and musl
-# (TargetFramework=libc on linux-x64, linux-arm64 and linux-musl-x64).
+# (TargetFramework=libc on linux-x64, linux-arm64, linux-musl-x64 and linux-musl-arm64).
 #
 # The SDK writes a stub shared library from this list (AsmWriteCLibraryStub: NASM for x64,
-# GNU syntax for ARM64), named libc.so.6 for glibc or libc.musl-x86_64.so.1 for musl, and
+# GNU syntax for ARM64), named libc.so.6 for glibc or libc.musl-x86_64.so.1 /
+# libc.musl-aarch64.so.1 for musl, and
 # links the project against it. The project gets DT_NEEDED on that name, PLT/GOT entries for
 # the functions it calls and copy relocations for the data objects it reads; nothing in the
 # stub ever runs, the real C library supplies every symbol at run time.
