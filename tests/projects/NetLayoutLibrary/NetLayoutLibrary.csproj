@@ -11,6 +11,11 @@
         loader), and dotnet pack puts every RID's library INTO this package, with no dependency
         on Test.Everywhere and with buildTransitive targets for BinariesCopyPath.
     Packed as Test.NetLayoutLibrary 1.0.0 into the local feed (Directory.Build.props).
+    The delivery QA matrix (tests/qa/delivery-matrix.cs) also packs a 2.0.0 WITHOUT
+    PrivateAssets, the wrapper that depends on the asm package, with
+    -p:NetLayoutLibraryVersion=2.0.0. Not -p:Version: a global property reaches
+    Everywhere.asmproj too, and the wrapper then depends on a Test.Everywhere 2.0.0 that does
+    not exist (measured in its nuspec, 2026-11-20).
   -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -18,7 +23,8 @@
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <PackageId>Test.NetLayoutLibrary</PackageId>
-    <Version>1.0.0</Version>
+    <NetLayoutLibraryVersion Condition="'$(NetLayoutLibraryVersion)' == ''">1.0.0</NetLayoutLibraryVersion>
+    <Version>$(NetLayoutLibraryVersion)</Version>
     <Authors>AsmFoundation tests</Authors>
     <Description>Test package: a .NET library that carries its asm library's binaries for seven runtime identifiers.</Description>
   </PropertyGroup>

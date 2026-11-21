@@ -219,12 +219,20 @@ Only the .NET SDK (10 or later) is needed:
 ```sh
 dotnet run toolchain/fetch.cs -- --rid win-x64                 # or win-arm64, linux-x64, linux-arm64, osx-arm64: stages the tools
 dotnet test --project tests/AsmSdk.Tests/AsmSdk.Tests.csproj   # packs, builds the samples, checks and runs them
+dotnet run tests/qa/delivery-matrix.cs                         # before a release: every delivery path, RID and layout
 ```
 
 CI builds the toolchain on each of the five build machines, then runs `tests/AsmSdk.Tests`
 on each: Windows x64 and Arm, Linux x64 and ARM64, and Apple silicon, so every platform's
 outputs run natively somewhere. Releases are tags: `vX.Y.Z` publishes to nuget.org through
 trusted publishing ([release.yml](.github/workflows/release.yml)).
+
+[`tests/qa/delivery-matrix.cs`](tests/qa/delivery-matrix.cs) is the delivery QA for .NET
+consumers, run by hand before a release rather than in CI, because its Linux cases need
+Docker (and QEMU for ARM64). It builds and publishes every way a .NET project gets an asm
+library, for every RID and `BinariesCopyPath` layout. Then it checks each output's files,
+their object format and `deps.json`, and runs the programs where the machine can. Its report
+is `artifacts/qa/delivery/results.md`.
 
 ## License
 

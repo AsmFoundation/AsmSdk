@@ -8,6 +8,23 @@ packages. The format follows
 The toolchain packages carry their own version (`toolchain/versions.json`).
 Each SDK release names the one it was tested with.
 
+## [Unreleased]
+
+### Added
+
+- **`tests/qa/delivery-matrix.cs`, the delivery QA matrix that proved 0.3.0,** as a .NET
+  file-based app: `dotnet run tests/qa/delivery-matrix.cs`. It covers every way a .NET
+  project gets an asm library:
+  - a direct reference, or one through a class library, with or without `PrivateAssets="all"`;
+  - the asm package itself;
+  - a .NET package with the binaries inside, or one that depends on the asm package.
+
+  Each is built and published for every RID, in every layout. Every case is then checked by
+  file, by object format (llvm-readobj), by `deps.json`, and by running the program wherever
+  the machine can: natively, in Linux containers, and for ARM64 under QEMU. On a Windows x64
+  machine with Docker that is 84 cases, all passing, with a negative control (NativeAOT
+  without the generated loader must fail).
+
 ## [0.3.0] — 2026-11-21
 
 One `.asmproj` now builds for **seven runtime identifiers** from any build machine: `win-x64`,
