@@ -44,7 +44,7 @@ title: AsmSdk
   </figure>
 </div>
 
-<section class="asm-band">
+<section class="asm-band asm-night">
   <div class="asm-section">
     <h2>Three files to a shared library</h2>
     <ol class="asm-steps">

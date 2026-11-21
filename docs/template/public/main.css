@@ -1,13 +1,24 @@
 /*
  * AsmSdk site theme for DocFX's modern template (docs/template/public/main.css).
  *
- * Brand: the AsmFoundation logo's mint and teal blocks with deep-teal ink. Type: Archivo
- * (a grotesk with a width axis; headings are set wide) and Martian Mono for code and bytes.
- * Both fonts are self-hosted from ./fonts (SIL Open Font License 1.1, texts beside them),
+ * Colors: the NumSharp documentation site's scheme (https://scisharp.github.io/NumSharp/, the
+ * "numsharp" template of SciSharp/NumSharp), with the AsmFoundation logo in place of NumSharp's
+ * purple:
+ *   - Three roles come from the logo, as NumSharp's plum, lavender and cyan do. Depth is the
+ *     wordmark's deep teal (the primary button), face is the lower blocks' teal (step numbers,
+ *     hover borders, keywords) and edge is the upper blocks' mint (focus rings, marks on night).
+ *   - Grounds are neutral: white, and Bootstrap's own charcoal in the dark theme. The brand is an
+ *     accent rather than the page, so the night band stands out in both themes.
+ *   - Night is a deep teal ground with a soft glow and a 10 x 20 px dot grid, the same in both
+ *     themes. The landing page's band and the build card ("dotnet build") use it.
+ *   - Paper is the code surface: a faint mint in the light theme, a neutral grey in the dark
+ *     one. Code tokens take the same roles: teal keywords, mint-green strings, amber numbers.
+ * Type: Archivo (a grotesk with a width axis; headings are set wide) and Martian Mono for code and
+ * bytes. Both fonts are self-hosted from ./fonts (SIL Open Font License 1.1, texts beside them),
  * so the site makes no third-party requests.
  *
- * The modern template is Bootstrap 5: colors are set through Bootstrap's CSS variables for
- * the light and dark themes, and the landing page (docs/index.md) uses the asm-* classes.
+ * The modern template is Bootstrap 5: colors are set through Bootstrap's CSS variables for the
+ * light and dark themes, and the landing page (docs/index.md) uses the asm-* classes.
  */
 
 /* ---------------------------------------------------------------- fonts */
@@ -47,24 +58,46 @@
 }
 
 /* ---------------------------------------------------------------- palette */
+/* Fixed colors: the logo is one image in both themes, and night is night in both themes (as
+   NumSharp's band is), so none of these follow the theme switch. */
+:root {
+  --asm-logo-ink: #062f2e;     /* the wordmark: depth */
+  --asm-logo-teal: #06706d;    /* the lower blocks: face */
+  --asm-logo-mint: #3eea8c;    /* the upper blocks: edge */
+  --asm-logo-pale: #b8f7d4;    /* the mint, paled: bytes on teal, the dark theme's primary button */
+
+  --asm-night: #041716;        /* the band's ground */
+  --asm-night-deep: #020e0d;   /* panels on the ground: code blocks and cards */
+  --asm-night-glow: rgba(10, 74, 69, 0.9);   /* the band's center glow */
+  --asm-night-cell: #0f3c39;   /* the dot grid and the panels' rules */
+  --asm-mist: #e3f6f0;         /* headings and code on night */
+  --asm-mist-muted: #a1c6c0;   /* prose on night */
+}
+
+/* Light theme roles. The grounds and body text stay Bootstrap's (white, #212529), as NumSharp's
+   do; only the roles below carry the brand. */
 :root,
 [data-bs-theme="light"] {
-  --asm-ink: #062f2e;          /* headings, primary button */
-  --asm-teal: #06706d;         /* the logo's lower blocks; links */
-  --asm-mint: #3eea8c;         /* the logo's upper blocks; focus, accents */
-  --asm-text: #1d2b2a;
-  --asm-muted: #566a68;
-  --asm-rule: #d8e5e2;
-  --asm-wash: #f1f7f5;         /* bands on the landing page */
-  --asm-card: #ffffff;
-  --asm-byte-teal-text: #b8f7d4;
+  --asm-heading: var(--asm-logo-ink);  /* headings: the wordmark's color */
+  --asm-face: var(--asm-logo-teal);    /* step numbers, hover borders */
+  --asm-depth: var(--asm-logo-ink);    /* the primary button */
+  --asm-depth-hover: #0c4b48;
+  --asm-on-depth: #ffffff;
+  --asm-paper: #f4f9f7;                /* code surfaces, and a band's ground unless it is night */
+  --asm-paper-line: #d9e7e3;
 
-  --bs-body-bg: #ffffff;
-  --bs-body-bg-rgb: 255, 255, 255;   /* .bg-body (the header) reads the rgb form */
-  --bs-body-color: var(--asm-text);
-  --bs-emphasis-color: var(--asm-ink);
-  --bs-secondary-color: var(--asm-muted);
-  --bs-border-color: var(--asm-rule);
+  /* Code tokens (highlight.js classes, see "code tokens" below). Every one reaches WCAG AA (4.5:1)
+     on paper, comments included: NumSharp dims its comments to 3.35:1, but this site's comments
+     explain the code (the NASM guide annotates line by line), so they stay readable. */
+  --asm-code: #14201f;
+  --asm-tok-keyword: #06706d;
+  --asm-tok-type: #0f5f84;
+  --asm-tok-string: #0b7a45;
+  --asm-tok-number: #a35708;
+  --asm-tok-comment: #647573;
+  --asm-tok-punct: #5f6f6d;
+  --asm-tok-attr: #2d5c58;
+
   --bs-link-color: #06706d;
   --bs-link-color-rgb: 6, 112, 109;
   --bs-link-hover-color: #054f4d;
@@ -74,30 +107,31 @@
   --bs-primary-rgb: 6, 112, 109;
 }
 
+/* Dark theme roles. The ground is Bootstrap's charcoal (#212529, not overridden), as on NumSharp's
+   site: a brand-tinted page would swallow the night band, which is the same deep teal. */
 [data-bs-theme="dark"] {
-  --asm-ink: #e6f4f1;
-  --asm-teal: #5fd6c3;
-  --asm-mint: #3eea8c;
-  --asm-text: #cfe1de;
-  --asm-muted: #93aeaa;
-  --asm-rule: #1d3a38;
-  --asm-wash: #0b2221;
-  --asm-card: #0e2928;
-  --asm-byte-teal-text: #b8f7d4;
+  --asm-heading: #f1f8f6;
+  --asm-face: #6fd8c6;
+  --asm-depth: var(--asm-logo-pale);   /* NumSharp's dark primary is its pale lavender */
+  --asm-depth-hover: #d7fae8;
+  --asm-on-depth: var(--asm-logo-ink);
+  --asm-paper: #1b1f24;                /* NumSharp's dark paper: neutral, a step below the page */
+  --asm-paper-line: #343a40;
 
-  --bs-body-bg: #071817;
-  --bs-body-bg-rgb: 7, 24, 23;
-  --bs-body-color: var(--asm-text);
-  --bs-emphasis-color: var(--asm-ink);
-  --bs-secondary-color: var(--asm-muted);
-  --bs-border-color: var(--asm-rule);
+  --asm-code: #e9ecef;
+  --asm-tok-keyword: #5fd6c3;
+  --asm-tok-type: #7cc7ec;
+  --asm-tok-string: #7ee8b0;
+  --asm-tok-number: #f2c46d;
+  --asm-tok-comment: #8c9b99;
+  --asm-tok-punct: #a8b6b4;
+  --asm-tok-attr: #a9dcd3;
+
   --bs-link-color: #6fe3cf;
   --bs-link-color-rgb: 111, 227, 207;
   --bs-link-hover-color: #a6f2e4;
   --bs-link-hover-color-rgb: 166, 242, 228;
   --bs-code-color: #8ff0c0;
-  --bs-tertiary-bg: #0b2221;
-  --bs-secondary-bg: #0e2928;
 }
 
 /* ---------------------------------------------------------------- base type */
@@ -117,7 +151,7 @@ code, kbd, pre, samp, .hljs {
 article h1, article h2, article h3, article h4 {
   font-family: "Archivo", system-ui, sans-serif;
   font-stretch: 112%;
-  color: var(--asm-ink);
+  color: var(--asm-heading);
   letter-spacing: -0.01em;
 }
 article h1 { font-weight: 720; }
@@ -131,15 +165,61 @@ article > p, article > ul, article > ol, article > blockquote { max-width: 46rem
    being clipped by the content column; code in cells may wrap at spaces like any text. */
 article table { font-size: 0.95em; display: block; max-width: 100%; overflow-x: auto; }
 
-/* Code blocks: a calm card that matches both themes. The attribute selector outranks the
-   template's own [data-bs-theme=dark] .hljs background, which would otherwise paint grey. */
+/* Code blocks sit on paper, NumSharp's code surface. The attribute selector outranks the
+   template's own [data-bs-theme=dark] .hljs background, which would otherwise paint #1e1e1e. */
 pre {
-  background: var(--asm-wash);
-  border: 1px solid var(--asm-rule);
+  background: var(--asm-paper);
+  border: 1px solid var(--asm-paper-line);
   border-radius: 8px;
 }
 [data-bs-theme] pre code.hljs { background: transparent; }
 
+/* ---------------------------------------------------------------- code tokens */
+/* DocFX colors highlight.js with Visual Studio's theme (light: blue keywords, red strings) and VS
+   2015's (dark). These rules give every token group a role variable instead, so code follows the
+   scheme in both themes and inside the night band, which only re-points the variables.
+   Specificity: [data-bs-theme] .hljs-x equals the template's [data-bs-theme=dark] .hljs-x and
+   main.css loads after docfx.min.css, so these win; the two .hljs-meta descendants repeat the
+   template's own three-part selectors for the same reason. Italic comments are dropped: Martian
+   Mono has no italic, and the browser would slant it synthetically. */
+[data-bs-theme] .hljs { color: var(--asm-code); }
+[data-bs-theme] .hljs-keyword,
+[data-bs-theme] .hljs-selector-tag,
+[data-bs-theme] .hljs-name,
+[data-bs-theme] .hljs-literal,
+[data-bs-theme] .hljs-link { color: var(--asm-tok-keyword); }
+[data-bs-theme] .hljs-built_in,
+[data-bs-theme] .hljs-type,
+[data-bs-theme] .hljs-class,
+[data-bs-theme] .hljs-meta,
+[data-bs-theme] .hljs-meta .hljs-keyword { color: var(--asm-tok-type); }
+[data-bs-theme] .hljs-string,
+[data-bs-theme] .hljs-regexp,
+[data-bs-theme] .hljs-template-tag,
+[data-bs-theme] .hljs-template-variable,
+[data-bs-theme] .hljs-meta .hljs-string { color: var(--asm-tok-string); }
+[data-bs-theme] .hljs-number,
+[data-bs-theme] .hljs-symbol,
+[data-bs-theme] .hljs-bullet { color: var(--asm-tok-number); }
+[data-bs-theme] .hljs-comment,
+[data-bs-theme] .hljs-quote,
+[data-bs-theme] .hljs-doctag { color: var(--asm-tok-comment); font-style: normal; }
+[data-bs-theme] .hljs-tag { color: var(--asm-tok-punct); }
+[data-bs-theme] .hljs-attr,
+[data-bs-theme] .hljs-attribute,
+[data-bs-theme] .hljs-variable,
+[data-bs-theme] .hljs-selector-id,
+[data-bs-theme] .hljs-selector-class,
+[data-bs-theme] .hljs-selector-attr,
+[data-bs-theme] .hljs-selector-pseudo { color: var(--asm-tok-attr); }
+[data-bs-theme] .hljs-title,
+[data-bs-theme] .hljs-section,
+[data-bs-theme] .hljs-function,
+[data-bs-theme] .hljs-params,
+[data-bs-theme] .hljs-subst,
+[data-bs-theme] .hljs-formula { color: var(--asm-code); }
+
+/* ---------------------------------------------------------------- chrome */
 /* Breathing room at the page edges; the header and the content share one inset. */
 .container-xxl { padding-inline: clamp(1rem, 3vw, 2.5rem); }
 
@@ -148,7 +228,7 @@ pre {
   font-family: "Archivo", system-ui, sans-serif;
   font-weight: 700;
   font-stretch: 112%;
-  color: var(--asm-ink);
+  color: var(--asm-heading);
 }
 .navbar-brand #logo { width: 26px; height: 26px; margin-right: 0.5rem; }
 
@@ -158,17 +238,17 @@ pre {
   letter-spacing: 0;
   font-weight: 650;
   font-size: 0.9rem;
-  color: var(--asm-ink);
+  color: var(--asm-heading);
 }
 
+/* Focus rings are the logo's edge color, as NumSharp's are its cyan. */
 a:focus-visible, button:focus-visible, .btn:focus-visible {
-  outline: 3px solid var(--asm-mint);
+  outline: 3px solid var(--asm-logo-mint);
   outline-offset: 2px;
 }
 
 /* ---------------------------------------------------------------- landing page */
-.asm-landing { color: var(--asm-text); }
-.asm-landing h1, .asm-landing h2, .asm-landing h3 { color: var(--asm-ink); font-family: "Archivo", system-ui, sans-serif; }
+.asm-landing h1, .asm-landing h2, .asm-landing h3 { color: var(--asm-heading); font-family: "Archivo", system-ui, sans-serif; }
 .asm-landing code { font-family: var(--bs-font-monospace); }
 
 .asm-hero {
@@ -186,22 +266,23 @@ a:focus-visible, button:focus-visible, .btn:focus-visible {
   letter-spacing: -0.015em;
   margin: 0 0 1.4rem;
 }
-.asm-lede { font-size: 1.2rem; max-width: 32em; margin: 0 0 2rem; }
+.asm-lede { font-size: 1.2rem; max-width: 32em; margin: 0 0 2rem; color: var(--bs-secondary-color); }
 .asm-actions { display: flex; flex-wrap: wrap; gap: 0.9rem; }
+
+/* Buttons, as NumSharp's: the primary is the depth color (deep teal; pale mint in the dark
+   theme), the secondary an outline on the page whose border takes the face color on hover. */
 .asm-btn {
   display: inline-block;
   padding: 0.75rem 1.4rem;
+  border: 1px solid transparent;
   border-radius: 999px;
   font-weight: 600;
   text-decoration: none;
 }
-.asm-btn-primary { background: #062f2e; color: #ffffff; }
-.asm-btn-primary:hover { background: #06706d; color: #ffffff; }
-.asm-btn-secondary { background: var(--asm-wash); color: var(--asm-ink); }
-.asm-btn-secondary:hover { color: var(--asm-ink); background: var(--asm-rule); }
-[data-bs-theme="dark"] .asm-btn-secondary { border: 1px solid var(--asm-rule); }
-[data-bs-theme="dark"] .asm-btn-primary { background: #3eea8c; color: #062f2e; }
-[data-bs-theme="dark"] .asm-btn-primary:hover { background: #8ff0c0; color: #062f2e; }
+.asm-btn-primary { border-color: var(--asm-depth); background: var(--asm-depth); color: var(--asm-on-depth); }
+.asm-btn-primary:hover { border-color: var(--asm-depth-hover); background: var(--asm-depth-hover); color: var(--asm-on-depth); }
+.asm-btn-secondary { border-color: var(--asm-paper-line); color: var(--asm-heading); }
+.asm-btn-secondary:hover { border-color: var(--asm-face); color: var(--asm-heading); }
 
 /* The byte A: the one bold element. Brand colors stay the same in both themes. */
 .asm-byte-a { margin: 0; }
@@ -213,19 +294,70 @@ a:focus-visible, button:focus-visible, .btn:focus-visible {
   dominant-baseline: central;
   text-anchor: middle;
 }
-.asm-byte-mint rect { fill: #3eea8c; }
-.asm-byte-mint text { fill: #062f2e; }
-.asm-byte-teal rect { fill: #06706d; }
-.asm-byte-teal text { fill: var(--asm-byte-teal-text); }
-.asm-byte-a figcaption { font-size: 0.9rem; color: var(--asm-muted); max-width: 470px; margin: 1.1rem auto 0; }
-.asm-byte-a figcaption code { color: var(--asm-ink); }
+.asm-byte-mint rect { fill: var(--asm-logo-mint); }
+.asm-byte-mint text { fill: var(--asm-logo-ink); }
+.asm-byte-teal rect { fill: var(--asm-logo-teal); }
+.asm-byte-teal text { fill: var(--asm-logo-pale); }
+.asm-byte-a figcaption { font-size: 0.9rem; color: var(--bs-secondary-color); max-width: 470px; margin: 1.1rem auto 0; }
+.asm-byte-a figcaption code { color: var(--asm-heading); }
 
-/* Sections. The band spans the full width behind its content. */
+/* Sections. */
 .asm-section { padding: 3.5rem 0; }
 .asm-section h2 { font-size: 1.9rem; font-weight: 700; font-stretch: 112%; margin: 0 0 1.6rem; }
 .asm-section h2 a { color: inherit; text-decoration: none; }
 .asm-section h2 a:hover { text-decoration: underline; }
-.asm-band { background: var(--asm-wash); box-shadow: 0 0 0 100vmax var(--asm-wash); clip-path: inset(0 -100vmax); }
+
+/* Bands span the full width. A band's ground is a layer behind it that reaches 100vmax past
+   both sides: paper by default, night with .asm-night. A layer rather than a box-shadow spread
+   (this file's earlier way), because the night ground is three images (glow, dot grid, color)
+   and a shadow can only spread one color. isolation keeps the layer's z-index: -1 inside the
+   band, behind its content but above anything under it.
+   The reach is real layout overflow, unlike a shadow: DocFX's overflow-x: hidden on <html> stops
+   desktop browsers from scrolling sideways, but a phone's browser widened its layout viewport
+   to the layer (measured: 1218 px instead of 390, the page zoomed out). clip on <body> cuts the
+   overflow before the viewport sees it; it is not a scroll container, so the sticky header and
+   the fixed table-of-contents drawer behave as before. */
+body[data-layout="landing"] { overflow-x: clip; }
+.asm-band { position: relative; isolation: isolate; }
+.asm-band::before {
+  content: "";
+  position: absolute;
+  inset: 0 -100vmax;
+  z-index: -1;
+  background: var(--asm-paper);
+}
+
+/* Night, NumSharp's band ("Three files to a shared library"): the ground continues past the
+   content with a glow in the middle and a dot grid, the same in both themes. The glow is sized
+   in viewport units because the layer is far wider than the band; a percentage would spread it
+   over the whole layer. Same specificity as .asm-band::before and later, so it replaces paper. */
+.asm-night::before {
+  background:
+    radial-gradient(ellipse 46vw 62% at 50% 56%, var(--asm-night-glow), transparent 72%),
+    radial-gradient(circle, var(--asm-night-cell) 0.75px, transparent 1.25px) 0 0 / 10px 20px,
+    var(--asm-night);
+}
+.asm-night {
+  color: var(--asm-mist-muted);
+  /* Code on night always uses the dark token set, whatever the page's theme. */
+  --asm-code: var(--asm-mist);
+  --asm-tok-keyword: #5fd6c3;
+  --asm-tok-type: #7cc7ec;
+  --asm-tok-string: #7ee8b0;
+  --asm-tok-number: #f2c46d;
+  --asm-tok-comment: #7f9c97;
+  --asm-tok-punct: #9fb9b4;
+  --asm-tok-attr: #a9dcd3;
+  --bs-code-color: var(--asm-logo-pale);
+}
+.asm-landing .asm-night h2,
+.asm-landing .asm-night h3 { color: var(--asm-mist); }
+/* NumSharp's band title glows faintly in its neon; here the neon is the logo's mint. */
+.asm-landing .asm-night h2 { text-shadow: 0 0 28px rgba(62, 234, 140, 0.35); }
+.asm-night a { color: var(--asm-logo-pale); }
+.asm-night a:hover { color: #ffffff; }
+.asm-night pre { background: var(--asm-night-deep); border-color: var(--asm-night-cell); }
+.asm-night .asm-steps h3::before { color: var(--asm-logo-mint); }
 
 /* Three steps: a real sequence, so it is numbered. */
 .asm-steps { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.8rem; counter-reset: step; }
@@ -236,10 +368,12 @@ a:focus-visible, button:focus-visible, .btn:focus-visible {
   display: block;
   font-family: "Martian Mono", ui-monospace, monospace;
   font-size: 0.85rem;
-  color: var(--asm-teal);
+  color: var(--asm-face);
   margin-bottom: 0.2rem;
 }
-.asm-steps pre { margin: 0 0 0.8rem; background: var(--asm-card); font-size: 0.8rem; }
+.asm-steps pre { margin: 0 0 0.8rem; font-size: 0.8rem; }
+/* On the paper band the code cards are the page's own ground, so they stand off the band. */
+.asm-band:not(.asm-night) .asm-steps pre { background: var(--bs-body-bg); }
 .asm-steps p { font-size: 0.95rem; margin: 0; }
 
 /* The build map. */
@@ -248,37 +382,44 @@ a:focus-visible, button:focus-visible, .btn:focus-visible {
   grid-template-columns: 1fr 28px 1.25fr 28px 1fr 28px 1fr;
   align-items: center;
 }
-.asm-map-col h3 { font-size: 0.95rem; font-weight: 650; color: var(--asm-muted); margin: 0 0 0.6rem; }
+.asm-map-col h3 { font-size: 0.95rem; font-weight: 650; color: var(--bs-secondary-color); margin: 0 0 0.6rem; }
 .asm-map-item {
-  background: var(--asm-card);
-  border: 1px solid var(--asm-rule);
+  background: var(--bs-body-bg);
+  border: 1px solid var(--asm-paper-line);
   border-radius: 6px;
   padding: 0.6rem 0.75rem;
   margin-bottom: 0.6rem;
   font-size: 0.92rem;
 }
-.asm-map-item code { color: var(--asm-ink); background: none; padding: 0; }
-.asm-map-item span { display: block; color: var(--asm-muted); }
-.asm-map-arrow { height: 2px; background: var(--asm-teal); position: relative; }
+.asm-map-item code { color: var(--asm-heading); background: none; padding: 0; }
+.asm-map-item span { display: block; color: var(--bs-secondary-color); }
+.asm-map-arrow { height: 2px; background: var(--asm-face); position: relative; }
 .asm-map-arrow::after {
   content: "";
   position: absolute;
   right: -1px;
   top: -5px;
   border: 6px solid transparent;
-  border-left: 8px solid var(--asm-teal);
+  border-left: 8px solid var(--asm-face);
 }
-.asm-map-sdk { background: #062f2e; color: #dcefeb; border-radius: 10px; padding: 1.1rem 1.1rem 0.4rem; }
-.asm-map-sdk-title { display: flex; align-items: center; gap: 0.6rem; font-weight: 700; color: #ffffff; margin-bottom: 0.8rem; }
-.asm-map-stage { border-left: 3px solid #3eea8c; padding: 0.2rem 0 0.2rem 0.75rem; margin-bottom: 0.75rem; }
-.asm-map-stage b { display: block; color: #ffffff; font-weight: 600; }
-.asm-map-stage span { font-size: 0.88rem; color: #a9cfc9; }
-[data-bs-theme="dark"] .asm-map-sdk { background: #0e2928; border: 1px solid #1d3a38; }
+/* The build itself is a machine at work, so it is a night panel in both themes, like NumSharp's
+   output strip under its editor; its stages are marked with the logo's mint edge. */
+.asm-map-sdk {
+  background: var(--asm-night);
+  border: 1px solid var(--asm-night-cell);
+  color: var(--asm-mist-muted);
+  border-radius: 10px;
+  padding: 1.1rem 1.1rem 0.4rem;
+}
+.asm-map-sdk-title { display: flex; align-items: center; gap: 0.6rem; font-weight: 700; color: var(--asm-mist); margin-bottom: 0.8rem; }
+.asm-map-stage { border-left: 3px solid var(--asm-logo-mint); padding: 0.2rem 0 0.2rem 0.75rem; margin-bottom: 0.75rem; }
+.asm-map-stage b { display: block; color: var(--asm-mist); font-weight: 600; }
+.asm-map-stage span { font-size: 0.88rem; color: var(--asm-mist-muted); }
 
 /* Ecosystem and toolchain, side by side. */
-.asm-two { display: grid; grid-template-columns: 1fr 1fr; gap: 3.5rem; border-top: 1px solid var(--asm-rule); }
+.asm-two { display: grid; grid-template-columns: 1fr 1fr; gap: 3.5rem; border-top: 1px solid var(--bs-border-color); }
 .asm-list { display: grid; grid-template-columns: 11rem 1fr; row-gap: 0.8rem; column-gap: 1.2rem; margin: 0; }
-.asm-list dt { font-weight: 650; color: var(--asm-ink); }
+.asm-list dt { font-weight: 650; color: var(--asm-heading); }
 .asm-list dd { margin: 0; }
 
 /* Grid children default to min-width: auto, so one long code line would widen the page past
