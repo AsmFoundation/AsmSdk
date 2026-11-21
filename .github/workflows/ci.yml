@@ -28,6 +28,11 @@
 #      Docker runs Linux builds where the runner has Linux containers (WSL nowhere here).
 #      ToolTests installs an asm program packed with PackAsTool through dotnet tool install,
 #      runs the command, and does the same in the glibc and musl .NET SDK containers on x64.
+#      ScenarioTests (unreleased, on main) takes each small repository of tests/scenarios
+#      through the dotnet commands its scenario.json lists, on the machine's own RID: C# apps
+#      with asm libraries, unit tests of asm code, NumSharp, OptunaSharp and KvAsm.Client
+#      (from nuget.org, pinned) beside asm, programs, tools. KvAsmClient starts the KvAsm image,
+#      so it needs linux/amd64 containers: the Linux x64 runner runs it, the others skip it.
 #   The only prerequisite is the .NET SDK: no Python since 0.2.0.
 #   3. The staged toolchain is kept as an artifact: release.yml packs all five from it.
 #

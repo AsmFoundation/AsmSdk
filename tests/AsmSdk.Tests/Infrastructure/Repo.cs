@@ -21,6 +21,12 @@ internal static partial class Repo
     /// <summary>tests/projects/: the projects that each exercise one SDK rule (some must fail).</summary>
     public static string TestProjects => Path.Combine(Root, "tests", "projects");
 
+    /// <summary>
+    /// tests/scenarios/: whole small repositories (a .slnx with .csproj and .asmproj projects)
+    /// and the commands to run on each (scenario.json); ScenarioTests runs one test per folder.
+    /// </summary>
+    public static string Scenarios => Path.Combine(Root, "tests", "scenarios");
+
     /// <summary>artifacts/: packages, the staged toolchain, the isolated NuGet cache.</summary>
     public static string Artifacts => Path.Combine(Root, "artifacts");
 

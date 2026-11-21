@@ -59,6 +59,41 @@ internal static class Command
             start.ArgumentList.Add(argument);
         }
 
+        return Run(start, environment);
+    }
+
+    /// <summary>
+    /// Runs a program with a raw Windows command line, for the one program that does not read
+    /// its arguments the C runtime's way: cmd.exe, whose <c>/s /c "..."</c> line must reach it
+    /// exactly as written (<see cref="Run(string, IEnumerable{string}, string?, IReadOnlyDictionary{string, string?}?)"/>
+    /// would quote it once more).
+    /// </summary>
+    /// <param name="fileName">The program (a path, or a name found on PATH).</param>
+    /// <param name="commandLine">The arguments as one string, already quoted by the caller.</param>
+    /// <param name="workingDirectory">The working directory; null for the repository root.</param>
+    /// <param name="environment">Variables to set (a null value removes the variable); null to inherit the test process's environment.</param>
+    /// <returns>The exit status and the captured output. Never throws for a non-zero exit: tests check.</returns>
+    /// <exception cref="System.ComponentModel.Win32Exception">The program could not be started (not found).</exception>
+    public static CommandResult RunCommandLine(string fileName, string commandLine,
+        string? workingDirectory = null, IReadOnlyDictionary<string, string?>? environment = null)
+    {
+        var start = new ProcessStartInfo(fileName, commandLine)
+        {
+            WorkingDirectory = workingDirectory ?? Repo.Root,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        return Run(start, environment);
+    }
+
+    /// <summary>Starts a prepared process with the given environment and waits for it, capturing both streams.</summary>
+    /// <param name="start">The process to start: program, arguments, working directory and redirection set.</param>
+    /// <param name="environment">Variables to set (a null value removes the variable); null to inherit the test process's environment unchanged.</param>
+    /// <returns>The exit status and the captured output; exit status -1 when it timed out and was killed.</returns>
+    /// <exception cref="System.ComponentModel.Win32Exception">The program could not be started (not found).</exception>
+    private static CommandResult Run(ProcessStartInfo start, IReadOnlyDictionary<string, string?>? environment)
+    {
         if (environment is not null)
         {
             foreach ((string name, string? value) in environment)

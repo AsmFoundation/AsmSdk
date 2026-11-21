@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AsmFoundation/AsmSdk/tests/scenarios/scenario.schema.json",
+  "title": "AsmSdk scenario",
+  "description": "One scenario of tests/scenarios: the commands ScenarioTests runs, in order, on a fresh copy of the scenario's folder, and what each must produce. See docs/ecosystem/scenarios.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["description", "steps"],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "description": "What the scenario proves, in a sentence or two. It is written at the top of the test's log."
+    },
+    "rids": {
+      "type": "array",
+      "items": {
+        "enum": ["win-x64", "win-arm64", "linux-x64", "linux-arm64", "osx-x64", "osx-arm64"]
+      },
+      "minItems": 1,
+      "description": "The build machines the scenario runs on, by RID. Leave it out for every machine AsmSdk builds for; elsewhere the test is skipped with the reason."
+    },
+    "services": {
+      "type": "array",
+      "description": "Containers to start before the first step (docker run, published on a free port of 127.0.0.1) and to remove after the last. The scenario is skipped where Docker cannot run Linux containers of their platform.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "image", "port"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[^{}\\s:]+$",
+            "description": "The name steps use in {port:name}."
+          },
+          "image": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The image with a pinned tag, for example ghcr.io/asmfoundation/kvasm:0.3.0."
+          },
+          "platform": {
+            "type": "string",
+            "default": "linux/amd64",
+            "description": "The image's platform."
+          },
+          "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535,
+            "description": "The container port to publish; {port:name} expands to the host port it gets."
+          },
+          "environment": {
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "description": "Environment variables for the container."
+          },
+          "ready": {
+            "type": "string",
+            "description": "Text the container's log shows once it serves; the steps wait for it. Without it they wait until the port accepts a connection."
+          }
+        }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The commands, in order. The first that does not produce what it must fails the scenario.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["run"],
+        "properties": {
+          "run": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The command line, run in the scenario's folder without a shell: whitespace separates arguments, and double or single quotes group them. dotnet gets the test environment (the isolated NuGet cache). A path with a slash is a file of the scenario's folder (on Windows .exe, .cmd or .bat is tried when it has no extension); any other name is looked up on PATH. Placeholders: {rid}, {exe:name}, {lib:name}, {port:service}."
+          },
+          "description": {
+            "type": "string",
+            "description": "Why the step is there, for the test's log."
+          },
+          "exitCode": {
+            "type": "integer",
+            "default": 0,
+            "description": "The exit status the command must return."
+          },
+          "stdout": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Texts that must each appear in the command's standard output. Placeholders are allowed."
+          },
+          "files": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Files or folders, relative to the scenario's folder with forward slashes, that must exist after the command. Placeholders are allowed."
+          }
+        }
+      }
+    }
+  }
+}

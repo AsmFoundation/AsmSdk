@@ -12,13 +12,15 @@ namespace AsmSdk.Tests;
 public sealed class PackTests(SdkUnderTest sdk)
 {
     /// <summary>
-    /// The samples and the test projects pin the version Directory.Build.props sets: otherwise
-    /// they would restore another AsmFoundation.Sdk from nuget.org and test nothing of this one.
+    /// The samples, the test projects and the scenarios pin the version Directory.Build.props
+    /// sets: otherwise they would restore another AsmFoundation.Sdk from nuget.org and test
+    /// nothing of this one.
     /// </summary>
     /// <param name="globalJson">The global.json, relative to the repository root.</param>
     [Theory]
     [InlineData("samples/global.json")]
     [InlineData("tests/projects/global.json")]
+    [InlineData("tests/scenarios/global.json")]
     public void Consumers_pin_the_version_under_test(string globalJson)
     {
         using JsonDocument json = JsonDocument.Parse(File.ReadAllText(Path.Combine(Repo.Root, globalJson)));

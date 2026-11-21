@@ -1,0 +1,22 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    asm-hello: a libc program for all eight RIDs, packed as a .NET tool (PackAsTool). dotnet
+    pack writes the .NET 10 platform-specific tool packages: Scenario.AsmHello, which names the
+    command and one package per RID, and Scenario.AsmHello.<rid>, each with that RID's program
+    and Runner="executable" (no .NET runtime involved when it runs). They go to the local feed
+    (tests/scenarios/Directory.Build.props), which nuget.config maps Scenario.* to, so dotnet
+    tool install finds them. main prints a greeting and its last argument, and returns 7.
+  -->
+  <PropertyGroup>
+    <TargetFramework>libc</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>asm-hello</AssemblyName>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>asm-hello</ToolCommandName>
+    <PackageId>Scenario.AsmHello</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>AsmFoundation scenarios</Authors>
+    <Description>Scenario package: an assembly program packed as a .NET tool.</Description>
+  </PropertyGroup>
+</Project>

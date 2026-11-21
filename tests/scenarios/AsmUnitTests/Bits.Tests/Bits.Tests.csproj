@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    xunit v3 tests of the asm library bits (../Bits), against System.Numerics.BitOperations.
+    The ProjectReference gives the test output every RID's library under runtimes/, so the same
+    tests run the x64 code on x64 machines and the ARM64 code on ARM64 ones. dotnet test runs
+    them through Microsoft.Testing.Platform (the scenarios' global.json selects it).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- xunit v3 test projects are executables (Microsoft.Testing.Platform). -->
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <!-- [LibraryImport] generates its marshalling as unsafe code (SYSLIB1062 without it). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The version is central: tests/scenarios/Directory.Packages.props. -->
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Bits/Bits.asmproj" />
+  </ItemGroup>
+</Project>

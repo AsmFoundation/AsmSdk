@@ -1,0 +1,28 @@
+{
+  "$schema": "../scenario.schema.json",
+  "description": "An asm program links an asm shared library: the build puts each RID's library next to its program with the run path that finds it, dotnet run starts this machine's build, and dotnet publish -r publishes the program with its library, which runs from there.",
+  "steps": [
+    {
+      "run": "dotnet build AsmProgramLibrary.slnx -c Release",
+      "description": "Builds the library and the program for all eight RIDs; each program folder gets its library.",
+      "files": ["Greet/bin/Release/libc/{rid}/{exe:greet}", "Greet/bin/Release/libc/{rid}/{lib:calc}"]
+    },
+    {
+      "run": "dotnet run --project Greet -c Release",
+      "description": "Starts this machine's build: exit status 42 is calc_mul(6, 7), from the library.",
+      "exitCode": 42,
+      "stdout": ["greet: hello from an asm program"]
+    },
+    {
+      "run": "dotnet publish Greet -c Release -r {rid} -o out",
+      "description": "Publishes this machine's build with the library it links.",
+      "files": ["out/{exe:greet}", "out/{lib:calc}"]
+    },
+    {
+      "run": "out/greet",
+      "description": "Runs the published program, which finds its library through its run path or folder.",
+      "exitCode": 42,
+      "stdout": ["greet: hello from an asm program"]
+    }
+  ]
+}

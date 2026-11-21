@@ -2,5 +2,7 @@
   href: index.md
 - name: Samples
   href: samples.md
+- name: Scenario tests
+  href: scenarios.md
 - name: Claude Code plugin
   href: claude-code.md

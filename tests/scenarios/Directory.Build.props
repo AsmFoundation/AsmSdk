@@ -1,0 +1,25 @@
+<Project>
+  <!--
+    tests/scenarios: small repositories, one per folder, each with a scenario.json that lists the
+    commands to run on it (docs/ecosystem/scenarios.md). ScenarioTests (tests/AsmSdk.Tests)
+    copies this folder's files and one scenario's folder to artifacts/scenarios and runs the
+    commands there.
+
+    Like the samples and tests/projects, the scenarios consume AsmFoundation.Sdk as a user's
+    repository would, so this file stops MSBuild's upward search here: none of the AsmSdk
+    repository's own settings (its version, package metadata) reach them. artifacts/scenarios
+    is as deep under the repository as this folder, so the relative paths below name the same
+    folder in the copy and here (where an IDE opens a scenario).
+  -->
+  <PropertyGroup>
+    <!-- Packages a scenario packs (Scenario.*) go to the local feed, which nuget.config maps
+         that prefix to, so a later step can install them. -->
+    <PackageOutputPath>$(MSBuildThisFileDirectory)../../artifacts/packages/</PackageOutputPath>
+    <!-- A warning is a regression a user would see: the scenarios build without any. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- Except NuGet's vulnerability audit (NU1901-NU1904): an advisory published tomorrow
+         against a pinned dependency of a package we use must show, not break every scenario
+         that changed nothing. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
+  </PropertyGroup>
+</Project>

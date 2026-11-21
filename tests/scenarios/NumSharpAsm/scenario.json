@@ -1,0 +1,24 @@
+{
+  "$schema": "../scenario.schema.json",
+  "description": "NumSharp (nuget.org) beside asm: asm kernels compute a sum and a dot product directly on the memory of NumSharp's NDArrays and must equal np.sum and np.dot, in dotnet run and in a RID-specific publish.",
+  "steps": [
+    {
+      "run": "dotnet build NumSharpAsm.slnx -c Release",
+      "description": "Restores NumSharp from nuget.org, builds the kernels for all eight RIDs and the app.",
+      "files": ["App/bin/Release/net10.0/NumSharp.dll", "App/bin/Release/net10.0/runtimes/{rid}/native/{lib:kernels}"]
+    },
+    {
+      "run": "dotnet run --project App -c Release",
+      "stdout": ["np.sum = 5050, asm sum = 5050", "np.dot = 676700, asm dot = 676700", "NumSharp and the asm kernels agree"]
+    },
+    {
+      "run": "dotnet publish App -c Release -r {rid} -o out",
+      "description": "Publishes for this machine: NumSharp's assembly and the kernels library side by side.",
+      "files": ["out/{exe:App}", "out/NumSharp.dll", "out/{lib:kernels}"]
+    },
+    {
+      "run": "out/App",
+      "stdout": ["NumSharp and the asm kernels agree"]
+    }
+  ]
+}

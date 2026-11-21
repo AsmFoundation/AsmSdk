@@ -1,0 +1,14 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    kernels: double-precision kernels for all eight RIDs, which the NumSharp app (App) runs on
+    the memory of NDArrays. kernels.asm is the x64 code (SSE2 scalar double arithmetic, through
+    asmsdk.inc), kernels.s the ARM64 code (FP scalar arithmetic, through asmsdk-gnu.inc).
+    Exports:
+      double kernels_sum(const double *values, size_t count)           the sum, in order
+      double kernels_dot(const double *a, const double *b, size_t n)   the dot product, in order
+  -->
+  <PropertyGroup>
+    <AssemblyName>kernels</AssemblyName>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

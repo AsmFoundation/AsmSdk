@@ -1,0 +1,24 @@
+{
+  "$schema": "../scenario.schema.json",
+  "description": "OptunaSharp (nuget.org, with NumSharp and the native OpenBLAS it brings) beside asm: a seeded TPE study minimizes a function computed by an asm library, each evaluation checked against C#, in dotnet run and in a RID-specific publish that holds both packages' and the asm library's native files.",
+  "steps": [
+    {
+      "run": "dotnet build OptunaSharpAsm.slnx -c Release",
+      "description": "Restores OptunaSharp, NumSharp and OpenBLAS from nuget.org, builds the objective for all eight RIDs and the app.",
+      "files": ["App/bin/Release/net10.0/OptunaSharp.dll", "App/bin/Release/net10.0/runtimes/{rid}/native/{lib:objective}"]
+    },
+    {
+      "run": "dotnet run --project App -c Release",
+      "stdout": ["asm and C# agree on every evaluation", "OptunaSharp minimized the asm objective"]
+    },
+    {
+      "run": "dotnet publish App -c Release -r {rid} -o out",
+      "description": "Publishes for this machine: OpenBLAS's native files and the asm library, flat beside the app.",
+      "files": ["out/{exe:App}", "out/OptunaSharp.dll", "out/{lib:objective}"]
+    },
+    {
+      "run": "out/App",
+      "stdout": ["asm and C# agree on every evaluation", "OptunaSharp minimized the asm objective"]
+    }
+  ]
+}

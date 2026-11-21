@@ -1,0 +1,21 @@
+{
+  "$schema": "../scenario.schema.json",
+  "description": "An asm program as a .NET tool: dotnet pack writes the platform-specific tool packages (PackAsTool), dotnet tool install puts this machine's in a tool folder, and its command runs the program directly.",
+  "steps": [
+    {
+      "run": "dotnet pack Tool -c Release",
+      "description": "Writes Scenario.AsmHello and one Scenario.AsmHello.<rid> per RID into the local feed."
+    },
+    {
+      "run": "dotnet tool install --tool-path tools Scenario.AsmHello --version 1.0.0",
+      "description": "Installs from the local feed (nuget.config maps Scenario.* to it): NuGet picks this machine's RID package.",
+      "stdout": ["(version '1.0.0') was successfully installed", "the following command: asm-hello"]
+    },
+    {
+      "run": "tools/asm-hello \"from the tool\"",
+      "description": "Runs the command: a .cmd shim on Windows, a link into the tool store elsewhere.",
+      "exitCode": 7,
+      "stdout": ["asm-hello: a .NET tool written in assembly", "from the tool"]
+    }
+  ]
+}

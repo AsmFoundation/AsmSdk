@@ -1,0 +1,11 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    calc: the shared library the program greet links, for all eight RIDs. calc.asm is the x64
+    code, calc.s the ARM64 code. Export:
+      int32_t calc_mul(int32_t a, int32_t b)    a * b
+  -->
+  <PropertyGroup>
+    <AssemblyName>calc</AssemblyName>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

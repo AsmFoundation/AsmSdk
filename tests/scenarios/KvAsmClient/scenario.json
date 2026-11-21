@@ -1,0 +1,25 @@
+{
+  "$schema": "../scenario.schema.json",
+  "description": "KvAsm.Client (nuget.org) beside asm: a C# app stores 100 values in a KvAsm server (the asm key-value server, run from its published image) and reads them back, checking each with an FNV-1a computed by an asm library. Runs where Docker runs linux/amd64 containers (KvAsm is x86-64 Linux code).",
+  "services": [
+    {
+      "name": "kvasm",
+      "image": "ghcr.io/asmfoundation/kvasm:0.3.0",
+      "platform": "linux/amd64",
+      "port": 50051,
+      "ready": "msg=\"listening\""
+    }
+  ],
+  "steps": [
+    {
+      "run": "dotnet build KvAsmClient.slnx -c Release",
+      "description": "Restores KvAsm.Client (and gRPC) from nuget.org, builds the library for all eight RIDs and the app.",
+      "files": ["App/bin/Release/net10.0/KvAsm.Client.dll", "App/bin/Release/net10.0/runtimes/{rid}/native/{lib:checksum}"]
+    },
+    {
+      "run": "dotnet run --project App -c Release -- http://127.0.0.1:{port:kvasm}",
+      "description": "Talks to the server over h2c on the port the container was published on.",
+      "stdout": ["stored 100 new keys in KvAsm and read all 100 back: FNV-1a (asm) matches"]
+    }
+  ]
+}

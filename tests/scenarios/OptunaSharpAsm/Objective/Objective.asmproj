@@ -1,0 +1,12 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    objective: the function an OptunaSharp study minimizes (App), as a shared library for all
+    eight RIDs. objective.asm is the x64 code (SSE2 scalar doubles), objective.s the ARM64 code.
+    Export:
+      double objective_eval(double x, double y)    (x - 2)^2 + (y + 1)^2, least (0) at (2, -1)
+  -->
+  <PropertyGroup>
+    <AssemblyName>objective</AssemblyName>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

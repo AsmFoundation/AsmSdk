@@ -30,6 +30,14 @@ public sealed class SdkUnderTest : IAsyncLifetime
     /// <summary>The environment every dotnet command gets (see <see cref="InitializeAsync"/>).</summary>
     private readonly Dictionary<string, string?> _environment = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// The environment every dotnet command of the tests gets: the isolated NuGet cache, no
+    /// telemetry or logo, none of the host's MSBuild variables (set by <see cref="InitializeAsync"/>).
+    /// For runners that start their own commands with it, such as the scenarios', which add
+    /// their own variables to a copy.
+    /// </summary>
+    public IReadOnlyDictionary<string, string?> TestEnvironment => _environment;
+
     /// <summary>The staged toolchain folder of this machine: artifacts/toolchain/&lt;rid&gt;/tools.</summary>
     public string Tools { get; private set; } = "";
 
@@ -257,20 +265,21 @@ public sealed class SdkUnderTest : IAsyncLifetime
 
     /// <summary>
     /// Removes what a previous run left: the isolated NuGet cache, the test package folder,
-    /// the input files of the tool runs, the sample and test packages in the local feed, and
-    /// every project's bin/ and obj/.
+    /// the input files of the tool runs, the scenarios' work folders, the sample, test and
+    /// scenario packages in the local feed, and every project's bin/ and obj/.
     /// </summary>
     private static void Clean()
     {
         DeleteDirectory(Path.Combine(Repo.Artifacts, "test-nuget"));
         DeleteDirectory(Path.Combine(Repo.Artifacts, "test-packages"));
         DeleteDirectory(Path.Combine(Repo.Artifacts, "test-run"));
+        DeleteDirectory(ScenarioRunner.WorkRoot);
         string feed = Path.Combine(Repo.Artifacts, "packages");
         if (Directory.Exists(feed))
         {
-            // Only the packages built from samples/ and tests/projects: the SDK and toolchain
-            // packages are repacked by InitializeAsync, under the same names.
-            foreach (string stale in new[] { "Hello.*.nupkg", "Samples.*.nupkg", "Test.*.nupkg" }
+            // Only the packages built from samples/, tests/projects and tests/scenarios: the SDK
+            // and toolchain packages are repacked by InitializeAsync, under the same names.
+            foreach (string stale in new[] { "Hello.*.nupkg", "Samples.*.nupkg", "Test.*.nupkg", "Scenario.*.nupkg" }
                          .SelectMany(pattern => Directory.GetFiles(feed, pattern)))
             {
                 File.Delete(stale);

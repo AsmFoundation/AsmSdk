@@ -1,0 +1,26 @@
+{
+  "$schema": "../scenario.schema.json",
+  "description": "A C# console app calls an asm shared library through P/Invoke: the portable build carries the library for every RID, dotnet run loads this machine's, and a RID-specific publish puts it next to the app, which runs from there.",
+  "steps": [
+    {
+      "run": "dotnet build CSharpAppAsmLibrary.slnx -c Release",
+      "description": "Builds the library for all eight RIDs and the app, whose output gets each RID's library under runtimes/.",
+      "files": ["App/bin/Release/net10.0/runtimes/{rid}/native/{lib:calc}"]
+    },
+    {
+      "run": "dotnet run --project App -c Release -- 2 40",
+      "description": "Runs the app: .NET loads this machine's library from runtimes/.",
+      "stdout": ["calc_add(2, 40) = 42", "calc_sum(1..100) = 5050"]
+    },
+    {
+      "run": "dotnet publish App -c Release -r {rid} -o out",
+      "description": "Publishes for this machine: the library lands next to the app, flat.",
+      "files": ["out/{exe:App}", "out/{lib:calc}"]
+    },
+    {
+      "run": "out/App 2 40",
+      "description": "Runs the published app through its apphost.",
+      "stdout": ["calc_add(2, 40) = 42", "calc_sum(1..100) = 5050"]
+    }
+  ]
+}

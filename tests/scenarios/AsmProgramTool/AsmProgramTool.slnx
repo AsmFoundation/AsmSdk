@@ -1,0 +1,4 @@
+<Solution>
+  <!-- .asmproj needs an explicit project type, the generic MSBuild one, as in samples/Samples.slnx. -->
+  <Project Path="Tool/Tool.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+</Solution>

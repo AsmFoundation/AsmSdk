@@ -1,0 +1,12 @@
+{
+  "$schema": "../scenario.schema.json",
+  "description": "Unit tests of asm code: an xunit v3 project tests an asm library against .NET's BitOperations, and dotnet test builds the solution (the .asmproj included) and runs them through Microsoft.Testing.Platform, on this machine's own build of the library (x64 or ARM64 code).",
+  "steps": [
+    {
+      "run": "dotnet test --solution AsmUnitTests.slnx -c Release",
+      "description": "Builds the library for all eight RIDs and the tests, then runs the 32 tests.",
+      "stdout": ["Test run summary: Passed!", "succeeded: 32", "failed: 0"],
+      "files": ["Bits.Tests/bin/Release/net10.0/runtimes/{rid}/native/{lib:bits}"]
+    }
+  ]
+}

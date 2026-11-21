@@ -1,0 +1,14 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    bits: a shared library of bit operations for all eight RIDs, unit-tested from C# by
+    Bits.Tests against System.Numerics.BitOperations. bits.asm is the x64 code (NASM, through
+    asmsdk.inc), bits.s the ARM64 code (GNU syntax, through asmsdk-gnu.inc). Exports:
+      int32_t  bits_popcount(uint64_t x)               set bits (POPCNT; NEON CNT on ARM64)
+      int32_t  bits_leading_zeros(uint64_t x)          leading zero bits, 64 for 0 (BSR; CLZ)
+      uint64_t bits_rotate_left(uint64_t x, int32_t n) x rotated left by n mod 64 (ROL; ROR by -n)
+  -->
+  <PropertyGroup>
+    <AssemblyName>bits</AssemblyName>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

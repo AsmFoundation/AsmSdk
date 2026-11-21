@@ -239,6 +239,16 @@ on each: Windows x64 and Arm, Linux x64 and ARM64, and Apple silicon, so every p
 outputs run natively somewhere. Releases are tags: `vX.Y.Z` publishes to nuget.org through
 trusted publishing ([release.yml](.github/workflows/release.yml)).
 
+[`tests/scenarios`](tests/scenarios) holds whole small repositories, one per folder: a
+`.slnx` with `.csproj` and `.asmproj` projects, and a `scenario.json` that lists the commands to
+run on it (`dotnet build`, `run`, `test`, `publish`, `pack`, `tool install`, the programs they
+produce) and what each must print and leave. `ScenarioTests` runs each scenario as one test,
+named by its commands, so adding a scenario needs no C#. Our other projects' packages come
+from nuget.org at pinned versions (NumSharp, OptunaSharp, KvAsm.Client). Not released yet; see
+[Scenario tests](https://asmfoundation.github.io/AsmSdk/ecosystem/scenarios.html).
+One scenario runs alone with
+`dotnet test --project tests/AsmSdk.Tests/AsmSdk.Tests.csproj --filter-trait "Scenario=<Name>"`.
+
 [`tests/qa/delivery-matrix.cs`](tests/qa/delivery-matrix.cs) is the delivery QA for .NET
 consumers, run by hand before a release rather than in CI, because its Linux cases need
 Docker (and QEMU for ARM64). It builds and publishes every way a .NET project gets an asm

@@ -1,0 +1,26 @@
+<Project>
+  <!--
+    The package versions of every scenario, in one place: NuGet central package management, as
+    many real repositories use it, so the scenarios also prove that an .asmproj restores in such
+    a repository (its implicit AsmFoundation.Sdk reference and toolchain download carry their
+    own versions).
+
+    Our other projects come from nuget.org as released, at pinned versions: a scenario tests
+    what users install, the same on CI and on a developer's machine. A new release reaches the
+    scenarios when its version is bumped here.
+  -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- NumPy for .NET (SciSharp/NumSharp): its arrays' memory goes to asm kernels. -->
+    <PackageVersion Include="NumSharp" Version="0.81.0" />
+    <!-- Optuna for .NET (SciSharp/OptunaSharp): it tunes a function computed in asm. It brings
+         NumSharp and NumSharp.Interop.OpenBLAS, whose native libraries cover all eight RIDs. -->
+    <PackageVersion Include="OptunaSharp" Version="1.1.0" />
+    <!-- The .NET client of KvAsm (AsmFoundation/KvAsm), the key-value server written in asm. -->
+    <PackageVersion Include="KvAsm.Client" Version="0.3.0" />
+    <!-- The unit-test scenario's framework, the version tests/AsmSdk.Tests uses. -->
+    <PackageVersion Include="xunit.v3" Version="4.0.3" />
+  </ItemGroup>
+</Project>

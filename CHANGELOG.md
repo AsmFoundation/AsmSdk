@@ -122,6 +122,27 @@ Each SDK release names the one it was tested with.
   the machine can: natively, in Linux containers, and for ARM64 under QEMU. On a Windows x64
   machine with Docker that is 94 cases with `linux-musl-arm64` (84 before it), all passing,
   with a negative control (NativeAOT without the generated loader must fail).
+- **Scenario tests (`tests/scenarios`): whole small repositories, built and run as a user
+  would.** Each folder is a `.slnx` with `.csproj` and `.asmproj` projects, plus a
+  `scenario.json` that lists the commands to run on it. The commands can be `dotnet build`,
+  `run`, `test`, `publish`, `pack` and `tool install`, or the programs they produce. For each
+  command the file says the exit status, the output and the files it must leave. `ScenarioTests`
+  runs every scenario as one test, in a fresh copy under `artifacts/scenarios`. The test's name
+  lists every command, and its log shows each with its output. Adding a scenario needs no C#,
+  and `--filter-trait "Scenario=<Name>"` runs one alone. The first eight:
+  - a C# app with an asm library;
+  - xunit unit tests of asm code (`dotnet test`);
+  - an asm program that links an asm library;
+  - NumSharp arrays computed on by asm kernels;
+  - `KvAsm.Client` talking to the KvAsm server image, with an asm checksum;
+  - an OptunaSharp study that tunes an asm function;
+  - a C# app that starts an asm program it references;
+  - an asm program packed as a .NET tool and installed.
+
+  Our other projects' packages come from nuget.org at the versions pinned in
+  `tests/scenarios/Directory.Packages.props`, so the scenarios also restore under central
+  package management. See
+  [Scenario tests](https://asmfoundation.github.io/AsmSdk/ecosystem/scenarios.html).
 
 ### Fixed
 

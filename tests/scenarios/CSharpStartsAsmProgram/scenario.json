@@ -1,0 +1,24 @@
+{
+  "$schema": "../scenario.schema.json",
+  "description": "A C# app references an asm program and starts it as a helper process: the reference delivers the program (every RID's build under runtimes/ in a portable build, next to the app in a RID-specific publish), and the app finds it where the .NET host says native files are.",
+  "steps": [
+    {
+      "run": "dotnet build CSharpStartsAsmProgram.slnx -c Release",
+      "description": "Builds the program for all eight RIDs and the app, whose output gets each RID's program under runtimes/.",
+      "files": ["App/bin/Release/net10.0/runtimes/{rid}/native/{exe:asm-helper}"]
+    },
+    {
+      "run": "dotnet run --project App -c Release",
+      "stdout": ["asm-helper printed \"hello from C#\" and exited 42"]
+    },
+    {
+      "run": "dotnet publish App -c Release -r {rid} -o out",
+      "description": "Publishes for this machine: the program lands next to the app.",
+      "files": ["out/{exe:App}", "out/{exe:asm-helper}"]
+    },
+    {
+      "run": "out/App",
+      "stdout": ["asm-helper printed \"hello from C#\" and exited 42"]
+    }
+  ]
+}

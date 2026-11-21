@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A C# app that references an asm PROGRAM (../Helper) and starts it as a helper process. The
+    ProjectReference delivers the program: a portable build gets every RID's build under
+    runtimes/<rid>/native/ (listed in deps.json), a RID-specific build or publish the one
+    program next to the app. Program.cs finds it where the .NET host says native files are.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Helper/Helper.asmproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,5 @@
+<Solution>
+  <!-- .asmproj needs an explicit project type, the generic MSBuild one, as in samples/Samples.slnx. -->
+  <Project Path="App/App.csproj" />
+  <Project Path="Helper/Helper.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+</Solution>

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A KvAsm client app: KvAsm.Client from nuget.org (gRPC over HTTP/2 to the KvAsm server,
+    which the scenario runs as a container) beside the asm library checksum (../Checksum).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="KvAsm.Client" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Checksum/Checksum.asmproj" />
+  </ItemGroup>
+</Project>

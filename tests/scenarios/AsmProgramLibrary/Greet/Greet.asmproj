@@ -1,0 +1,20 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    greet: a libc program for all eight RIDs that links the shared library calc (../Calc). main
+    prints a line with puts and returns calc_mul(6, 7), so the exit status 42 proves the
+    library was found and called at run time. BinariesCopyPath is not set: for a program, Auto
+    puts each RID's library next to it and gives the program the run path that finds it there
+    ($ORIGIN on Linux, @loader_path on macOS; Windows searches the program's folder itself).
+    dotnet run starts this machine's build; dotnet publish -r publishes the program with the
+    library.
+  -->
+  <PropertyGroup>
+    <TargetFramework>libc</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>greet</AssemblyName>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Calc/Calc.asmproj" />
+  </ItemGroup>
+</Project>

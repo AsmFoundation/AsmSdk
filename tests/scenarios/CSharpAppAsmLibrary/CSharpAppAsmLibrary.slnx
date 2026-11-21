@@ -1,0 +1,7 @@
+<Solution>
+  <!-- .asmproj needs an explicit project type, the generic MSBuild one ("Common Project
+       System"), as in samples/Samples.slnx: Visual Studio and Rider then load it like any
+       SDK-style project. -->
+  <Project Path="App/App.csproj" />
+  <Project Path="Calc/Calc.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+</Solution>

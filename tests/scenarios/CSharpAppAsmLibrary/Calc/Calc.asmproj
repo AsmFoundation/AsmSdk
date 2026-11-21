@@ -1,0 +1,13 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    calc: a shared library for all eight RIDs, which the C# app (App) calls through P/Invoke.
+    calc.asm is the x64 code (NASM, through asmsdk.inc's calling-convention macros), calc.s the
+    ARM64 code (GNU syntax for llvm-mc, through asmsdk-gnu.inc). Exports:
+      int32_t calc_add(int32_t a, int32_t b)                   a + b
+      int64_t calc_sum(const int32_t *values, size_t count)    the sum, widened to 64 bits
+  -->
+  <PropertyGroup>
+    <AssemblyName>calc</AssemblyName>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

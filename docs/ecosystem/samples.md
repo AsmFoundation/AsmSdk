@@ -60,7 +60,12 @@ expectation:
   [IDEs](../guide/ides.md));
 - **the realistic samples** (`ExampleTests`): Crc32C's exports, constants, packages, own unit
   tests and NuGet consumer; WordCount's imports, counts and errors; HexDump's size, output and
-  errors (see [Examples](../examples/index.md#how-they-are-checked)).
+  errors (see [Examples](../examples/index.md#how-they-are-checked));
+- **whole small repositories** (`ScenarioTests`, not released yet): each folder of
+  `tests/scenarios` is a solution taken through the `dotnet` commands its `scenario.json`
+  lists. Asm libraries in C# apps, in unit tests, beside NumSharp, OptunaSharp and
+  KvAsm.Client; asm programs that link libraries, that a C# app starts, and that are packed as
+  .NET tools (see [Scenario tests](scenarios.md)).
 
 The .NET programs (Crc32C's tests, its benchmark's check, the NuGet consumer) run natively on
 every machine: their portable output carries every RID's library. The Linux x64 programs run

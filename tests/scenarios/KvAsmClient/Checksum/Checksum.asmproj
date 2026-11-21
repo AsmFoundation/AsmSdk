@@ -1,0 +1,12 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    checksum: a shared library for all eight RIDs with one function, FNV-1a (64-bit), which the
+    KvAsm client app (App) uses to check that what it reads back from KvAsm is what it stored.
+    checksum.asm is the x64 code, checksum.s the ARM64 code. Export:
+      uint64_t checksum_fnv1a(const uint8_t *data, size_t length)
+  -->
+  <PropertyGroup>
+    <AssemblyName>checksum</AssemblyName>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>
