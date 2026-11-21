@@ -97,12 +97,25 @@
   --asm-tok-comment: #647573;
   --asm-tok-punct: #5f6f6d;
   --asm-tok-attr: #2d5c58;
+  /* Callout edges (see "callouts"): notes and tips take the face; warnings the number tokens'
+     amber; important and caution this red, the one color the logo cannot give a warning sign. */
+  --asm-danger: #b42318;
 
-  --bs-link-color: #06706d;
+  /* Bootstrap's own variables, pointed at the roles above, so the chrome DocFX builds from
+     Bootstrap (the navigation, "In this article", tables, the footer) speaks the theme too.
+     Each -rgb twin must match its color: Bootstrap 5.3 paints links, .link-* and .text-*
+     utilities from the rgb form, not the hex one. */
+  --bs-link-color: #06706d;            /* the face */
   --bs-link-color-rgb: 6, 112, 109;
   --bs-link-hover-color: #054f4d;
   --bs-link-hover-color-rgb: 5, 79, 77;
-  --bs-code-color: #0b5c59;
+  --bs-code-color: var(--asm-code);    /* inline code is code-colored, on a paper chip */
+  --bs-emphasis-color: #062f2e;        /* Bootstrap's emphasis (#000): active navigation, the
+                                          "In this article" H2 entries; now the heading color */
+  --bs-emphasis-color-rgb: 6, 47, 46;
+  --bs-secondary-rgb: 89, 92, 95;      /* .text-secondary/.link-secondary (the footer, the
+                                          H3 entries): --bs-secondary-color on white, as the
+                                          lede and captions are, instead of a fixed #6c757d */
   --bs-primary: #06706d;
   --bs-primary-rgb: 6, 112, 109;
 }
@@ -126,12 +139,17 @@
   --asm-tok-comment: #8c9b99;
   --asm-tok-punct: #a8b6b4;
   --asm-tok-attr: #a9dcd3;
+  --asm-danger: #f97066;
 
-  --bs-link-color: #6fe3cf;
-  --bs-link-color-rgb: 111, 227, 207;
-  --bs-link-hover-color: #a6f2e4;
-  --bs-link-hover-color-rgb: 166, 242, 228;
-  --bs-code-color: #8ff0c0;
+  --bs-link-color: #6fd8c6;            /* the face */
+  --bs-link-color-rgb: 111, 216, 198;
+  --bs-link-hover-color: #b8f7d4;      /* the logo's pale mint */
+  --bs-link-hover-color-rgb: 184, 247, 212;
+  --bs-code-color: var(--asm-code);
+  --bs-emphasis-color: #f1f8f6;        /* the heading color, where Bootstrap has #fff */
+  --bs-emphasis-color-rgb: 241, 248, 246;
+  --bs-secondary-rgb: 175, 179, 183;   /* --bs-secondary-color on charcoal: Bootstrap keeps
+                                          #6c757d here, 3.6:1, under WCAG AA */
 }
 
 /* ---------------------------------------------------------------- base type */
@@ -173,6 +191,53 @@ pre {
   border-radius: 8px;
 }
 [data-bs-theme] pre code.hljs { background: transparent; }
+
+/* Inline code: the code blocks' own text color on a paper chip, the code blocks' surface. Before,
+   inline code kept the old theme's teal (#0b5c59; mint #8ff0c0 in the dark theme), a near twin of
+   the link color, so every property name in a sentence or a table cell read as a link. The chip
+   marks code by its surface instead of a color; box-decoration-break gives a chip that wraps
+   across lines its edges on each line. In a link, code keeps the link's color, so the link still
+   reads as one; in a heading it is the heading's text, without a chip. */
+:not(pre) > code {
+  color: var(--asm-code);
+  background: var(--asm-paper);
+  border: 1px solid var(--asm-paper-line);
+  border-radius: 5px;
+  padding: 0.08em 0.32em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+a > code { color: inherit; }
+h1 > code, h2 > code, h3 > code, h4 > code, h5 > code, h6 > code {
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+}
+
+/* ---------------------------------------------------------------- tables */
+/* Bootstrap colors table text with the emphasis color, a step off the prose around it (pure
+   black or white before this theme); cells take the body's text color, like every paragraph. */
+.table { --bs-table-color: var(--bs-body-color); }
+
+/* ---------------------------------------------------------------- callouts */
+/* DocFX turns > [!NOTE] and > [!TIP] into Bootstrap's alert-info (cyan), > [!WARNING] into
+   alert-warning (yellow) and > [!IMPORTANT] / > [!CAUTION] into alert-danger (red): none of them
+   the theme's. Every callout is paper with the body's text, like NumSharp's feature notes, and
+   only its 4 px left edge and its title carry a role color. Chips inside take the page's ground,
+   since paper on paper would hide them. */
+.alert-info, .alert-warning, .alert-danger {
+  --bs-alert-color: var(--bs-body-color);
+  --bs-alert-bg: var(--asm-paper);
+  --bs-alert-border-color: var(--asm-paper-line);
+  --bs-alert-link-color: var(--bs-link-color);
+  border-left: 4px solid var(--asm-callout);
+}
+.alert-info { --asm-callout: var(--asm-face); }
+.alert-warning { --asm-callout: var(--asm-tok-number); }
+.alert-danger { --asm-callout: var(--asm-danger); }
+.alert > h5 { color: var(--asm-callout); }
+.alert :not(pre) > code { background: var(--bs-body-bg); }
 
 /* ---------------------------------------------------------------- code tokens */
 /* DocFX colors highlight.js with Visual Studio's theme (light: blue keywords, red strings) and VS
@@ -241,6 +306,12 @@ pre {
   color: var(--asm-heading);
 }
 
+/* "In this article" lists H2 entries as .link-body-emphasis and H3 entries as .link-secondary.
+   Bootstrap hovers .link-secondary to a fixed dark grey (#565e64) that all but vanishes on the
+   dark theme's charcoal; hover it to the emphasis color, as the H2 entries are drawn. Bootstrap's
+   rule is !important, so this one must be too. */
+.link-secondary:hover, .link-secondary:focus { color: rgba(var(--bs-emphasis-color-rgb), 1) !important; }
+
 /* Focus rings are the logo's edge color, as NumSharp's are its cyan. */
 a:focus-visible, button:focus-visible, .btn:focus-visible {
   outline: 3px solid var(--asm-logo-mint);
@@ -298,8 +369,9 @@ a:focus-visible, button:focus-visible, .btn:focus-visible {
 .asm-byte-mint text { fill: var(--asm-logo-ink); }
 .asm-byte-teal rect { fill: var(--asm-logo-teal); }
 .asm-byte-teal text { fill: var(--asm-logo-pale); }
+/* The caption's code (hello_add, lea eax, [rdi + rsi], 8D 04 37) is plain inline code: the code
+   color on a paper chip, like every sentence on the site. */
 .asm-byte-a figcaption { font-size: 0.9rem; color: var(--bs-secondary-color); max-width: 470px; margin: 1.1rem auto 0; }
-.asm-byte-a figcaption code { color: var(--asm-heading); }
 
 /* Sections. */
 .asm-section { padding: 3.5rem 0; }
@@ -348,10 +420,15 @@ body[data-layout="landing"] { overflow-x: clip; }
   --asm-tok-comment: #7f9c97;
   --asm-tok-punct: #9fb9b4;
   --asm-tok-attr: #a9dcd3;
-  --bs-code-color: var(--asm-logo-pale);
+  /* Bootstrap's code color must be re-pointed here, not inherited: a custom property inherits
+     the color it resolved to on <html> (the page theme's code color), not its var() reference. */
+  --bs-code-color: var(--asm-mist);
 }
 .asm-landing .asm-night h2,
 .asm-landing .asm-night h3 { color: var(--asm-mist); }
+/* Inline code in the band's prose sits on a night chip, as code blocks sit on night panels; a
+   paper chip would be a white blot on night. Headings' code stays chipless (the base rule). */
+.asm-night :is(p, li, dd, td) > code { background: var(--asm-night-deep); border-color: var(--asm-night-cell); }
 /* NumSharp's band title glows faintly in its neon; here the neon is the logo's mint. */
 .asm-landing .asm-night h2 { text-shadow: 0 0 28px rgba(62, 234, 140, 0.35); }
 .asm-night a { color: var(--asm-logo-pale); }
@@ -391,7 +468,9 @@ body[data-layout="landing"] { overflow-x: clip; }
   margin-bottom: 0.6rem;
   font-size: 0.92rem;
 }
-.asm-map-item code { color: var(--asm-heading); background: none; padding: 0; }
+/* A map item's code is the card's title (*.asm, hello.dll), so it stays plain: no chip inside a
+   card that is already a paper-lined box. */
+.asm-map-item code { color: var(--asm-heading); background: none; border: 0; padding: 0; }
 .asm-map-item span { display: block; color: var(--bs-secondary-color); }
 .asm-map-arrow { height: 2px; background: var(--asm-face); position: relative; }
 .asm-map-arrow::after {
