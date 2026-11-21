@@ -62,7 +62,7 @@ Each SDK release names the one it was tested with.
     `deps.json`; a RID-specific build gets its RID's next to the app. `BinariesCopyPath`
     places it, and its libraries keep their place relative to it, because its run path
     depends on that. The app finds it through `NATIVE_DLL_SEARCH_DIRECTORIES` (the
-    [guide](docs/guide/programs.md) has the code).
+    [guide](https://asmfoundation.github.io/AsmSdk/guide/programs.html) has the code).
   - An asm program that references an asm program copies it, with its libraries, where its
     `BinariesCopyPath` says, on Windows too.
   - `dotnet pack` of a program puts each RID's program and libraries in
