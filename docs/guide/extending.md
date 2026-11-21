@@ -12,11 +12,15 @@ steps without fighting it.
 Sdk/Sdk.props                         imported first: switches off the managed build
 Sdk/Sdk.targets                       imported last: wires in everything below
 Sdk/AsmFoundation.Sdk.Version.props   generated at pack time: SDK and default toolchain versions
-targets/AsmFoundation.Properties.targets   defaults, output names, toolchain selection
-targets/AsmFoundation.Build.targets        items, toolchain checks, assemble, stubs, link
+targets/AsmFoundation.Properties.targets   defaults, RIDs, output names, toolchain selection
+targets/AsmFoundation.Build.targets        items, toolchain checks, RID dispatch, assemble, stubs, link
 targets/AsmFoundation.References.targets   ProjectReference handling in both directions
-targets/AsmFoundation.Pack.targets         native package layout and consumer props
-stubs/libc.asm, stubs/crt1.asm             the libc link stub and start-up code
+targets/AsmFoundation.Pack.targets         native package layout per RID and consumer props
+buildTransitive/AsmFoundation.Sdk.targets  the .NET consumer targets (runtimes/<rid>/native/, deps.json)
+include/asmsdk.inc, include/asmsdk-gnu.inc the platform layer for NASM and llvm-mc sources
+stubs/*.symbols                            the C library and kernel32 symbol lists
+stubs/crt1*, wincrt-*, nonshared-*, winstdio-*   startup code and the archives a C runtime would supply
+tasks/netstandard2.0/AsmFoundation.Sdk.Tasks.dll  the SDK's MSBuild tasks
 ```
 
 **Design choices:**
@@ -33,22 +37,27 @@ stubs/libc.asm, stubs/crt1.asm             the libc link stub and start-up code
 ## The target graph
 
 ```text
-Build
+Build (no RuntimeIdentifier: the RID outer build)
+└─ _AsmBuildEachRuntimeIdentifier ── _AsmCheckRuntimeIdentifiers
+     └─ Build with RuntimeIdentifier=<rid>, for each RID
+
+Build (an inner build, RuntimeIdentifier=<rid>)
 └─ CoreBuild
-   ├─ ResolveProjectReferences            (standard; builds referenced projects)
-   └─ CoreCompile = AsmAssemble ; AsmLink
-        AsmAssemble ── AsmPrepare ── _AsmResolveToolchain
-                                  └─ _AsmResolveProjectReferences ── ResolveProjectReferences
-        AsmLink ────── AsmAssemble, _AsmBuildLibcStub, _AsmBuildCrt
-Pack
-└─ _AsmPackNativeContent ── AsmPrepare, _AsmWriteConsumerProps
+   ├─ ResolveProjectReferences            (standard; builds referenced projects for this RID)
+   ├─ CoreCompile = AsmAssemble ; AsmLink
+   │    AsmAssemble ── AsmPrepare ── _AsmCheckRuntimeIdentifiers, _AsmResolveToolchain
+   │                              └─ _AsmResolveProjectReferences ── ResolveProjectReferences
+   │    AsmLink ────── AsmAssemble, _AsmBuildSystemLibraries, _AsmBuildCrt
+   └─ CopyFilesToOutputDirectory          (prints "<Project> -> <output>")
+Pack (per target framework)
+└─ _AsmPackNativeContent ── _AsmGetRidPackContent in each RID's inner build
 ```
 
 | Target | Inputs → outputs | Condition |
 |---|---|---|
-| `AsmAssemble` | `@(AsmSource)`, `@(_AsmDependency)`, the project file → `%(AsmSource.ObjectFile)`, batched per source | always |
-| `_AsmBuildLibcStub` | `stubs/libc.asm`, the project file → `obj/…/asm/stubs/libc.so.6` | `TargetFramework=libc` and a shared library or executable |
-| `_AsmBuildCrt` | `stubs/crt1.asm` → `obj/…/asm/stubs/crt1.o` | libc executable without `StartupObject` |
+| `AsmAssemble` | the sources selected for the RID, `@(_AsmDependency)`, the project file, the SDK's targets → `%(ObjectFile)`, batched per source | always |
+| `_AsmBuildSystemLibraries` | the SDK's symbol lists and stub sources, the project file → `obj/…/asm/stubs/`: the C library stand-in, `kernel32.lib` | a shared library or executable that uses the C library, and every Windows one |
+| `_AsmBuildCrt` | `stubs/crt1.asm`, `crt1-arm64.s` or `wincrt-<arch>` → `obj/…/asm/stubs/crt1.o` or `wincrt.obj` | a Linux or Windows libc executable without `StartupObject` |
 | `AsmLink` | `@(_AsmObject)`, `@(_AsmLinkInput)`, the `ExportsFile`, the project file → `$(TargetPath)`, `$(AsmStaticLibraryPath)` | `OutputType` is not `Objects` |
 
 **`AsmPrepare` computes, once:**
@@ -97,8 +106,13 @@ arguments into one.
 - **csproj → asm:**
   - The `.csproj` calls `GetTargetPathWithTargetPlatformMoniker`, which returns nothing,
     so no assembly reference is added and no `MSB3246` occurs.
+  - Its consumer targets (`buildTransitive/AsmFoundation.Sdk.targets`, through the implicit
+    `PackageReference` to the SDK) pick the RIDs to build: the reference's
+    `RuntimeIdentifiers` for a portable build, the best match by the RID graph for a
+    RID-specific one.
   - It calls `GetCopyToOutputDirectoryItems` and `GetCopyToPublishDirectoryItems`, which
-    return the `.so` with `TargetPath=lib<name>.so` and `PreserveNewest`.
+    return each RID's shared library with `PreserveNewest`: under `runtimes/<rid>/native/` in
+    a portable build (also added to `deps.json`), flat in a RID-specific one.
 - **Restore:** the `.asmproj`'s target frameworks stand for `netstandard1.0`
   (`freestanding`) and `netstandard2.0` (`libc`), which every `.csproj` may reference. A
   `.csproj` gets the `libc` build of a project that targets both. The asm project's own `PackageReference`s flow to the `.csproj` as transitive
@@ -181,4 +195,4 @@ leads to them, is skipped. A target hooked anywhere else that runs a tool needs
   items, as JSON.
 - **`dotnet build -bl`** writes `msbuild.binlog`. Open it in the MSBuild Structured Log
   Viewer to see every target, its skip reason (up to date) and every property.
-- **[`inspect_elf.py`](../ecosystem/claude-code.md#inspect_elfpy)** shows what came out.
+- **[`inspect_output.py`](../ecosystem/claude-code.md#inspect_outputpy)** shows what came out.

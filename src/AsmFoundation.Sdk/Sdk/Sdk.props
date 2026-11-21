@@ -1,4 +1,18 @@
-<Project>
+<!--
+  TreatAsLocalProperty: the .NET app's publish switches, given on the command line
+  (dotnet publish -p:PublishAot=true, -p:PublishTrimmed=true, -p:PublishSingleFile=true,
+  -p:PublishReadyToRun=true, the self-contained switch), are global properties, and NuGet's restore
+  evaluates every project of the graph with them, asm projects included, where no consumer
+  target can remove them first. Microsoft.NET.Sdk then judges them against the asm project's
+  netstandard framework and stops the restore: NETSDK1207 "Ahead-of-time compilation is not
+  supported for the target framework" for PublishAot, NETSDK1124 "Trimming assemblies requires
+  .NET Core 3.0 or higher" for PublishTrimmed (both measured with the .NET 11 SDK). Declared
+  here, on the first file of the SDK, the names stop being global for this project from this
+  point on: the PropertyGroup below sets them to false, and every later import (all of
+  Microsoft.NET.Sdk) sees false. Projects this one builds still inherit the original global
+  values; each asm project resets them the same way, and .NET projects keep them.
+-->
+<Project TreatAsLocalProperty="PublishAot;PublishTrimmed;PublishSingleFile;PublishReadyToRun;SelfContained">
   <!--
     AsmFoundation.Sdk - Sdk.props.
 
@@ -18,6 +32,16 @@
   <PropertyGroup>
     <!-- Lets packages and Directory.Build.* files detect an asm project. -->
     <UsingAsmFoundationSdk>true</UsingAsmFoundationSdk>
+
+    <!-- The .NET publish switches, made local by TreatAsLocalProperty above: an asm project
+         builds native code either way, and these would only make Microsoft.NET.Sdk check (and
+         reject) its netstandard framework. A project body that sets one again gets what it
+         asked for. -->
+    <PublishAot>false</PublishAot>
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishSingleFile>false</PublishSingleFile>
+    <PublishReadyToRun>false</PublishReadyToRun>
+    <SelfContained>false</SelfContained>
     <!-- Root of this SDK package (the folder that holds Sdk/, targets/ and stubs/). -->
     <AsmFoundationSdkDirectory>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..'))</AsmFoundationSdkDirectory>
 
@@ -59,11 +83,12 @@
     <SkipCopyBuildProduct>true</SkipCopyBuildProduct>
 
     <!--
-      Output folders follow .NET: bin/<Configuration>/<TargetFramework>/ and
-      obj/<Configuration>/<TargetFramework>/ (AppendTargetFrameworkToOutputPath and
-      AppendRuntimeIdentifierToOutputPath keep Microsoft.NET.Sdk's defaults). The target
-      framework now means something (freestanding or libc), and a multi-targeted project needs
-      one folder per framework anyway.
+      Output folders follow .NET: bin/<Configuration>/<TargetFramework>/<RuntimeIdentifier>/
+      and obj/<Configuration>/<TargetFramework>/<RuntimeIdentifier>/
+      (AppendTargetFrameworkToOutputPath and AppendRuntimeIdentifierToOutputPath keep
+      Microsoft.NET.Sdk's defaults). The target framework means something (freestanding or
+      libc), every output is built for one RID, and a project built for several needs one
+      folder per pair anyway, exactly like `dotnet build -r` of a multi-targeted .csproj.
     -->
 
     <!--

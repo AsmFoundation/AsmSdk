@@ -28,7 +28,7 @@ public sealed class RunTests(SdkUnderTest sdk)
     public void The_freestanding_executable_runs()
     {
         Assert.True(sdk.SamplesBuild.ExitCode == 0, sdk.SamplesBuild.Tail());
-        Expect(Repo.Sample("Hello.App", "bin", "Release", "freestanding", "hello-app"), 0, "6 * 7 = 42");
+        Expect(Repo.Sample("Hello.App", "bin", "Release", "freestanding", "linux-x64", "hello-app"), 0, "6 * 7 = 42");
     }
 
     /// <summary>The libc executable starts through the SDK's crt1 and sees its three arguments.</summary>
@@ -36,7 +36,7 @@ public sealed class RunTests(SdkUnderTest sdk)
     public void The_libc_executable_runs()
     {
         Assert.True(sdk.SamplesBuild.ExitCode == 0, sdk.SamplesBuild.Tail());
-        Expect(Repo.Sample("Hello.Libc", "bin", "Release", "libc", "hello-libc"), 0, "3 arguments");
+        Expect(Repo.Sample("Hello.Libc", "bin", "Release", "libc", "linux-x64", "hello-libc"), 0, "3 arguments");
     }
 
     /// <summary>The package consumer runs the code it linked from the Hello.Static package.</summary>
@@ -45,7 +45,7 @@ public sealed class RunTests(SdkUnderTest sdk)
     {
         CommandResult build = PackageTests.BuildConsumer(sdk);
         Assert.True(build.ExitCode == 0, build.Tail());
-        Expect(Repo.Sample("consumers", "Hello.Consumer", "bin", "Release", "freestanding", "hello-consumer"), 0, "Hello.Static package");
+        Expect(Repo.Sample("consumers", "Hello.Consumer", "bin", "Release", "freestanding", "linux-x64", "hello-consumer"), 0, "Hello.Static package");
     }
 
     /// <summary>The program whose StartupObject is entry_here starts there: it exits 42.</summary>
@@ -54,7 +54,7 @@ public sealed class RunTests(SdkUnderTest sdk)
     {
         CommandResult build = sdk.BuildTestProject("Entry");
         Assert.True(build.ExitCode == 0, build.Tail());
-        Expect(Repo.TestProjectPath("Entry", "bin", "Release", "freestanding", "entry"), 42, "");
+        Expect(Repo.TestProjectPath("Entry", "bin", "Release", "freestanding", "linux-x64", "entry"), 42, "");
     }
 
     /// <summary>The libc consumer loads the package's shared library from the NuGet cache and exits 11.</summary>
@@ -63,7 +63,7 @@ public sealed class RunTests(SdkUnderTest sdk)
     {
         CommandResult build = ProjectRuleTests.BuildLibcConsumer(sdk);
         Assert.True(build.ExitCode == 0, build.Tail());
-        Expect(Repo.TestProjectPath("LibcConsumer", "bin", "Release", "libc", "libc-consumer"), 11, "",
+        Expect(Repo.TestProjectPath("LibcConsumer", "bin", "Release", "libc", "linux-x64", "libc-consumer"), 11, "",
             "artifacts/test-nuget/test.libconly/1.0.0/runtimes/linux-x64/native");
     }
 

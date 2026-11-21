@@ -1,18 +1,22 @@
 # The toolchain
 
-AsmSdk builds with three tools: an assembler (NASM), an ELF linker (`ld.lld`) and an
-archiver (`llvm-ar`). A fourth, `llvm-readobj`, ships alongside them for inspecting what was
-built. All of them come from one NuGet package per build machine, so the .NET SDK is the
-only thing a build machine needs.
+AsmSdk builds with four tools: two assemblers, NASM for x64 code and LLVM's `llvm-mc` for
+GNU-syntax code (ARM64), a linker (`lld`, which links ELF, PE/COFF and Mach-O) and an archiver
+(`llvm-ar`). A fifth, `llvm-readobj`, ships alongside them for inspecting what was built. All
+of them come from one NuGet package per build machine, so the .NET SDK is the only thing a
+build machine needs.
 
 | Package | Build machine |
 |---|---|
 | [`AsmFoundation.Toolchain.win-x64`](https://www.nuget.org/packages/AsmFoundation.Toolchain.win-x64) | Windows x64 |
+| [`AsmFoundation.Toolchain.win-arm64`](https://www.nuget.org/packages/AsmFoundation.Toolchain.win-arm64) | Windows on Arm |
 | [`AsmFoundation.Toolchain.linux-x64`](https://www.nuget.org/packages/AsmFoundation.Toolchain.linux-x64) | Linux x64 (glibc) |
+| [`AsmFoundation.Toolchain.linux-arm64`](https://www.nuget.org/packages/AsmFoundation.Toolchain.linux-arm64) | Linux ARM64 (glibc) |
 | [`AsmFoundation.Toolchain.osx-arm64`](https://www.nuget.org/packages/AsmFoundation.Toolchain.osx-arm64) | macOS on Apple silicon |
 
-Every package produces the same output: Linux x86-64 ELF objects, libraries and executables.
-A team can mix Windows, Linux and macOS machines.
+Every package builds the same outputs, for all seven runtime identifiers: Windows, Linux
+(glibc and musl) and macOS, on x64 and ARM64. A team can mix Windows, Linux and macOS
+machines.
 
 ## How a build gets it
 
@@ -25,8 +29,9 @@ A team can mix Windows, Linux and macOS machines.
   NuGet extracts the package into the global packages folder: `~/.nuget/packages`, or
   `$NUGET_PACKAGES` when set.
 - **`AsmToolchainVersion` defaults to the version the SDK release was tested with:** `0.1.0`
-  for SDK 0.1.0 and for SDK 0.2.0, which kept the same tools. Toolchain packages carry their
-  own version, so a new SDK release does not download unchanged tools again.
+  for SDK 0.1.0 and 0.2.0, and `0.2.0` for SDK 0.3.0, which needs its `llvm-mc`. Toolchain
+  packages carry their own version, so a new SDK release does not download unchanged tools
+  again.
 - **A `PackageDownload` is not a dependency.** Packages built from your projects do not list
   the toolchain, and their consumers download their own.
 - **Before each build,** the SDK checks that the tools are present. If one is missing, the
@@ -36,14 +41,18 @@ A team can mix Windows, Linux and macOS machines.
 
 ## What is in it
 
-Toolchain 0.1.0:
+Toolchain 0.2.0:
 
 | Tool | Version | Used for |
 |---|---|---|
-| `nasm` | 3.02 | assembling every source (`nasm -f elf64`) |
-| `lld` | LLVM 23.1.5 | linking shared libraries and executables, run as `lld -flavor gnu` (`ld.lld`) |
-| `llvm-ar` | LLVM 23.1.5 | writing static libraries (`llvm-ar rcsD`) |
+| `nasm` | 3.02 | assembling `.asm` sources: `-f win64`, `elf64` or `macho64` |
+| `llvm-mc` | LLVM 23.1.5 | assembling `.s` sources (GNU syntax), for the target triple of each RID. New in 0.2.0 |
+| `lld` | LLVM 23.1.5 | linking: `lld -flavor gnu` (`ld.lld`) for Linux, `-flavor link` (`lld-link`) for Windows, `-flavor darwin` (`ld64.lld`) for macOS; and writing import libraries (`-flavor link -lib`) |
+| `llvm-ar` | LLVM 23.1.5 | writing static libraries (`llvm-ar rcsD`), in each OS's archive format |
 | `llvm-readobj` | LLVM 23.1.5 | not used by the build; inspecting outputs |
+
+Toolchain 0.1.0 had no `llvm-mc`: a `.s` source, or an ARM64 `libc` build, stops with
+`ASM0004` there.
 
 [The tools](tools.md) shows the exact command lines the build runs, and how to run each
 tool yourself.
@@ -55,22 +64,22 @@ tool yourself.
 - the operating system becomes `win-`, `osx-` or `linux-`, and the architecture is kept;
 - distribution identifiers such as `ubuntu.24.04-x64` become `linux-x64`.
 
-| Build machine | `AsmHostRid` | Package for toolchain 0.1.0 |
-|---|---|---|
-| Windows x64 | `win-x64` | yes |
-| Linux x64 (glibc) | `linux-x64` | yes |
-| macOS on Apple silicon | `osx-arm64` | yes |
-| Linux x64 with musl (Alpine) | `linux-x64` | the same package, but its LLVM tools are glibc programs |
-| macOS on Intel | `osx-x64` | no |
-| Linux arm64 | `linux-arm64` | no |
-| Windows arm64 | `win-arm64` | no |
+| Build machine | `AsmHostRid` | Toolchain 0.2.0 | Toolchain 0.1.0 |
+|---|---|---|---|
+| Windows x64 | `win-x64` | yes | yes |
+| Windows on Arm | `win-arm64` | yes: native LLVM tools; NASM's x64 build runs under Windows' x64 emulation | no |
+| Linux x64 (glibc) | `linux-x64` | yes | yes |
+| Linux ARM64 (glibc) | `linux-arm64` | yes: NASM built from source | no |
+| macOS on Apple silicon | `osx-arm64` | yes | yes |
+| Linux x64 with musl (Alpine) | `linux-musl-x64` | no: LLVM's Linux tools are glibc programs | no |
+| macOS on Intel | `osx-x64` | no: LLVM publishes no Intel Mac build | no |
 
-On a machine without a package, restore fails with
-`NU1101: Unable to find package AsmFoundation.Toolchain.<rid>`. You have three options:
+On a machine without a package, the build stops with `ASM0006`, before restore tries to
+download one. You have three options:
 
-- **Use the machine's own tools** with `AsmToolchain=System`.
+- **Use the machine's own tools** with `AsmToolchain=System`: Homebrew's or Alpine's `nasm`,
+  `llvm` and `lld` packages have all of them.
 - **Point `AsmToolchainDirectory`** at a folder of tools built for that machine.
-- **Emulate a supported machine:** set `AsmHostRid` to one the machine can run, such as
-  `win-x64` on Windows arm64.
+- **Emulate a supported machine:** set `AsmHostRid` to one the machine can run.
 
 All three are described in [Pinning, offline and system tools](system-and-offline.md).

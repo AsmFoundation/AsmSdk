@@ -54,7 +54,7 @@ internal static class Program
 /// managed baseline (the loop a C# developer writes with BitOperations.Crc32C).
 /// </summary>
 /// <remarks>
-/// The managed baseline uses the same SSE4.2 instruction as the Sse42 path, 8 bytes per step, so
+/// The managed baseline uses the same CRC instruction as the Hardware path, 8 bytes per step, so
 /// the two should be close: the 3-way path's advantage comes from running three independent chains,
 /// not from the instruction. That makes this a fair test of what assembly adds.
 /// </remarks>
@@ -100,13 +100,13 @@ public class Crc32CBenchmarks
 
     /// <summary>The 3-way path called directly.</summary>
     /// <returns>The checksum.</returns>
-    [Benchmark(Description = "asm sse42 3-way")]
-    public uint ThreeWay() => Crc32C.Append(0, _data, Crc32CPath.Sse42ThreeWay);
+    [Benchmark(Description = "asm hardware 3-way")]
+    public uint ThreeWay() => Crc32C.Append(0, _data, Crc32CPath.HardwareThreeWay);
 
-    /// <summary>The single-chain crc32 path.</summary>
+    /// <summary>The single-chain path (the CRC instruction, one dependency chain).</summary>
     /// <returns>The checksum.</returns>
-    [Benchmark(Description = "asm sse42 1 chain")]
-    public uint OneChain() => Crc32C.Append(0, _data, Crc32CPath.Sse42);
+    [Benchmark(Description = "asm hardware 1 chain")]
+    public uint OneChain() => Crc32C.Append(0, _data, Crc32CPath.Hardware);
 
     /// <summary>The table path.</summary>
     /// <returns>The checksum.</returns>
@@ -179,8 +179,8 @@ public class Crc32CBenchmarks
 /// </summary>
 /// <remarks>
 /// The benchmark declares its own imports of crc32c_append, so the wrapper needs no public API
-/// that exists only to be measured. libcrc32c.so is in this program's folder: the reference to
-/// Crc32C.Net brings it along.
+/// that exists only to be measured. libcrc32c is in this program's output, under runtimes/ for
+/// every platform: the reference to Crc32C.Net brings it along.
 /// </remarks>
 public unsafe partial class CallBenchmarks
 {

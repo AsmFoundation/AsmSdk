@@ -22,13 +22,13 @@ public sealed class ExampleTests(SdkUnderTest sdk)
     private static readonly Regex MsBuildWarning = new("warning [A-Z]+[0-9]+");
 
     /// <summary>libcrc32c.so, Crc32C's freestanding shared library.</summary>
-    private static readonly string Crc32CLibrary = Repo.Sample("Crc32C", "bin", "Release", "freestanding", "libcrc32c.so");
+    private static readonly string Crc32CLibrary = Repo.Sample("Crc32C", "bin", "Release", "freestanding", "linux-x64", "libcrc32c.so");
 
     /// <summary>WordCount's executable (libc).</summary>
-    private static readonly string WordCount = Repo.Sample("WordCount", "bin", "Release", "libc", "wordcount");
+    private static readonly string WordCount = Repo.Sample("WordCount", "bin", "Release", "libc", "linux-x64", "wordcount");
 
     /// <summary>HexDump's executable (freestanding).</summary>
-    private static readonly string HexDump = Repo.Sample("HexDump", "bin", "Release", "freestanding", "hexdump");
+    private static readonly string HexDump = Repo.Sample("HexDump", "bin", "Release", "freestanding", "linux-x64", "hexdump");
 
     /// <summary>Where the tool runs keep their input files: under the repository, so WSL sees them at the same relative path.</summary>
     private static readonly string RunFolder = Path.Combine(Repo.Artifacts, "test-run");
@@ -69,8 +69,8 @@ public sealed class ExampleTests(SdkUnderTest sdk)
         string[] exported = Regex.Matches(symbols, @"\b(crc32c_\w+)@@([\w.]+)").Select(m => m.Value)
             .Order(StringComparer.Ordinal).ToArray();
         Assert.Equal(
-            ["crc32c_append@@CRC32C_1.0", "crc32c_append_portable@@CRC32C_1.0", "crc32c_append_sse42@@CRC32C_1.0",
-             "crc32c_append_sse42_3way@@CRC32C_1.0", "crc32c_implementation@@CRC32C_1.0"],
+            ["crc32c_append@@CRC32C_1.0", "crc32c_append_hardware@@CRC32C_1.0", "crc32c_append_hardware_3way@@CRC32C_1.0",
+             "crc32c_append_portable@@CRC32C_1.0", "crc32c_implementation@@CRC32C_1.0"],
             exported);
         Assert.DoesNotContain("select", symbols);           // a local label of the dispatcher
         string dynamic = sdk.ReadElf(Crc32CLibrary, "-d");
@@ -98,8 +98,11 @@ public sealed class ExampleTests(SdkUnderTest sdk)
     // ---- Crc32C: the packages and the consumer ----
 
     /// <summary>
-    /// The asm package for .NET: the library under runtimes/linux-x64/native/ (where .NET finds a
-    /// RID-specific native asset), the public include file, and netstandard1.0's lib/ marker and props.
+    /// The asm package for .NET: each of the seven RIDs' libraries under runtimes/&lt;rid&gt;/native/
+    /// (where .NET finds a RID-specific native asset), the import libraries of the Windows DLLs
+    /// under native/ (for asm consumers), the public include file, netstandard1.0's lib/ marker
+    /// and props, and the .NET consumer targets that give a PackageReference BinariesCopyPath
+    /// (a shared library is packed, so they are there).
     /// </summary>
     [Fact]
     public void Crc32C_packs_its_library_where_dotnet_finds_it()
@@ -111,7 +114,12 @@ public sealed class ExampleTests(SdkUnderTest sdk)
             {
                 "Samples.Crc32C.nuspec", "include/crc32c.inc", "lib/netstandard1.0/_._",
                 "build/netstandard1.0/Samples.Crc32C.props", "buildTransitive/netstandard1.0/Samples.Crc32C.props",
-                "runtimes/linux-x64/native/libcrc32c.so",
+                "build/netstandard1.0/Samples.Crc32C.targets", "buildTransitive/netstandard1.0/Samples.Crc32C.targets",
+                "runtimes/win-x64/native/crc32c.dll", "runtimes/win-arm64/native/crc32c.dll",
+                "runtimes/linux-x64/native/libcrc32c.so", "runtimes/linux-arm64/native/libcrc32c.so",
+                "runtimes/linux-musl-x64/native/libcrc32c.so",
+                "runtimes/osx-x64/native/libcrc32c.dylib", "runtimes/osx-arm64/native/libcrc32c.dylib",
+                "native/win-x64/freestanding/crc32c.dll.lib", "native/win-arm64/freestanding/crc32c.dll.lib",
             },
             SdkUnderTest.PackageEntries(Path.Combine(Repo.Artifacts, "packages", "Samples.Crc32C.1.0.0.nupkg")));
     }
@@ -138,8 +146,8 @@ public sealed class ExampleTests(SdkUnderTest sdk)
     }
 
     /// <summary>
-    /// A .NET program that references only Samples.Crc32C.Net by version receives libcrc32c.so
-    /// through the dependency, in its output's runtimes/linux-x64/native/.
+    /// A .NET program that references only Samples.Crc32C.Net by version receives libcrc32c
+    /// through the dependency, every platform's build in its output's runtimes/&lt;rid&gt;/native/.
     /// </summary>
     [Fact]
     public void A_dotnet_program_gets_the_asm_library_through_the_wrapper_package()
@@ -148,35 +156,47 @@ public sealed class ExampleTests(SdkUnderTest sdk)
         Assert.True(build.ExitCode == 0, build.Tail());
         Assert.True(File.Exists(Repo.Sample("consumers", "Crc32C.App", "bin", "Release", "net10.0",
             "runtimes", "linux-x64", "native", "libcrc32c.so")));
+        Assert.True(File.Exists(Repo.Sample("consumers", "Crc32C.App", "bin", "Release", "net10.0",
+            "runtimes", "win-arm64", "native", "crc32c.dll")));
     }
 
     // ---- Crc32C: running it ----
 
-    /// <summary>The library's own xunit tests (Crc32C.Tests) pass on Linux: every path against a C# reference.</summary>
+    /// <summary>
+    /// The library's own xunit tests (Crc32C.Tests) pass on this machine, whichever of the seven
+    /// platforms it is: every path against a C# reference, with this platform's build of the
+    /// library (the portable output carries all seven).
+    /// </summary>
     [Fact]
     public void Crc32C_unit_tests_pass()
     {
         RequireSamples();
-        CommandResult run = LinuxRunner.RunDotnetProgram(Repo.Sample("Crc32C.Tests", "bin", "Release", "net10.0"), "Crc32C.Tests.dll");
+        CommandResult run = Command.Run("dotnet", [Repo.Sample("Crc32C.Tests", "bin", "Release", "net10.0", "Crc32C.Tests.dll")], Repo.Root);
         Assert.True(run.ExitCode == 0 && run.StdOut.Contains("Failed: 0", StringComparison.Ordinal), $"exit {run.ExitCode}: {run.Output}");
     }
 
-    /// <summary>The benchmark's self-check: every path agrees with BitOperations.Crc32C at every benchmark size.</summary>
+    /// <summary>
+    /// The benchmark's self-check, on this machine: every path agrees with BitOperations.Crc32C at
+    /// every benchmark size.
+    /// </summary>
     [Fact]
     public void Crc32C_benchmark_check_passes()
     {
         RequireSamples();
-        CommandResult run = LinuxRunner.RunDotnetProgram(Repo.Sample("Crc32C.Bench", "bin", "Release", "net10.0"), "Crc32C.Bench.dll", "--check");
+        CommandResult run = Command.Run("dotnet", [Repo.Sample("Crc32C.Bench", "bin", "Release", "net10.0", "Crc32C.Bench.dll"), "--check"], Repo.Root);
         Assert.True(run.ExitCode == 0 && run.StdOut.StartsWith("OK:", StringComparison.Ordinal), $"exit {run.ExitCode}: {run.Output}");
     }
 
-    /// <summary>The NuGet consumer runs: the check value, computed in assembly that came from the packages.</summary>
+    /// <summary>
+    /// The NuGet consumer runs on this machine: the check value, computed in assembly that came
+    /// from the packages (NuGet's runtimes/ resolution picked this platform's build).
+    /// </summary>
     [Fact]
     public void Crc32C_App_computes_the_check_value_from_the_packages()
     {
         CommandResult build = BuildCrc32CApp(sdk);
         Assert.True(build.ExitCode == 0, build.Tail());
-        CommandResult run = LinuxRunner.RunDotnetProgram(Repo.Sample("consumers", "Crc32C.App", "bin", "Release", "net10.0"), "crc32c-app.dll");
+        CommandResult run = Command.Run("dotnet", [Repo.Sample("consumers", "Crc32C.App", "bin", "Release", "net10.0", "crc32c-app.dll")], Repo.Root);
         Assert.True(run.ExitCode == 0 && run.StdOut.Contains("crc32c(\"123456789\") = e3069283", StringComparison.Ordinal),
             $"exit {run.ExitCode}: {run.Output}");
     }

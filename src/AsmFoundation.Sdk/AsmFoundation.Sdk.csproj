@@ -15,10 +15,12 @@
     <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-    <!-- CS2008: nothing to compile (the package is MSBuild files and stubs). -->
-    <NoWarn>$(NoWarn);NU5128;CS2008</NoWarn>
-    <Description>Enterprise-grade project, dependency and build management for x86-64 assembly, on MSBuild and NuGet. The SDK behind .asmproj projects: NASM sources built into Linux shared libraries, static libraries and executables with dotnet build, consumed through PackageReference and ProjectReference, and packed with dotnet pack. Ships with a bundled NASM + LLVM toolchain, so no assembler or linker needs to be installed.</Description>
-    <PackageTags>assembly;nasm;asm;asmproj;msbuild;sdk;native;elf;x86-64;linux</PackageTags>
+    <!-- CS2008: nothing to compile (the package is MSBuild files and stubs).
+         NU5100: the tasks assembly sits under tasks/, not lib/, on purpose: MSBuild loads it
+         with UsingTask, and no project that uses the SDK may reference it. -->
+    <NoWarn>$(NoWarn);NU5128;CS2008;NU5100</NoWarn>
+    <Description>Enterprise-grade project, dependency and build management for assembly, on MSBuild and NuGet. The SDK behind .asmproj projects: x64 (NASM) and ARM64 (GNU syntax) assembly built into shared libraries, static libraries and programs for Windows, Linux and macOS with dotnet build, consumed through PackageReference and ProjectReference, and packed with dotnet pack. A C# project that references an .asmproj gets the binary of its platform by .NET's runtime identifier rules. Ships with a bundled NASM + LLVM toolchain, so no assembler or linker needs to be installed.</Description>
+    <PackageTags>assembly;nasm;asm;asmproj;msbuild;sdk;native;x86-64;x64;arm64;aarch64;windows;linux;macos;cross-platform</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
@@ -38,10 +40,32 @@
   <ItemGroup>
     <None Include="Sdk/Sdk.props;Sdk/Sdk.targets" Pack="true" PackagePath="Sdk/" />
     <None Include="targets/*.targets" Pack="true" PackagePath="targets/" />
-    <None Include="stubs/*.asm" Pack="true" PackagePath="stubs/" />
+    <!-- stubs/: the startup code and support sources (.asm for x64, .s for ARM64) and the symbol
+         lists the C library stand-ins are written from (*.symbols). -->
+    <None Include="stubs/*.asm;stubs/*.s;stubs/*.symbols" Pack="true" PackagePath="stubs/" />
+    <!-- include/: asmsdk.inc and its GNU-syntax counterpart; every asm project searches it last. -->
+    <None Include="include/*.inc" Pack="true" PackagePath="include/" />
+    <None Include="buildTransitive/*.targets" Pack="true" PackagePath="buildTransitive/" />
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Include="../../LICENSE" Pack="true" PackagePath="/" />
   </ItemGroup>
+
+  <!--
+    The SDK's tasks (AsmFoundation.Sdk.Tasks): built first through the reference, which adds no
+    assembly reference (nothing here is compiled), then packed under tasks/netstandard2.0/,
+    where the targets' UsingTask looks for them.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="../AsmFoundation.Sdk.Tasks/AsmFoundation.Sdk.Tasks.csproj" ReferenceOutputAssembly="false" Private="false" />
+  </ItemGroup>
+  <Target Name="_PackSdkTasks" BeforeTargets="_GetPackageFiles;GenerateNuspec">
+    <MSBuild Projects="../AsmFoundation.Sdk.Tasks/AsmFoundation.Sdk.Tasks.csproj" Targets="GetTargetPath" Properties="Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs" ItemName="_AsmSdkTasksAssembly" />
+    </MSBuild>
+    <ItemGroup>
+      <None Include="@(_AsmSdkTasksAssembly)" Pack="true" PackagePath="tasks/netstandard2.0/" />
+    </ItemGroup>
+  </Target>
 
   <!--
     WriteVersionProps: generates Sdk/AsmFoundation.Sdk.Version.props for the package. Sdk.targets

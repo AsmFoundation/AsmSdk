@@ -3,6 +3,7 @@
        The samples have their own solution (samples/Samples.slnx): they consume the packed SDK
        like a user would, and the test project builds them that way. -->
   <Project Path="src/AsmFoundation.Sdk/AsmFoundation.Sdk.csproj" />
+  <Project Path="src/AsmFoundation.Sdk.Tasks/AsmFoundation.Sdk.Tasks.csproj" />
   <Project Path="toolchain/AsmFoundation.Toolchain.csproj" />
   <Folder Name="/tests/">
     <Project Path="tests/AsmSdk.Tests/AsmSdk.Tests.csproj" />

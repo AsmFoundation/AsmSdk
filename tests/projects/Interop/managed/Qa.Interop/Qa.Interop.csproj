@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The interop tour (InteropTests), part 4 of 5: the C# side of every interop technique against the asm libraries (QaMath for all seven
+    RIDs, QaLibc for the x64 ones). A class library: the app and the tests reach the native
+    files through it (a transitive asm reference), and it packs as AsmQa.Interop, which depends on
+    the asm packages.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- CA2255: a module initializer in a library is exactly what registering a resolver needs. -->
+    <NoWarn>$(NoWarn);CA2255</NoWarn>
+    <PackageId>AsmQa.Interop</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>AsmQa</Authors>
+    <Description>Interop tour: C# wrappers over the AsmQa assembly libraries.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../native/QaMath/QaMath.asmproj" />
+    <ProjectReference Include="../../native/QaLibc/QaLibc.asmproj" />
+  </ItemGroup>
+</Project>

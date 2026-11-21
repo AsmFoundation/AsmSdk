@@ -1,0 +1,11 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!-- Expected to FAIL with ASM0024: answer.asm is an AsmSource item twice, from the default
+       **/*.asm glob and from the explicit item below (.NET reports NETSDK1022 for the same
+       mistake with Compile items). -->
+  <PropertyGroup>
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+  <ItemGroup>
+    <AsmSource Include="answer.asm" />
+  </ItemGroup>
+</Project>

@@ -1,14 +1,21 @@
 # AsmFoundation.Toolchain
 
-The assembler and linker that [AsmFoundation.Sdk](https://www.nuget.org/packages/AsmFoundation.Sdk)
+The assemblers and linkers that [AsmFoundation.Sdk](https://www.nuget.org/packages/AsmFoundation.Sdk)
 runs to build `.asmproj` projects. There is one package per build machine:
 
 - `AsmFoundation.Toolchain.win-x64`
+- `AsmFoundation.Toolchain.win-arm64` (from 0.2.0)
 - `AsmFoundation.Toolchain.linux-x64`
+- `AsmFoundation.Toolchain.linux-arm64` (from 0.2.0)
 - `AsmFoundation.Toolchain.osx-arm64`
 
-All of them produce the same output: Linux x86-64 ELF objects, libraries and
-executables.
+All of them produce the same output: objects, libraries and executables for every
+runtime identifier the SDK builds (Windows, Linux with glibc or musl, and macOS, on x64
+and ARM64). The package's RID only says where the tools themselves run.
+
+There is no `osx-x64` package: LLVM publishes no release binaries for Intel Macs. On
+such a machine, build with `<AsmToolchain>System</AsmToolchain>` and Homebrew's `nasm`
+and `llvm`.
 
 You do not reference this package yourself. The SDK downloads the one that
 matches your machine during restore.
@@ -19,8 +26,9 @@ All of the tools are in `tools/`:
 
 | Tool | From | License |
 |---|---|---|
-| `nasm` | [NASM](https://www.nasm.us) (official Windows binary; built from the official source on Linux, statically, and on macOS, natively for arm64) | BSD-2-Clause (`LICENSE.nasm.txt`) |
-| `lld` (run as `lld -flavor gnu`, i.e. `ld.lld`) | [LLVM](https://llvm.org) official release | Apache-2.0 WITH LLVM-exception (`LICENSE.llvm.txt`) |
+| `nasm` | [NASM](https://www.nasm.us) (official Windows x64 binary, which Windows on Arm runs under its x64 emulation; built from the official source on Linux, statically, and on macOS, natively for arm64) | BSD-2-Clause (`LICENSE.nasm.txt`) |
+| `llvm-mc` (from 0.2.0; assembles the GNU-syntax `.s` sources, the language of the ARM64 RIDs) | [LLVM](https://llvm.org) official release | Apache-2.0 WITH LLVM-exception (`LICENSE.llvm.txt`) |
+| `lld` (run as `lld -flavor gnu`, `link` or `darwin`: `ld.lld` for Linux, `lld-link` for Windows, `ld64.lld` for macOS) | LLVM official release | Apache-2.0 WITH LLVM-exception |
 | `llvm-ar` | LLVM official release | Apache-2.0 WITH LLVM-exception |
 | `llvm-readobj` (also answers as `llvm-readelf`) | LLVM official release | Apache-2.0 WITH LLVM-exception |
 

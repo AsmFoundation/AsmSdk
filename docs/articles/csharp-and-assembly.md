@@ -14,9 +14,10 @@ copied the `.so` next to your program by hand, and repackaged it for NuGet in a 
 up each time. Your IDE showed none of it.
 
 AsmSdk removes all of that. An assembly project is a project file, `.asmproj`, built by
-`dotnet build` like a `.csproj`. A C# project references it with a `ProjectReference`. Both
-ship as NuGet packages. Rider and Visual Studio show its files. The assembler and linker come
-from NuGet too, so a fresh machine needs only the .NET SDK.
+`dotnet build` like a `.csproj`, for Windows, Linux and macOS, on x64 and ARM64, from any of
+them. A C# project references it with a `ProjectReference`, and gets the build of the platform
+it runs on. Both ship as NuGet packages. Rider and Visual Studio show its files. The
+assemblers and linkers come from NuGet too, so a fresh machine needs only the .NET SDK.
 
 This article walks through a real example: CRC-32C, the checksum of iSCSI, ext4 and gRPC,
 written in assembly, called from C#, tested with xunit, measured with BenchmarkDotNet and shipped
@@ -28,7 +29,7 @@ A shared library in assembly takes three files. `global.json` names the SDK, as 
 MSBuild SDK:
 
 ```json
-{ "msbuild-sdks": { "AsmFoundation.Sdk": "0.2.0" } }
+{ "msbuild-sdks": { "AsmFoundation.Sdk": "0.3.0" } }
 ```
 
 The project file:
@@ -37,14 +38,19 @@ The project file:
 <Project Sdk="AsmFoundation.Sdk">
   <PropertyGroup>
     <AssemblyName>crc32c</AssemblyName>
+    <RuntimeIdentifiers>win-x64;linux-x64;osx-x64</RuntimeIdentifiers>
   </PropertyGroup>
 </Project>
 ```
 
-And the code, in NASM's Intel syntax, in a `.asm` file next to the project. `dotnet build` turns
-it into `bin/Debug/freestanding/libcrc32c.so`. "Freestanding" is the target framework: the library
-needs no C library, so it loads into any Linux x64 process. Its sibling, `libc`, builds code that
-calls glibc.
+And the code, in NASM's Intel syntax, in a `.asm` file next to the project. The runtime
+identifiers are .NET's names for platforms, and `dotnet build` builds each one:
+`bin/Debug/freestanding/win-x64/crc32c.dll`, `linux-x64/libcrc32c.so`,
+`osx-x64/libcrc32c.dylib`. One source serves the three OSes: the SDK's `asmsdk.inc` names each
+OS's argument registers (`ARG1` is `rcx` on Windows and `rdi` elsewhere) and exports a function
+the way each object format wants. A `.s` file next to it, in GNU syntax, adds the ARM64
+platforms. "Freestanding" is the target framework: the library needs no C library, so it
+loads into any process. Its sibling, `libc`, builds code that calls the platform's C library.
 
 Calling it from C# is the part that used to hurt, and now isn't:
 
@@ -59,8 +65,11 @@ Calling it from C# is the part that used to hurt, and now isn't:
 private static partial uint Append(uint crc, byte* data, nuint length);
 ```
 
-The reference builds the assembly project first and copies `libcrc32c.so` next to your
-assembly. `[LibraryImport]` generates the call at compile time. That's all the plumbing there is.
+The reference builds the assembly project first, for each of its platforms, and puts each
+build under `runtimes/<rid>/native/` next to your assembly, listed in `deps.json`: the .NET host
+loads the one for the machine it runs on, as it does for any NuGet package with native code.
+`[LibraryImport]` generates the call at compile time, and `"crc32c"` finds `crc32c.dll`,
+`libcrc32c.so` or `libcrc32c.dylib`. That's all the plumbing there is.
 
 ## Why write this one in assembly?
 
@@ -85,10 +94,10 @@ checksums with a carry-less multiply (PCLMULQDQ).
 
 ```nasm
 .lanes:
-    crc32   rax, qword [rsi]            ; lane 0
-    crc32   r8,  qword [rsi + 512]      ; lane 1
-    crc32   r9,  qword [rsi + 1024]     ; lane 2
-    add     rsi, 8
+    crc32   rax, qword [r10]            ; lane 0
+    crc32   r8,  qword [r10 + 512]      ; lane 1
+    crc32   r9,  qword [r10 + 1024]     ; lane 2
+    add     r10, 8
     dec     ecx
     jnz     .lanes
 ```
@@ -109,7 +118,9 @@ file, so none are copied from anywhere:
 
 The library also keeps a table-driven path for CPUs without SSE4.2 and a single-chain path for
 CPUs without PCLMULQDQ. Its first call asks the CPU, with `cpuid`, which of the three it can run,
-and every later call jumps straight to that one.
+and every later call jumps straight to that one. The ARM64 build has the same three paths, with
+`crc32cx` and PMULL, and asks each OS in its own way: the ID registers on Linux,
+`IsProcessorFeaturePresent` on Windows; every Apple silicon Mac has both.
 
 ## The numbers
 
@@ -160,27 +171,29 @@ public void Every_length_matches_the_reference(Crc32CPath path)
 Every length from 0 to 5,000 bytes crosses both block sizes of the 3-way kernel several times,
 and every remainder after them. Other tests cover a megabyte, unaligned data, continuing a
 checksum, and 64 threads at once. To check that the tests can actually fail, the library was
-built once with a wrong exponent in one merge constant: 6 of the 21 tests failed. The library is a
-Linux ELF file, so the tests run on Linux. On Windows, the built test project runs as-is in the
-.NET runtime container.
+built once with a wrong exponent in one merge constant: 6 of the 21 tests failed. The built test
+project carries every platform's library, so the same tests run on Windows, Linux and macOS, x64
+and ARM64, each against its own build: AsmSdk's CI runs them on five machines.
 
 ## Ship it through NuGet
 
-`dotnet pack` on the assembly project produces a package with the library under
-`runtimes/linux-x64/native/`, where .NET looks for native files. Packing the C# wrapper turns its
+`dotnet pack` on the assembly project produces one package with every platform's library under
+`runtimes/<rid>/native/`, where .NET looks for native files. Packing the C# wrapper turns its
 `ProjectReference` into a package dependency. A user writes one line:
 
 ```xml
 <PackageReference Include="Samples.Crc32C.Net" Version="1.0.0" />
 ```
 
-They get the wrapper, NuGet brings the native package along, and the build copies
-`libcrc32c.so` into their output. Nothing in their project mentions assembly.
+They get the wrapper, NuGet brings the native package along, and their program runs on any of
+the platforms the library was built for. Nothing in their project mentions assembly.
 
 ## What you give up
 
-- **Linux x86-64 only.** AsmSdk builds Linux ELF files. You can build on Windows, Linux or macOS,
-  but the outputs run on Linux: on Windows, use WSL or a container.
+- **Two languages for two CPUs.** x64 code is NASM and ARM64 code is GNU syntax, so supporting
+  ARM64 means writing the routine twice. The OSes cost much less: one x64 source serves Windows,
+  Linux and macOS through the SDK's macros, and ARM64's calling convention is the same on all
+  three.
 - **You own the details** a compiler handled: the calling convention, stack alignment,
   callee-saved registers, which CPU features you may use. AsmSdk's documentation lists them, and
   its examples show each one, but nothing checks them for you except your tests.

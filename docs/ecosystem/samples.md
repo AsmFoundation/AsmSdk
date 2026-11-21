@@ -1,8 +1,10 @@
 # Samples
 
 The [`samples/`](https://github.com/AsmFoundation/AsmSdk/tree/main/samples) folder of the
-AsmSdk repository covers every kind of project. CI builds and checks all of them on Windows,
-Linux and macOS.
+AsmSdk repository covers every kind of project. CI builds and checks all of them on five
+build machines: Windows x64 and Windows on Arm, Linux x64 and ARM64, and Apple silicon. Crc32C
+is built for all seven RIDs. The `Hello.*` samples, WordCount and HexDump are Linux x64 code
+(Linux system calls, or glibc), and say so with `<RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>`.
 
 **The small `Hello.*` samples** show one kind of project each, in a few lines:
 
@@ -21,7 +23,7 @@ Linux and macOS.
 
 | Sample | Shows |
 |---|---|
-| [`Crc32C`](../examples/crc32c.md) | CRC-32C as a freestanding shared library: `ExportsFile`, `-z defs`, run-time CPU dispatch, constants computed by NASM, a 3-way SSE4.2 + PCLMULQDQ kernel |
+| [`Crc32C`](../examples/crc32c.md) | CRC-32C as a freestanding shared library for seven RIDs: x64 in NASM through `asmsdk.inc`, ARM64 in GNU syntax, `ExportsFile`, run-time CPU dispatch on each OS, constants computed by the assemblers, a 3-way kernel (SSE4.2 + PCLMULQDQ, or CRC32 + PMULL) |
 | [`Crc32C.Net`](../examples/crc32c.md#calling-it-from-c), [`Crc32C.Tests`](../examples/testing-and-benchmarks.md), [`Crc32C.Bench`](../examples/testing-and-benchmarks.md) | its C# API (`[LibraryImport]`, `SuppressGCTransition`), its xunit tests, its BenchmarkDotNet benchmark |
 | [`consumers/Crc32C.App`](../examples/nuget-for-dotnet.md) | a .NET program that uses the library through two NuGet packages, by version |
 | [`WordCount`](../examples/wordcount.md) | `wc` on glibc: PLT calls, a libc data object through the GOT, `AsmLibcSymbol`, SSE2 counting |
@@ -34,11 +36,16 @@ because the packages they use must be packed first.
 
 [`tests/AsmSdk.Tests`](https://github.com/AsmFoundation/AsmSdk/tree/main/tests/AsmSdk.Tests),
 an xunit v3 project, packs the SDK and the toolchain into a local feed, then builds the
-samples against it, with a fresh `NUGET_PACKAGES`. Each of its 62 tests checks one
+samples against it, with a fresh `NUGET_PACKAGES`. Each of its 119 tests checks one
 expectation:
 
-- **the ELF properties of every output:** type, SONAME, `DT_NEEDED`, interpreter, exports
-  and archive members;
+- **the seven RIDs** (`CrossPlatformTests`): one project's object format, exports and
+  qualified sources per RID; the C library of each OS; programs that export what their
+  `ExportsFile` lists; the .NET consumer, portable and per RID; the package layout; the RID
+  errors; the image checks (`ASM0080`, `ASM0081`). Each machine also runs its own platform's
+  build, and the x64 one under emulation on Windows on Arm and Apple silicon;
+- **the ELF properties of every Linux output:** type, SONAME, `DT_NEEDED`, interpreter,
+  exports and archive members;
 - **that the executables run,** and that the C# program's calls into both libraries return
   the right values;
 - **incremental builds:** a rebuild without changes runs no tool, and an include-file
@@ -55,13 +62,14 @@ expectation:
   tests and NuGet consumer; WordCount's imports, counts and errors; HexDump's size, output and
   errors (see [Examples](../examples/index.md#how-they-are-checked)).
 
-On Windows, the tests run the Linux outputs through WSL and the .NET programs in Docker, when
-they are available; where neither is, those tests are skipped with the reason
-(`ASMSDK_TEST_RUN` and `ASMSDK_TEST_DOTNET_RUN` choose explicitly). Only the .NET SDK is
-needed:
+The .NET programs (Crc32C's tests, its benchmark's check, the NuGet consumer) run natively on
+every machine: their portable output carries every RID's library. The Linux x64 programs run
+natively on Linux x64, and elsewhere through WSL or Docker when available. Where neither is,
+those tests are skipped with the reason (`ASMSDK_TEST_RUN` and `ASMSDK_TEST_DOTNET_RUN`
+choose explicitly). Only the .NET SDK is needed:
 
 ```sh
-dotnet run toolchain/fetch.cs -- --rid win-x64                 # or linux-x64 / osx-arm64: stages the tools
+dotnet run toolchain/fetch.cs -- --rid win-x64                 # or win-arm64, linux-x64, linux-arm64, osx-arm64: stages the tools
 dotnet test --project tests/AsmSdk.Tests/AsmSdk.Tests.csproj   # packs, builds the samples, checks and runs them
 ```
 
@@ -72,4 +80,6 @@ The block A on the home page is labelled with machine code from these functions:
 - **the mint blocks** are `hello_add` from `Hello.Library`: `lea eax, [rdi + rsi]` assembles
   to `8D 04 37`, and `ret` to `C3`;
 - **the teal blocks** are the first bytes of `sum_i32`, the freestanding template in
-  [Writing NASM for AsmSdk](../guide/writing-nasm.md#templates).
+  [Writing NASM for AsmSdk](../guide/writing-nasm.md#templates), as assembled for Linux and
+  macOS: `xor eax, eax` (`31 C0`), `test rsi, rsi` (`48 85 F6`), `jle` (`7E 0F`), then
+  `movsxd r8, …` (`4C 63 …`).

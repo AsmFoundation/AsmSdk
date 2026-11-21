@@ -1,0 +1,16 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    Expected to FAIL with ASM0005 (DiagnosticsTests) when built for the Linux RID of the OTHER
+    architecture than the build machine's: AsmToolchain=System links with the machine's GNU ld,
+    which links ELF files of its own machine type only (an x64 Ubuntu's ld has no AArch64
+    emulation: "file in wrong format", measured with binutils 2.42). The SDK stops before any
+    tool runs, naming ld.lld or a cross ld, so neither NASM nor llvm-mc needs to be installed
+    for the test. A shared library, because only a linked output is checked: a static library
+    never runs ld.
+  -->
+  <PropertyGroup>
+    <AssemblyName>systemld</AssemblyName>
+    <RuntimeIdentifiers>linux-x64;linux-arm64</RuntimeIdentifiers>
+    <AsmToolchain>System</AsmToolchain>
+  </PropertyGroup>
+</Project>

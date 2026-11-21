@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A .NET program that reaches Everywhere.asmproj only through NetLibrary, a RID-agnostic class
+    library (DotnetAppTests). The .NET SDK still adds Everywhere (and EverywhereStatic) to its
+    ProjectReferences, transitively, and the consumer targets build Everywhere for this
+    program's RID. Built and published every way .NET offers: portable, -r <rid>, -o <folder>,
+    single file (the native library beside the bundle, or inside it with
+    IncludeNativeLibrariesForSelfExtract), with publish switches on the command line.
+    It prints the same line as NetConsumer: "<RID> 42 <ew_platform()> <ew_os()>".
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- A test program: tests/projects/Directory.Build.props sends packages to the local feed,
+         which this one never is. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../NetLibrary/NetLibrary.csproj" />
+  </ItemGroup>
+</Project>

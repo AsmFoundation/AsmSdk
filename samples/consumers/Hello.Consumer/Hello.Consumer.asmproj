@@ -4,9 +4,11 @@
     be shared: the package's build/netstandard1.0/Hello.Static.props (freestanding) adds its
     include/ folder and its native/linux-x64/freestanding/libhellostatic.a to this project.
     Kept out of Samples.slnx because the package must be packed (the end-to-end tests in
-    tests/AsmSdk.Tests do it) before this project can restore. Builds bin/<Configuration>/freestanding/hello-consumer.
+    tests/AsmSdk.Tests do it) before this project can restore. Builds bin/<Configuration>/freestanding/linux-x64/hello-consumer.
   -->
   <PropertyGroup>
+    <!-- Linux x64 only: the code makes Linux system calls (or links glibc). -->
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
     <OutputType>Exe</OutputType>
     <AssemblyName>hello-consumer</AssemblyName>
   </PropertyGroup>

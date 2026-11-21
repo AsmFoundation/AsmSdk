@@ -1,7 +1,7 @@
 <Project Sdk="AsmFoundation.Sdk">
   <!--
     WordCount: a command-line tool in assembly on glibc, like wc: wordcount [-lwc] [file ...].
-    Builds bin/<Configuration>/libc/wordcount, a PIE with DT_NEEDED libc.so.6.
+    Builds bin/<Configuration>/libc/linux-x64/wordcount, a PIE with DT_NEEDED libc.so.6.
 
     What it shows:
       - an assembly program that uses libc the ordinary way: open, read, close and printf
@@ -12,6 +12,8 @@
       - SSE2 counting, 16 bytes per step (count.asm), and a CPU check before using POPCNT.
   -->
   <PropertyGroup>
+    <!-- Linux x64 only: the code makes Linux system calls (or links glibc). -->
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
     <TargetFramework>libc</TargetFramework>
     <OutputType>Exe</OutputType>
     <AssemblyName>wordcount</AssemblyName>

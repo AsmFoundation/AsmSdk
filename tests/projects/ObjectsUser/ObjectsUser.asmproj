@@ -1,0 +1,14 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A shared library that links the object files of ObjectsLib (OutputType=Objects) for each of
+    its x64 RIDs (CrossPlatformTests): user_seven() returns ObjectsLib's obj_seven(), which stays
+    unexported.
+  -->
+  <PropertyGroup>
+    <AssemblyName>objectsuser</AssemblyName>
+    <RuntimeIdentifiers>win-x64;linux-x64;osx-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../ObjectsLib/ObjectsLib.asmproj" />
+  </ItemGroup>
+</Project>

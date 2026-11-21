@@ -3,9 +3,11 @@
     A freestanding executable (static ELF, entry _start, no libc): with no TargetFramework,
     an .asmproj targets freestanding. It links Hello.Static through a ProjectReference: the
     reference adds Hello.Static's include/ folder to the include path and libhellostatic.a to
-    the link. Builds bin/<Configuration>/freestanding/hello-app.
+    the link. Builds bin/<Configuration>/freestanding/linux-x64/hello-app.
   -->
   <PropertyGroup>
+    <!-- Linux x64 only: the code makes Linux system calls (or links glibc). -->
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
     <OutputType>Exe</OutputType>
     <AssemblyName>hello-app</AssemblyName>
   </PropertyGroup>

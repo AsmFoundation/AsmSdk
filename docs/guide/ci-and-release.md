@@ -1,8 +1,8 @@
 # CI and releases
 
-The goal is to build on every OS your developers use, run the outputs on Linux, and
-release packages from a tag without a stored secret. The workflow below follows the AsmSdk
-repository's own CI and release workflows.
+The goal is to build on every OS your developers use, run each platform's outputs on a
+machine of that platform, and release packages from a tag without a stored secret. The
+workflow below follows the AsmSdk repository's own CI and release workflows.
 
 
 ## A complete GitHub Actions workflow
@@ -20,7 +20,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - { os: windows-2025,     rid: win-x64 }
+          - { os: windows-11-arm,   rid: win-arm64 }
+          - { os: ubuntu-24.04,     rid: linux-x64 }
+          - { os: ubuntu-24.04-arm, rid: linux-arm64 }
+          - { os: macos-15,         rid: osx-arm64 }
     runs-on: ${{ matrix.os }}
     env:
       DOTNET_NOLOGO: "1"
@@ -35,14 +40,14 @@ jobs:
           path: .nuget/packages              # holds the SDK and the toolchain package
           key: nuget-${{ runner.os }}-${{ hashFiles('global.json', '**/*.asmproj', '**/*.csproj', '**/Directory.*.props') }}
       - run: dotnet build App.slnx -c Release -warnaserror
+      - run: dotnet test App.slnx -c Release --no-build    # each runner calls its own platform's build
+      - name: Run this platform's program
+        shell: bash
+        run: ./HelloApp/bin/Release/libc/${{ matrix.rid }}/hello-app${{ runner.os == 'Windows' && '.exe' || '' }}
       - run: dotnet pack App.slnx -c Release -o artifacts/packages --no-build
-      - name: Run the outputs (Linux only)
-        if: runner.os == 'Linux'
-        run: |
-          ./Hello.App/bin/Release/freestanding/hello-app
-          dotnet test App.slnx -c Release --no-build
+        if: matrix.rid == 'linux-x64'
       - uses: actions/upload-artifact@v4
-        if: runner.os == 'Linux'
+        if: matrix.rid == 'linux-x64'
         with:
           name: packages
           path: artifacts/packages/*.nupkg
@@ -50,8 +55,16 @@ jobs:
 
 ## What each part is for
 
-- **The matrix:** every OS builds, because developers use every OS and the bundled
-  toolchain differs per host. Only Linux x64 can run the outputs.
+- **The matrix:** one runner per platform that has one. Every runner builds all the RIDs,
+  since any build machine does, and the bundled toolchain differs per host. Each runner then
+  runs its own platform's outputs:
+  - `osx-x64` runs on `macos-15` too, under Rosetta 2, and `win-x64` on `windows-11-arm`,
+    under Windows' x64 emulation;
+  - `linux-musl-x64` runs on `ubuntu-24.04` in an Alpine container
+    (`docker run … alpine`).
+
+  GitHub's ARM64 runners (`ubuntu-24.04-arm`, `windows-11-arm`) are free for public
+  repositories.
 - **`NUGET_PACKAGES` plus the cache:** keeps the SDK and the toolchain (tens of MB) from
   being downloaded on every run. The key includes the project files because they decide
   which packages restore.
@@ -59,10 +72,13 @@ jobs:
   if the projects set `<AsmFlags>-Xvc</AsmFlags>`, which turns them into MSBuild warnings,
   or `TreatWarningsAsErrors=true`, which makes NASM itself fail. Set both in
   `Directory.Build.props` for asm projects.
-- **`--no-build` on `pack`:** packs exactly what was built and tested.
-- **Running the outputs:** a freestanding executable runs on any Linux runner. A `libc` one
-  needs glibc 2.34+, which `ubuntu-22.04` and later have.
-- **Tests that P/Invoke the `.so`:** these run in the Linux job.
+- **`--no-build` on `pack`:** packs exactly what was built and tested. One runner packs:
+  every runner built the same seven RIDs.
+- **Running the outputs:** a Linux freestanding executable runs on any Linux runner of its
+  CPU. A `libc` one needs glibc 2.34+, which `ubuntu-22.04` and later have.
+- **Tests that P/Invoke the library:** a test project's portable build carries every RID of
+  the asm project, as an app does, so the same `dotnet test` on each runner calls that
+  runner's own build.
 - **Pre-release SDKs:** while a project uses an SDK version that is not on nuget.org, commit
   the folder feed, or download it in a step before the build, and keep a `nuget.config`
   mapping as in [References and packages](references-and-packages.md#feeds-and-publishing).
@@ -83,7 +99,7 @@ jobs:
   | export added | minor |
   | implementation only | patch |
 
-  `inspect_elf.py --json` lists the exports, so a CI step can diff them against the
+  `inspect_output.py --json` lists the exports, so a CI step can diff them against the
   previous release.
 
 ## Releasing to nuget.org with trusted publishing
@@ -114,7 +130,7 @@ jobs:
         with:
           dotnet-version: 10.0.x
       - run: dotnet pack App.slnx -c Release -o artifacts/packages -p:Version=${GITHUB_REF_NAME#v}
-      - run: ./Hello.App/bin/Release/freestanding/hello-app   # smoke-test on Linux before publishing
+      - run: ./HelloApp/bin/Release/libc/linux-x64/hello-app   # smoke-test before publishing
       - name: NuGet login (OIDC)
         id: login
         uses: NuGet/login@v1
@@ -133,15 +149,19 @@ jobs:
 
 ## Reproducibility
 
-- **Deterministic outputs:** AsmSdk links with `--build-id=sha1` (computed from the
-  content), and archives with `llvm-ar rcsD` (zero timestamps and ids). The same inputs
-  give byte-identical outputs.
-- **The checkout folder is one of those inputs.** NASM records each source's **absolute
-  path** in the object's symbol table, and in DWARF in Debug builds, and the linker keeps
-  it. A Release `.so` built from `C:/src/x` differs from one built from `/home/ci/x`. For identical outputs across machines, do one of these:
+- **Deterministic outputs:** AsmSdk links with `--build-id=sha1` on Linux and `-Brepro` on
+  Windows (the id and the timestamp computed from the content). ld64.lld derives a Mach-O
+  file's UUID from the content too. Archives are written with `llvm-ar rcsD` (zero timestamps
+  and ids). The same inputs give byte-identical outputs.
+- **On Linux, the checkout folder is one of those inputs.** NASM records each source's
+  **absolute path** in an ELF object's symbol table, and in DWARF in Debug builds, and ld.lld
+  keeps it. A Release `.so` built from `C:/src/x` differs from one built from `/home/ci/x`.
+  Measured from two folders: the `win-x64` DLL and the `osx-x64` dylib came out
+  byte-identical, while the Linux `.so` files did not. For identical Linux outputs across
+  machines, do one of these:
   - build from the same absolute path everywhere (a fixed CI workspace);
-  - strip the static symbol table in Release: `<LinkerArg Include="-s" />` removes
-    the paths and keeps the exported (dynamic) symbols.
+  - strip the static symbol table in Release: `<LinkerArg Include="-s" />` (Linux RIDs
+    only) removes the paths and keeps the exported (dynamic) symbols.
 - **Checking it:** build on two runners and compare SHA-256 hashes of the outputs. A
   difference means an input differs, such as a define, a toolchain version or a path.
 - **Pinned inputs:**
@@ -158,6 +178,6 @@ Any system that can run `dotnet` works:
 - **Azure Pipelines:** `UseDotNet@2`, then the same commands. Cache `$(NUGET_PACKAGES)`
   with `Cache@2`.
 - **GitLab CI:** the `mcr.microsoft.com/dotnet/sdk:10.0` image, a `cache:` entry for
-  `.nuget/packages`, and the same commands. Its glibc 2.39 also runs `libc` outputs.
-- **Jenkins or TeamCity:** the same commands on Linux agents. Windows agents build but do
-  not run.
+  `.nuget/packages`, and the same commands. Its glibc also runs `linux-x64` `libc` outputs.
+- **Jenkins or TeamCity:** the same commands on any agent. Each agent runs the outputs of
+  its own platform.

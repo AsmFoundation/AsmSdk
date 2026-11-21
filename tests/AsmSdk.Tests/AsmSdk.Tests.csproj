@@ -24,6 +24,8 @@
     <IsTestProject>true</IsTestProject>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <RootNamespace>AsmSdk.Tests</RootNamespace>
+    <!-- CrossPlatformTests calls the host's own native builds in-process through function pointers. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>

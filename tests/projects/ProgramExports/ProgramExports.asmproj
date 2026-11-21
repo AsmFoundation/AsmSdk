@@ -1,0 +1,20 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A program that exports one function, as a plugin host does for the plugins it loads
+    (CrossPlatformTests). main, plugin_api and not_listed are all FUNCTIONs, and the ExportsFile
+    lists plugin_api only. Expected per OS:
+      Windows  plugin_api is the one export, and program-exports.lib is written for plugins to
+               link against
+      Linux    plugin_api alone in the dynamic symbol table (version script + export-dynamic)
+      macOS    _plugin_api the one exported symbol; _main is no export
+    EverywhereLibc is the control: a program without an ExportsFile exports nothing on Windows
+    and gets no import library.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>libc</TargetFramework>
+    <AssemblyName>program-exports</AssemblyName>
+    <RuntimeIdentifiers>win-x64;linux-x64;osx-x64</RuntimeIdentifiers>
+    <ExportsFile>program.map</ExportsFile>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    AsmFoundation.Sdk.Tasks: the MSBuild tasks of AsmFoundation.Sdk, for the decisions that plain
+    MSBuild expresses badly: which sources build which runtime identifier (file-name qualifiers),
+    and reading the exports file for linkers that take a list of names instead of a version
+    script. The SDK package carries the assembly under tasks/ and loads it with UsingTask.
+
+    netstandard2.0 so that one assembly runs in every MSBuild that builds an .asmproj: the .NET
+    SDK's (dotnet build, Rider) and Visual Studio's (.NET Framework). MSBuild's own assemblies are
+    referenced for compiling only: MSBuild provides them at run time, and shipping a copy would
+    load a second, mismatched version next to them.
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>AsmFoundation.Sdk.Tasks</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Build.Utilities.Core" Version="17.7.2" PrivateAssets="all" ExcludeAssets="runtime" />
+  </ItemGroup>
+</Project>

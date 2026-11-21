@@ -1,12 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
     Crc32C.Tests: unit tests of an assembly library, written in C# with xunit v3. They call
-    libcrc32c.so through Crc32C.Net and compare every path with a reference written in C#.
+    libcrc32c through Crc32C.Net and compare every path with a reference written in C#.
 
-    xunit v3 test projects are executables (Microsoft.Testing.Platform), so on Linux x64 the
-    tests run with "dotnet test" or by starting the built program, which needs only the .NET
-    runtime. libcrc32c.so is a Linux library: on Windows, run the built folder in the .NET runtime
-    container or in WSL (AsmSdk's own tests do that through Docker).
+    xunit v3 test projects are executables (Microsoft.Testing.Platform): the tests run with
+    "dotnet test" or by starting the built program, which needs only the .NET runtime, on any of
+    the seven platforms: the portable output carries every platform's build of the library under
+    runtimes/<rid>/native/, and the .NET host loads the one for the machine it runs on.
   -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>

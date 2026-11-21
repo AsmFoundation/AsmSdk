@@ -1,0 +1,8 @@
+/* program.map - the ExportsFile of the ProgramExports test project: the one function the
+   program exports, for the plugins it would load to call back. */
+PROGRAM_1.0 {
+    global:
+        plugin_api;
+    local:
+        *;
+};

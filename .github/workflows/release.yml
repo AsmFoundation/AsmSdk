@@ -1,8 +1,9 @@
 # Release - publishes one version of AsmFoundation.Sdk when a tag vX.Y.Z is pushed:
-#   1. ci        the whole CI workflow on the tagged commit (all three OSes)
+#   1. ci        the whole CI workflow on the tagged commit (all five build machines)
 #   2. versions  the tag must equal <Version> in Directory.Build.props
 #   3. nuget     AsmFoundation.Sdk <version> and AsmFoundation.Toolchain.<rid> (win-x64,
-#                linux-x64, osx-arm64) to nuget.org through trusted publishing (no API key).
+#                win-arm64, linux-x64, linux-arm64, osx-arm64) to nuget.org through trusted
+#                publishing (no API key).
 #                Toolchain packages carry their own version (toolchain/versions.json): pushing
 #                an unchanged one is skipped (--skip-duplicate), so an SDK-only release does
 #                not upload ~120 MB of tools again.
@@ -91,7 +92,7 @@ jobs:
           mkdir -p artifacts/toolchain
           for d in artifacts/staged/toolchain-*; do mv "$d" "artifacts/toolchain/${d##*/toolchain-}"; done
           dotnet pack src/AsmFoundation.Sdk/AsmFoundation.Sdk.csproj -c Release -nologo
-          for rid in win-x64 linux-x64 osx-arm64; do
+          for rid in win-x64 win-arm64 linux-x64 linux-arm64 osx-arm64; do
             dotnet pack toolchain/AsmFoundation.Toolchain.csproj -c Release -nologo -p:ToolchainRid=$rid
           done
           ls -l artifacts/packages

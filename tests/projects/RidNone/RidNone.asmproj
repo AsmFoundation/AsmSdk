@@ -1,0 +1,5 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!-- Expected to FAIL with ASM0010 when built by itself: it names no runtime identifier, and
+       nothing asks for one. (A project like it is built for the RIDs its referencing projects
+       ask for, as EverywhereStatic is.) -->
+</Project>

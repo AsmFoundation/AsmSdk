@@ -1,0 +1,13 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    Expected to FAIL (DiagnosticsTests): line 7 of nasmerror.asm is no instruction. NASM's own
+    message must reach MSBuild as an error with its file and line, "nasmerror.asm(7): error",
+    which IDEs list and open at the line (the SDK runs NASM with -Xvc; NASM's default
+    "file:line:" form was plain output, and only ASM0007 and MSB3073 were errors), followed by
+    ASM0007 for the deleted object.
+  -->
+  <PropertyGroup>
+    <AssemblyName>nasmerror</AssemblyName>
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

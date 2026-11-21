@@ -78,7 +78,7 @@ public sealed class ProjectRuleTests(SdkUnderTest sdk)
     {
         CommandResult build = sdk.BuildTestProject("MultiRefSingle");
         Assert.True(build.ExitCode == 0, build.Tail());
-        string library = Repo.TestProjectPath("MultiRefSingle", "bin", "Release", framework, "libmultisquare.so");
+        string library = Repo.TestProjectPath("MultiRefSingle", "bin", "Release", framework, "linux-x64", "libmultisquare.so");
         Assert.Matches(new Regex(@"FUNC\s+GLOBAL\s+DEFAULT\s+\d+\s+static_mul\b"), sdk.ReadElf(library, "--dyn-syms"));
     }
 
@@ -100,7 +100,7 @@ public sealed class ProjectRuleTests(SdkUnderTest sdk)
     {
         CommandResult build = sdk.BuildTestProject("Entry");
         Assert.True(build.ExitCode == 0, build.Tail());
-        string executable = Repo.TestProjectPath("Entry", "bin", "Release", "freestanding", "entry");
+        string executable = Repo.TestProjectPath("Entry", "bin", "Release", "freestanding", "linux-x64", "entry");
         Match header = Regex.Match(sdk.ReadElf(executable, "-h"), @"Entry point address:\s+0x([0-9a-fA-F]+)");
         Match symbol = Regex.Match(sdk.ReadElf(executable, "-s"),
             @"^\s*\d+:\s+([0-9a-fA-F]+)\s+\d+\s+\w+\s+\w+\s+\w+\s+\S+\s+entry_here$", RegexOptions.Multiline);
@@ -114,18 +114,23 @@ public sealed class ProjectRuleTests(SdkUnderTest sdk)
     {
         CommandResult build = sdk.BuildTestProject("Exports");
         Assert.True(build.ExitCode == 0, build.Tail());
-        string text = sdk.ReadElf(Repo.TestProjectPath("Exports", "bin", "Release", "libc", "libexports.so"), "--dyn-syms");
+        string text = sdk.ReadElf(Repo.TestProjectPath("Exports", "bin", "Release", "libc", "linux-x64", "libexports.so"), "--dyn-syms");
         Assert.Contains("exported_fn@@EXPORTS_1.0", text);
         Assert.DoesNotContain("internal_fn", text);
     }
 
-    /// <summary>LinkerArg items reach the linker: -Bsymbolic sets SYMBOLIC in DT_FLAGS.</summary>
+    /// <summary>
+    /// LinkerArg items reach the linker: -z nodelete sets NODELETE in DT_FLAGS_1, which the SDK
+    /// never sets itself. SYMBOLIC in DT_FLAGS comes from the SDK's own -Bsymbolic (0.3.0).
+    /// </summary>
     [Fact]
     public void LinkerArg_reaches_the_linker()
     {
         CommandResult build = sdk.BuildTestProject("Exports");
         Assert.True(build.ExitCode == 0, build.Tail());
-        string text = sdk.ReadElf(Repo.TestProjectPath("Exports", "bin", "Release", "libc", "libexports.so"), "-d");
+        string text = sdk.ReadElf(Repo.TestProjectPath("Exports", "bin", "Release", "libc", "linux-x64", "libexports.so"), "-d");
+        Assert.Matches(new Regex(@"\(FLAGS_1\).*\bNODELETE\b"), text);
+        // The SDK links every Linux shared library -Bsymbolic itself (0.3.0).
         Assert.Matches(new Regex(@"\(FLAGS\).*\bSYMBOLIC\b"), text);
     }
 
@@ -146,7 +151,7 @@ public sealed class ProjectRuleTests(SdkUnderTest sdk)
     {
         CommandResult build = sdk.BuildTestProject("Defines");
         Assert.True(build.ExitCode == 0, build.Tail());
-        Assert.Contains(".debug_info", sdk.ReadElf(Repo.TestProjectPath("Defines", "obj", "Release", "freestanding", "asm", "obj", "defines.o"), "-S"));
+        Assert.Contains(".debug_info", sdk.ReadElf(Repo.TestProjectPath("Defines", "obj", "Release", "freestanding", "linux-x64", "asm", "obj", "defines.o"), "-S"));
     }
 
     /// <summary>A libc-only package (Test.LibcOnly) packs.</summary>
@@ -172,6 +177,6 @@ public sealed class ProjectRuleTests(SdkUnderTest sdk)
         CommandResult build = BuildLibcConsumer(sdk);
         Assert.True(build.ExitCode == 0, build.Tail());
         Assert.Contains("Shared library: [libtestlibconly.so]",
-            sdk.ReadElf(Repo.TestProjectPath("LibcConsumer", "bin", "Release", "libc", "libc-consumer"), "-d"));
+            sdk.ReadElf(Repo.TestProjectPath("LibcConsumer", "bin", "Release", "libc", "linux-x64", "libc-consumer"), "-d"));
     }
 }

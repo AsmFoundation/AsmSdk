@@ -1,0 +1,11 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    Object files, no archive (OutputType=Objects), and no RID of its own: ObjectsUser links them
+    for each of its RIDs (CrossPlatformTests). 0.1.0 and 0.2.0 passed a referencing project the
+    object paths relative to THIS folder, and its link failed with "cannot open
+    <ObjectsUser>/obj/.../seven.o"; 0.3.0 passes absolute paths.
+  -->
+  <PropertyGroup>
+    <OutputType>Objects</OutputType>
+  </PropertyGroup>
+</Project>

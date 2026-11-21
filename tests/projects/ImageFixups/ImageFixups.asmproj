@@ -1,0 +1,25 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A shared library whose code addresses memory absolutely, which the bundled linkers accept
+    for Windows and macOS but the loaders cannot fix up (CrossPlatformTests): AsmCheckImage must
+    fail each build with its code, and delete the image so that the next build checks again.
+      win-x64    fixups.win.asm: lea without "default rel", a 32-bit absolute address in a DLL
+                 based at 0x180000000 (ASM0080)
+      osx-x64    fixups.osx.asm: mov rax, label, a rebase in read-only __TEXT (ASM0081)
+      osx-arm64  fixups.s: a .quad of a label in __text, the same on ARM64 (ASM0081); with
+                 ChainedFixups=true linked with -fixup_chains, so that the check reads
+                 LC_DYLD_CHAINED_FIXUPS instead of the rebase opcodes
+  -->
+  <PropertyGroup>
+    <AssemblyName>imagefixups</AssemblyName>
+    <RuntimeIdentifiers>win-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
+    <!-- NASM warns about the win-x64 source ("implicit DEFAULT ABS", "32-bit absolute
+         section-crossing relocation"), and the test projects' TreatWarningsAsErrors would stop
+         the build there, before the link. A project without it gets this far, which is the
+         case the image check is for. -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(ChainedFixups)' == 'true' and '$(RuntimeIdentifier)' == 'osx-arm64'">
+    <LinkerArg Include="-fixup_chains" />
+  </ItemGroup>
+</Project>

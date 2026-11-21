@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A .NET program that gets the asm library from packages only (NativeLayoutTests): the
+    Test.NetLayoutLibrary package, packed with PrivateAssets="all" so that it carries
+    Everywhere's binaries itself, and nothing that depends on AsmFoundation.Sdk. The
+    PackageReference takes BinariesCopyPath from NetLayoutPackageReference: the package's own
+    buildTransitive targets (plain MSBuild, no SDK) move its binaries there, the .NET SDK writes
+    the new place into deps.json as localPath, and in a NativeAOT build the package's generated
+    loader finds them.
+    It prints the same line as NetConsumer: "<RID> 42 <ew_platform()> <ew_os()>".
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Test.NetLayoutLibrary" Version="1.0.0" BinariesCopyPath="$(NetLayoutPackageReference)" />
+  </ItemGroup>
+</Project>

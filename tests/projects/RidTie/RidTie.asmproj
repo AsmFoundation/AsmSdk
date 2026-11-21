@@ -1,0 +1,7 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!-- Expected to FAIL with ASM0020: tie.linux.asm and tie.linux.s apply to linux-x64 with the
+       same qualifier, and neither is closer. -->
+  <PropertyGroup>
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>
