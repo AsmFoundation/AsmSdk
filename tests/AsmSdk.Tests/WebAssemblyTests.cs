@@ -555,4 +555,41 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
             : $"build it with a .NET 10 SDK (global.json) and its {workload} workload";
         Assert.Contains(fix, build.Output);
     }
+
+    /// <summary>
+    /// A library of native and WebAssembly RIDs with PROTO lines in its native sources builds,
+    /// and its API file (the C# bindings' input) describes the RIDs that can declare: the SDK
+    /// reads the records from COFF, ELF and Mach-O objects only, so the browser-wasm build reads
+    /// none (it used to stop on its wasm objects with ASM0135) and the merge leaves it out (it
+    /// would have found add_ints missing there, ASM0133).
+    /// </summary>
+    [Fact]
+    public void A_library_of_native_and_wasm_rids_merges_the_api_of_its_native_rids()
+    {
+        Build("WasmApi");
+        string merged = Repo.TestProjectPath("WasmApi", "bin", "Release", "freestanding", "wasmapi.api.json");
+        Assert.True(File.Exists(merged), "No merged API file");
+        Assert.Contains("\"add_ints\"", File.ReadAllText(merged), StringComparison.Ordinal);
+        Assert.True(File.Exists(Output("WasmApi", "linux-x64", "wasmapi.api.json")), "linux-x64 wrote no API file");
+        Assert.False(File.Exists(Output("WasmApi", "browser-wasm", "wasmapi.api.json")), "browser-wasm wrote an API file");
+        // The module still exports the function: only the bindings' records are native-only.
+        Assert.Contains("add_ints", WasmBinary.Read(Output("WasmApi", "browser-wasm", "wasmapi.wasm")).ExportedFunctions);
+    }
+
+    /// <summary>
+    /// A PROTO line in a WebAssembly source stops the build with the reason (asmsdk-wasm.inc's
+    /// .error), instead of llvm-mc's "invalid instruction" or a line left unchecked: WebAssembly
+    /// RIDs declare nothing to the bindings yet. llvm-mc reports an .error of a macro at
+    /// "&lt;instantiation&gt;" (the macro's expansion) and names the source line in the note that
+    /// follows, "while in macro instantiation", which the line-marker wrapper makes the source's
+    /// own path and line (measured with llvm-mc 23.1.5; every GNU macro's .error is reported so).
+    /// </summary>
+    [Fact]
+    public void A_proto_line_in_a_wasm_source_stops_the_build()
+    {
+        CommandResult build = sdk.BuildTestProject("WasmProto");
+        Assert.True(build.ExitCode != 0, $"WasmProto built: {build.Tail()}");
+        Assert.Contains("PROTO is not read from WebAssembly sources yet", build.StdOut, StringComparison.Ordinal);
+        Assert.Contains("proto.wasm.s:3:1: note: while in macro instantiation", build.StdOut, StringComparison.Ordinal);
+    }
 }

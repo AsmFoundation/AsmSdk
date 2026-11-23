@@ -63,6 +63,13 @@
 //                          label's last byte.
 // ADDRESS label            Pushes the address of a data label (i32.const label):
 //                          a wasm32 pointer into the module's linear memory.
+// PROTO <C prototype>      Not for WebAssembly yet: an .error. asmsdk.inc and
+//                          asmsdk-gnu.inc record PROTO lines in their objects for
+//                          the generated C# bindings, and the SDK reads those
+//                          records from COFF, ELF and Mach-O objects only, so a
+//                          wasm RID declares nothing and the library's API file
+//                          describes its other RIDs. The error says so where the
+//                          line is, rather than leaving it unchecked.
 //
 // The SDK also defines WASM, BROWSER or WASI, FREESTANDING, DEBUG or RELEASE,
 // as labels (see below), so ".ifdef WASI" chooses between WASI imports and
@@ -217,6 +224,14 @@
 // module's linear memory, relocated by wasm-ld.
 .macro ADDRESS label
     i32.const \label
+.endm
+
+// ---- The C# bindings' PROTO lines ------------------------------------------
+// Refused, with the reason, where the line is (see the header). vararg takes the
+// prototype's commas, as asmsdk-gnu.inc's PROTO does. Defined so that the line
+// gets this message rather than llvm-mc's "invalid instruction".
+.macro PROTO text:vararg
+    .error "PROTO is not read from WebAssembly sources yet: the SDK reads the C# bindings' records from COFF, ELF and Mach-O objects only, so the library's API file describes its other RIDs. Remove the line from the wasm source."
 .endm
 
 .endif

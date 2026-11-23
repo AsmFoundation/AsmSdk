@@ -1,0 +1,10 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A PROTO line in a WebAssembly source (WebAssemblyTests): asmsdk-wasm.inc's PROTO is an
+    .error that says why, at the line, since the SDK reads the bindings' records from native
+    objects only. Without that macro llvm-mc would stop on an unknown instruction instead.
+  -->
+  <PropertyGroup>
+    <RuntimeIdentifiers>browser-wasm</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

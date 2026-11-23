@@ -288,7 +288,9 @@ Each SDK release names the one it was tested with.
   each at the `PROTO` line. The RID's `<AssemblyName>.api.json` goes into `obj/` and beside its
   binary; the RID outer build's `AsmMergeApi` checks that every RID declares the same functions
   the same way (**ASM0133**, naming each RID's prototype and source) and writes the library's
-  file in `bin/<Configuration>/<tfm>/`. No `PROTO` line, no file. The design (the owner's choices
+  file in `bin/<Configuration>/<tfm>/`. No `PROTO` line, no file. The WebAssembly RIDs (also
+  unreleased) take no part yet: their objects carry no records, and a `PROTO` line in a wasm
+  source is an error. The design (the owner's choices
   of 2026-11-23, approved as a spec): catalog `asmsdk/plans/csharp-bindings.md`; the C# generator
   is the next phase.
 - **A NativeAOT publish links a referenced static library by itself.** A `PublishAot` project
