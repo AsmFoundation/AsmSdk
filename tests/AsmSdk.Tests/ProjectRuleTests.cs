@@ -88,6 +88,23 @@ public sealed class ProjectRuleTests(SdkUnderTest sdk)
             absent: ["AsmLinkLibrary items were replaced"]);
 
     /// <summary>
+    /// A Compile item that a target adds during the build, as a code generator might
+    /// (tests/projects/GeneratedCompileItem adds obj/.../generated.cs before AsmPrepare), is
+    /// never handed to an assembler: only .asm and .s Compile items are sources. The build
+    /// succeeds (ASM0025 checks only what the project lists), and no command line names the file.
+    /// </summary>
+    [Fact]
+    public void A_compile_item_added_during_the_build_is_not_assembled()
+    {
+        CommandResult build = sdk.BuildTestProject("GeneratedCompileItem", "-v:n");
+        Assert.True(build.ExitCode == 0, build.Tail());
+        Assert.DoesNotContain("generated.cs", build.StdOut);
+        Assert.DoesNotContain("ASM0025", build.StdOut);
+        Assert.True(File.Exists(Repo.TestProjectPath("GeneratedCompileItem", "bin", "Release", "freestanding", "linux-x64", "libgeneratedcompile.so")),
+            build.Tail());
+    }
+
+    /// <summary>
     /// A NativeLibrary item (NativeAOT's name for an extra link input) links a static library
     /// built elsewhere, by its path: libnativelink.so defines static_mul from the samples'
     /// libhellostatic.a, rather than leaving it undefined for the loader, and exports nl_square,

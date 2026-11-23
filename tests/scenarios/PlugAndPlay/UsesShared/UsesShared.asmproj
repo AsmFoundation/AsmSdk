@@ -1,0 +1,19 @@
+<Project Sdk="AsmFoundation.Sdk/0.3.0">
+  <!--
+    Written by hand: an asm program on the C library that uses the static library the asmstatic
+    template created during the scenario (../Shared, made by "dotnet new asmstatic -n Shared").
+    The ProjectReference links libShared.a (Shared.lib on Windows) into the program and puts
+    Shared's include/ folder on its include path, so main.asm can %include "Shared.inc" and call
+    the template's mul_ints. main returns mul_ints(6, 7): the scenario expects exit status 42.
+
+    The SDK version is the one under test: ScenarioRunner's copy keeps this file as written, so it
+    must equal tests/scenarios/global.json's pin (PackTests checks that every consumer pins it).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>libc</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Shared/Shared.asmproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,1 @@
+PackSources: a None item that is neither a source nor an include file, so AsmPackSources leaves it out of src/.

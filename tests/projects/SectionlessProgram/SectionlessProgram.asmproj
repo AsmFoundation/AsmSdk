@@ -1,0 +1,21 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A libc program for all eight RIDs whose sources name no section and include nothing,
+    linking the Sectionless static library: main returns sl_mul(6, 7), so the program exits
+    with status 42. The link is the test: before ImplicitUsings ended with "section .text" on
+    every OS (2026-11-23), NASM's COFF output wrote main and the library's sl_mul as undefined
+    symbols on win-x64, and lld failed with "undefined symbol: main" and "undefined symbol:
+    sl_mul". A program's main takes no export directive on Windows, so nothing switched
+    sections for it. ImplicitUsingsTests builds this project, checks each RID's program and
+    runs the one of this machine's RID.
+  -->
+  <PropertyGroup>
+    <TargetFramework>libc</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>sectionless-program</AssemblyName>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Sectionless/Sectionless.asmproj" />
+  </ItemGroup>
+</Project>

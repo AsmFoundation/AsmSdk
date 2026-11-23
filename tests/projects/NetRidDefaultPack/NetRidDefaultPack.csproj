@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A .NET library packed with a RID-less asm project embedded (PrivateAssets="all": its binary
+    goes into this package instead of becoming a dependency). With no RIDs named anywhere, the
+    portable pack carries the build machine's RID alone, and says so: CrossPlatformTests packs it
+    in a configuration of its own (RidPack) and expects the consumer side's ASM0013 ("this
+    portable pack of NetRidDefaultPack"), and a package with that one RID's library.
+    Measured 2026-11-23: RidNone, built for this pack, also gets _IsPacking and raises its own
+    ASM0013; both name the fix.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../RidNone/RidNone.asmproj" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

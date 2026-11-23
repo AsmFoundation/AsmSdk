@@ -78,6 +78,25 @@ public sealed class PackageTests(SdkUnderTest sdk)
         Assert.Equal(expected, SdkUnderTest.PackageEntries(Path.Combine(output, "hello.1.0.0.nupkg")));
     }
 
+    /// <summary>
+    /// AsmPackSources=true (tests/projects/PackSources) packs the sources under src/, each at its
+    /// path in the project: the Compile items (lib.asm, and lib.s although the package's one RID
+    /// builds only the .asm) and the None items ending in .inc, public (include/pub.inc) or not
+    /// (private.inc); not notes.txt, a None item that is no source. The public include file is
+    /// also the package's include/, as without the property.
+    /// </summary>
+    [Fact]
+    public void AsmPackSources_packs_the_sources_and_include_files()
+    {
+        string output = Path.Combine(Repo.Artifacts, "test-packages", "pack-sources");
+        CommandResult pack = sdk.Once("pack PackSources", () => sdk.Dotnet("pack", Repo.TestProject("PackSources"), "-c", "Release", "-o", output));
+        Assert.True(pack.ExitCode == 0 && !MsBuildWarning.IsMatch(pack.StdOut), pack.Tail());
+        SortedSet<string> entries = SdkUnderTest.PackageEntries(Path.Combine(output, "Test.PackSources.1.0.0.nupkg"));
+        Assert.Equal(["src/include/pub.inc", "src/lib.asm", "src/lib.s", "src/private.inc"],
+            entries.Where(entry => entry.StartsWith("src/", StringComparison.Ordinal)));
+        Assert.Contains("include/pub.inc", entries);
+    }
+
     /// <summary>A project consumes a package by version: samples/consumers/Hello.Consumer builds against Hello.Static 1.0.0.</summary>
     [Fact]
     public void A_project_consumes_a_package_by_version()

@@ -6,8 +6,10 @@ namespace AsmSdk.Tests;
 
 /// <summary>
 /// How a failing build reports itself: an assembler's error as an MSBuild error at its file and
-/// line (tests/projects/NasmError), and the System toolchain's linker limit as ASM0005 before
-/// any tool runs (tests/projects/SystemLd). Both found by the manual interop QA of 2026-11-20.
+/// line, NASM's (tests/projects/NasmError) and llvm-mc's through the ImplicitUsings wrapper
+/// (tests/projects/GnuError), and the System toolchain's linker limit as ASM0005 before any tool
+/// runs (tests/projects/SystemLd). The first and last were found by the manual interop QA of
+/// 2026-11-20.
 /// </summary>
 /// <param name="sdk">The SDK under test (assembly fixture).</param>
 public sealed class DiagnosticsTests(SdkUnderTest sdk)
@@ -25,6 +27,22 @@ public sealed class DiagnosticsTests(SdkUnderTest sdk)
         CommandResult build = sdk.BuildTestProject("NasmError");
         Assert.True(build.ExitCode != 0, build.Tail());
         Assert.Matches(new Regex(@"nasmerror\.asm\(7\): error : instruction expected.*\[.*NasmError\.asmproj\]"), build.StdOut);
+        Assert.Contains("ASM0007", build.StdOut);
+    }
+
+    /// <summary>
+    /// A GNU-syntax error is an MSBuild error at the source's own file, line and column,
+    /// "…/GnuError/gnuerror.s(4,5): error …: unrecognized instruction mnemonic", although
+    /// ImplicitUsings has llvm-mc assemble the source through a wrapper in obj/ that includes it
+    /// (llvm-mc reports an error in an included file at that file's line); then ASM0007.
+    /// Measured 2026-11-23 before the test.
+    /// </summary>
+    [Fact]
+    public void A_gnu_syntax_error_is_an_msbuild_error_at_its_line()
+    {
+        CommandResult build = sdk.BuildTestProject("GnuError");
+        Assert.True(build.ExitCode != 0, build.Tail());
+        Assert.Matches(new Regex(@"GnuError[/\\]gnuerror\.s\(4,5\): error \w+: unrecognized instruction mnemonic"), build.StdOut);
         Assert.Contains("ASM0007", build.StdOut);
     }
 

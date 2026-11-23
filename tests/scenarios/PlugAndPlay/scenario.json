@@ -1,11 +1,12 @@
 {
   "$schema": "../scenario.schema.json",
-  "description": "Plug and play, as a .NET developer starts: the dotnet new templates make a solution of a C# app, an asm library and xunit tests that builds without warnings, runs and tests with no RID, global.json pin or hand-written entry. dotnet sln add takes a new .asmproj, dotnet add reference still refuses one (a .NET CLI limit with target framework aliases, written by hand instead), and what leaves the machine says so: a portable publish and a pack warn ASM0013, a publish for one RID does not. The folder's own global.json, Directory.Build.props and Directory.Packages.props stand for a user's fresh folder (empty, but for NuGet's audit, which is off): the projects name their SDK version inline, and nothing of tests/scenarios' settings reaches them.",
+  "description": "Plug and play, as a .NET developer starts: the dotnet new templates make a solution of a C# app, an asm library and xunit tests that builds without warnings, runs and tests with no RID, global.json pin or hand-written entry. dotnet sln add takes a new .asmproj, dotnet add reference still refuses one (a .NET CLI limit with target framework aliases), and the hand-written ProjectReference it asks for works; the static library template links into an asm program, and what leaves the machine says so: a portable publish and a pack warn ASM0013, a publish for one RID does not. The folder's own global.json, Directory.Build.props and Directory.Packages.props stand for a user's fresh folder (empty, but for NuGet's audit, which is off): the projects name their SDK version inline, and nothing of tests/scenarios' settings reaches them.",
   "steps": [
     {
       "run": "dotnet new install AsmFoundation.Templates@{version}",
-      "description": "Installs the templates under test from the local feed, into this scenario's own CLI home.",
-      "stdout": ["asmnet", "asmlib", "asmexe", "asmstatic"]
+      "description": "Installs the templates under test from the local feed, into this scenario's own CLI home (DOTNET_CLI_HOME), never the developer's profile: the package lands there.",
+      "stdout": ["asmnet", "asmlib", "asmexe", "asmstatic"],
+      "files": ["../.cli-home/PlugAndPlay/.templateengine/packages/AsmFoundation.Templates.{version}.nupkg"]
     },
     {
       "run": "dotnet new asmnet -n Demo",
@@ -62,9 +63,15 @@
     },
     {
       "run": "dotnet add Demo/Demo.App/Demo.App.csproj reference Demo/Demo.Extra/Demo.Extra.asmproj",
-      "description": "Still refused: the .NET CLI parses the referenced project's TargetFramework text, and freestanding is an alias it does not know (NuGet and the build accept it). The docs show the one-line ProjectReference instead; this step fails once the CLI accepts it, and the docs change then.",
+      "description": "Still refused: the .NET CLI parses the referenced project's TargetFramework text, and freestanding is an alias it does not know (NuGet and the build accept it; dotnet/sdk#57317, tracked in AsmFoundation/AsmSdk#5). The docs show the one-line ProjectReference instead; this step fails once the CLI accepts it, and then the step, the docs and issue #5 change.",
       "exitCode": 1,
       "stderr": ["cannot be added due to incompatible targeted frameworks"]
+    },
+    {
+      "run": "dotnet run --project CallsExtra",
+      "description": "What the docs say to do instead: CallsExtra (written by hand, in this folder) has the one ProjectReference line to the asmlib template's library, and calls its add_ints.",
+      "stdout": ["Demo.Extra add_ints(1000, 337) = 1337"],
+      "files": ["CallsExtra/bin/Debug/net10.0/runtimes/{rid}/native/{lib:Demo.Extra}"]
     },
     {
       "run": "dotnet publish Demo/Demo.App -c Release -o portable",
@@ -107,6 +114,11 @@
       "description": "The static library builds for this machine.",
       "stdout": ["Build succeeded.", " 0 Warning(s)"],
       "files": ["Shared/bin/Debug/freestanding/{rid}"]
+    },
+    {
+      "run": "dotnet run --project UsesShared",
+      "description": "The static library in use: UsesShared (an asm program written by hand, in this folder) references Shared, includes its Shared.inc and returns mul_ints(6, 7) from main.",
+      "exitCode": 42
     }
   ]
 }

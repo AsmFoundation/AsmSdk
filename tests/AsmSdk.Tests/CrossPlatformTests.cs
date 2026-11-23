@@ -709,6 +709,77 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
         Assert.DoesNotContain("ASM0013", silenced.StdOut);
     }
 
+    /// <summary>
+    /// -r comes before the build machine's default: a RID-less project built with -r for another
+    /// RID than this machine's builds that RID alone. In a configuration of its own
+    /// (ExplicitRid), so that RidNone's Release folder keeps only this machine's RID for
+    /// <see cref="A_project_without_rids_builds_for_this_machine"/>.
+    /// </summary>
+    [Fact]
+    public void A_rid_given_with_r_comes_before_the_default()
+    {
+        string other = Repo.HostRid == "linux-x64" ? "win-x64" : "linux-x64";
+        CommandResult build = sdk.Dotnet("build", Repo.TestProject("RidNone"), "-c", "ExplicitRid", "-r", other);
+        Assert.True(build.ExitCode == 0, build.Tail());
+        string folder = Repo.TestProjectPath("RidNone", "bin", "ExplicitRid", "freestanding");
+        Assert.Equal([other], Directory.GetDirectories(folder).Select(Path.GetFileName));
+        Assert.Contains($"Format: {Format[other]}", sdk.ReadObj(Path.Combine(folder, other, LibraryFile(other, "ridnone")), "--file-headers"));
+    }
+
+    /// <summary>
+    /// A .NET project that names the RIDs of a RID-less asm project on its ProjectReference
+    /// (tests/projects/NetRidChoice: RuntimeIdentifiers="linux-x64;osx-arm64") gets exactly those
+    /// two libraries under runtimes/, whatever this machine is, and the asm project builds those
+    /// two RIDs alone: the reference's choice comes before the default. A portable publish of it
+    /// raises no ASM0013, the reference having chosen, and carries both. In a configuration of its
+    /// own (RidChoice), for the reason <see cref="A_rid_given_with_r_comes_before_the_default"/>
+    /// gives.
+    /// </summary>
+    [Fact]
+    public void A_dotnet_reference_names_the_rids_of_a_rid_less_project()
+    {
+        string project = Repo.TestProjectPath("NetRidChoice", "NetRidChoice.csproj");
+        CommandResult build = sdk.Dotnet("build", project, "-c", "RidChoice");
+        Assert.True(build.ExitCode == 0, build.Tail());
+        string runtimes = Repo.TestProjectPath("NetRidChoice", "bin", "RidChoice", "net10.0", "runtimes");
+        Assert.Equal(["linux-x64", "osx-arm64"], Directory.GetDirectories(runtimes).Select(Path.GetFileName).Order(StringComparer.Ordinal));
+        Assert.True(File.Exists(Path.Combine(runtimes, "linux-x64", "native", "libridnone.so")), "no linux-x64 library");
+        Assert.True(File.Exists(Path.Combine(runtimes, "osx-arm64", "native", "libridnone.dylib")), "no osx-arm64 library");
+        Assert.Equal(["linux-x64", "osx-arm64"],
+            Directory.GetDirectories(Repo.TestProjectPath("RidNone", "bin", "RidChoice", "freestanding")).Select(Path.GetFileName).Order(StringComparer.Ordinal));
+
+        string output = Path.Combine(Repo.Artifacts, "test-run", "rid-choice-publish");
+        CommandResult publish = sdk.Dotnet("publish", project, "-c", "RidChoice", "-o", output);
+        Assert.True(publish.ExitCode == 0, publish.Tail());
+        Assert.DoesNotContain("ASM0013", publish.StdOut);
+        Assert.True(File.Exists(Path.Combine(output, "runtimes", "osx-arm64", "native", "libridnone.dylib")), publish.Tail());
+    }
+
+    /// <summary>
+    /// A .NET library packed with a RID-less asm project embedded (PrivateAssets="all",
+    /// tests/projects/NetRidDefaultPack) carries the build machine's RID alone, and the consumer
+    /// side says so: ASM0013 for "this portable pack of NetRidDefaultPack", naming the fix. The
+    /// package holds that one RID's library. (RidNone, built for the pack, warns ASM0013 too:
+    /// dotnet pack's _IsPacking reaches it; both messages name the same fix.)
+    /// </summary>
+    [Fact]
+    public void A_dotnet_pack_that_embeds_a_rid_less_project_warns_that_it_carries_one()
+    {
+        string? rid = HostBuildRid();
+        if (rid is null)
+        {
+            Assert.Skip($"AsmSdk builds nothing for this machine ({Repo.HostRid})");
+        }
+
+        string output = Path.Combine(Repo.Artifacts, "test-packages", "rid-default-pack");
+        CommandResult pack = sdk.Dotnet("pack", Repo.TestProjectPath("NetRidDefaultPack", "NetRidDefaultPack.csproj"), "-c", "RidPack", "-o", output);
+        Assert.True(pack.ExitCode == 0, pack.Tail());
+        Assert.Contains("RidNone lists no RuntimeIdentifiers, so this portable pack of NetRidDefaultPack carries its library for the build machine's platform alone", pack.StdOut);
+        SortedSet<string> entries = SdkUnderTest.PackageEntries(Path.Combine(output, "NetRidDefaultPack.1.0.0.nupkg"));
+        Assert.Contains($"runtimes/{rid}/native/{LibraryFile(rid, "ridnone")}", entries);
+        Assert.Equal([rid], entries.Where(e => e.StartsWith("runtimes/", StringComparison.Ordinal)).Select(e => e.Split('/')[1]).Distinct());
+    }
+
     /// <summary>-r with a RID that the project's RuntimeIdentifiers do not list stops with ASM0012.</summary>
     [Fact]
     public void A_rid_the_project_does_not_list_fails()

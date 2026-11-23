@@ -12,11 +12,11 @@ tutorial.
 
 > [!NOTE]
 > **Not released yet:** on the main branch, `ImplicitUsings` (on by default in an `.asmproj`)
-> puts `%include "asmsdk.inc"`, `default rel` and, on Linux, the `.note.GNU-stack` section in
-> front of every source, through NASM's pre-include. A source in an AsmSdk project then needs
-> none of the three lines below, though writing them changes nothing. They still matter in a
-> project with `<ImplicitUsings>disable</ImplicitUsings>`, and in a file assembled outside
-> AsmSdk, so the skeleton keeps them and the reasons follow. See
+> puts `%include "asmsdk.inc"`, `default rel`, on Linux the `.note.GNU-stack` section, and
+> then `section .text` in front of every source, through NASM's pre-include. A source in an
+> AsmSdk project then needs none of those lines below, though writing them changes nothing.
+> They still matter in a project with `<ImplicitUsings>disable</ImplicitUsings>`, and in a file
+> assembled outside AsmSdk, so the skeleton keeps them and the reasons follow. See
 > [Projects](projects.md#implicitusings).
 
 ```nasm
@@ -54,6 +54,16 @@ section .note.GNU-stack noalloc noexec nowrite progbits
 - **`asmsdk.inc`** gives the OS's calling convention and export rules names (see
   [Platforms](platforms.md#x64-asmsdkinc)): `FUNCTION` declares and exports, `ARG1d` is `ecx`
   on Windows and `edi` elsewhere.
+- **`section .text`** comes before the first label, even though NASM puts code there anyway.
+  On Windows the directive matters: NASM's COFF output writes a label defined before the
+  first section directive as an *undefined* symbol, though its code lands in `.text`
+  (measured with NASM 2.16.03, 3.01 and 3.02; ELF and Mach-O are not affected). The object
+  assembles and archives without a word, and the link fails: `undefined symbol: main`. A
+  `FUNCTION` in a DLL happens to escape, because its export directive switches back with
+  `__SECT__`, which is `[section .text]`. A `HIDDEN_FUNCTION`, a program's `main` and a
+  `FUNCTION` of a project with an `ExportsFile` (which writes no directive) do not, and
+  neither does a `LOCAL_FUNCTION` that another section points to (`dq helper` in `.data`:
+  `undefined symbol: helper`).
 - **`.note.GNU-stack`** marks the object as not needing an executable stack. It is
   Linux-only: for macOS, NASM stops at the line (`unknown section name`). The SDK already
   links with `-z noexecstack`, but your `.a` may be linked by someone else's toolchain. Since

@@ -188,7 +188,11 @@ the linker takes only the archive members it needs.
 > ```
 >
 > - **NASM sources** get `include/asmsdk-implicit.inc` as NASM's pre-include (`-P`):
->   `asmsdk.inc`, `default rel`, and on Linux the empty `.note.GNU-stack` section.
+>   `asmsdk.inc`, `default rel`, on Linux the empty `.note.GNU-stack` section, and on every OS
+>   `section .text`. The last one is for Windows: NASM's COFF output writes a label defined
+>   before the first section directive as an undefined symbol, so a source that names no
+>   section, such as the `asmstatic` template's, would not link there (see
+>   [Writing NASM](writing-nasm.md#a-source-file-skeleton)).
 > - **GNU-syntax sources** get `asmsdk-gnu.inc` and the Linux note through a two-line file
 >   the SDK writes in `obj/`, because llvm-mc has no pre-include option. Messages still name
 >   your file and its lines.

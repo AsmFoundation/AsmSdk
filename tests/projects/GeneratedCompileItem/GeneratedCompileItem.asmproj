@@ -1,0 +1,18 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A target adds a C# file to Compile during the build, as a code generator of .NET's or a
+    package's targets might. ASM0025 sees only the Compile items the project lists, before the
+    build; AsmPrepare then hands the assemblers only the .asm and .s Compile items, so the build
+    succeeds and generated.cs (which does not even exist) is never read. ProjectRuleTests checks
+    that it builds, and that nothing named generated.cs reached NASM.
+  -->
+  <PropertyGroup>
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+    <AssemblyName>generatedcompile</AssemblyName>
+  </PropertyGroup>
+  <Target Name="AddGeneratedCompileItem" BeforeTargets="AsmPrepare">
+    <ItemGroup>
+      <Compile Include="$(IntermediateOutputPath)generated.cs" />
+    </ItemGroup>
+  </Target>
+</Project>

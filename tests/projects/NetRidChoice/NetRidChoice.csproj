@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A .NET library that names the RIDs of a RID-less asm project on its ProjectReference, the
+    way the docs and ASM0013's message recommend: RidNone lists none, and this reference asks for
+    linux-x64 and osx-arm64. CrossPlatformTests builds it in a configuration of its own
+    (RidChoice, so RidNone's other builds are untouched) and checks that the portable output
+    holds exactly those two RIDs' libraries, whatever the build machine is, and that a portable
+    publish raises no ASM0013 (the reference chose).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../RidNone/RidNone.asmproj" RuntimeIdentifiers="linux-x64;osx-arm64" />
+  </ItemGroup>
+</Project>

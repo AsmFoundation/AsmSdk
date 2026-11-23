@@ -194,6 +194,76 @@ public sealed class TemplateTests(SdkUnderTest sdk)
     }
 
     /// <summary>
+    /// The code of each single-project template builds for all eight RIDs, not only for the
+    /// machine a scenario runs on: x64 code through NASM for win-x64, linux-x64, linux-musl-x64
+    /// and osx-x64, ARM64 code through llvm-mc for the other four, each output in its RID's
+    /// format and name. The library exports add_ints on every OS, and the static library defines
+    /// mul_ints in code for every RID: both sources name no section, which NASM's COFF output got
+    /// wrong for the static library (see ImplicitUsingsTests). The projects restore the SDK under
+    /// test from the local feed, through a nuget.config written next to them (the inline version
+    /// names it).
+    /// </summary>
+    [Fact]
+    public void Every_template_builds_for_all_eight_rids()
+    {
+        string output = Install();
+        File.WriteAllText(Path.Combine(output, "nuget.config"), $"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <configuration>
+              <packageSources>
+                <clear />
+                <add key="local" value="{Path.Combine(Repo.Artifacts, "packages")}" />
+                <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+              </packageSources>
+              <packageSourceMapping>
+                <packageSource key="local"><package pattern="AsmFoundation.*" /></packageSource>
+                <packageSource key="nuget.org"><package pattern="*" /></packageSource>
+              </packageSourceMapping>
+            </configuration>
+            """);
+        string allRids = string.Join(';', CrossPlatformTests.PlatformCode.Keys);
+        foreach ((string template, string name) in new[] { ("asmlib", "Lib8"), ("asmexe", "Exe8"), ("asmstatic", "Static8") })
+        {
+            CommandResult created = DotnetNew(output, template, "-n", name);
+            Assert.True(created.ExitCode == 0, created.Tail());
+            CommandResult build = Dotnet(output, "build", Path.Combine(name, name + ".asmproj"), "-c", "Release",
+                $"-p:RuntimeIdentifiers=\"{allRids}\"", "-nologo", "-nodeReuse:false");
+            Assert.True(build.ExitCode == 0, $"{template}: {build.Tail()}");
+            foreach (string rid in CrossPlatformTests.PlatformCode.Keys)
+            {
+                bool windows = rid.StartsWith("win-", StringComparison.Ordinal);
+                string file = template switch
+                {
+                    "asmlib" => Path.Combine("freestanding", rid, CrossPlatformTests.LibraryFile(rid, name)),
+                    "asmexe" => Path.Combine("libc", rid, windows ? name + ".exe" : name),
+                    _ => Path.Combine("freestanding", rid, windows ? name + ".lib" : $"lib{name}.a"),
+                };
+                string path = Path.Combine(output, name, "bin", "Release", file);
+                Assert.True(File.Exists(path), $"{template}, {rid}: no {path}");
+                if (template != "asmstatic")
+                {
+                    Assert.Contains($"Format: {CrossPlatformTests.Format[rid]}", sdk.ReadObj(path, "--file-headers"));
+                }
+                else
+                {
+                    // The library is archived, not linked, so its build succeeds with undefined
+                    // symbols: mul_ints must be defined, in code, for every RID. mul.asm names no
+                    // section, and on win-x64 NASM's COFF output wrote mul_ints as undefined
+                    // until ImplicitUsings named .text on every OS (2026-11-23).
+                    ImplicitUsingsTests.AssertDefinedInText(sdk.ReadObj(path, "--symbols"), "mul_ints", $"{template}, {rid}");
+                }
+
+                if (template == "asmlib")
+                {
+                    // add.asm names no section either, and the library must export add_ints on
+                    // every OS: the format check alone would pass a library that exports nothing.
+                    AssertExports(path, rid, "add_ints");
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// Makes a fresh work folder (an empty global.json in it, see the remarks) and installs the
     /// templates package from its file into the folder's own CLI home, once per test.
     /// </summary>
@@ -241,5 +311,30 @@ public sealed class TemplateTests(SdkUnderTest sdk)
             ["DOTNET_CLI_UI_LANGUAGE"] = "en",
         };
         return Command.Run("dotnet", arguments, folder, environment);
+    }
+
+    /// <summary>
+    /// Asserts that a shared library exports a function, as each OS records it: in the export
+    /// table of a DLL, as an external symbol with Mach-O's underscore in a .dylib, in the
+    /// dynamic symbol table of an ELF .so.
+    /// </summary>
+    /// <param name="library">The library file.</param>
+    /// <param name="rid">Its runtime identifier, which picks the OS's record.</param>
+    /// <param name="name">The function's C name.</param>
+    /// <exception cref="Xunit.Sdk.XunitException">The library does not export the function.</exception>
+    private void AssertExports(string library, string rid, string name)
+    {
+        if (rid.StartsWith("win-", StringComparison.Ordinal))
+        {
+            Assert.Contains($"Name: {name}", sdk.ReadObj(library, "--coff-exports"));
+        }
+        else if (rid.StartsWith("osx-", StringComparison.Ordinal))
+        {
+            Assert.Matches($@"Name: _{name} \(\d+\)\s+Extern", sdk.ReadObj(library, "--symbols"));
+        }
+        else
+        {
+            Assert.Matches($@"Name: {name} \(\d+\)", sdk.ReadObj(library, "--dyn-syms"));
+        }
     }
 }

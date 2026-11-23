@@ -106,10 +106,29 @@ internal sealed partial record Scenario
     public static Scenario Load(string name)
     {
         string file = Path.Combine(Repo.Scenarios, name, FileName);
+        return Parse(File.ReadAllText(file), name, Repo.Relative(file));
+    }
+
+    /// <summary>
+    /// Reads and checks the text of a scenario file: what <see cref="Load"/> does after reading
+    /// it, apart so that ScenarioFormatTests can check the format's rules on texts of their own
+    /// without a folder under tests/scenarios (which would become a scenario test).
+    /// </summary>
+    /// <param name="json">The file's text.</param>
+    /// <param name="name">The scenario's name, set as <see cref="Name"/>.</param>
+    /// <param name="file">The file as messages name it (relative to the repository root).</param>
+    /// <returns>The scenario, with <see cref="Name"/> set.</returns>
+    /// <exception cref="InvalidDataException">
+    /// The text is not valid JSON, holds null, has an unknown or missing property, a step without
+    /// a command, an empty expected or absent text, an unterminated quote, an unknown placeholder,
+    /// or a service that is badly declared. The message names the file and the reason.
+    /// </exception>
+    internal static Scenario Parse(string json, string name, string file)
+    {
         Scenario? scenario;
         try
         {
-            scenario = JsonSerializer.Deserialize<Scenario>(File.ReadAllText(file), JsonOptions);
+            scenario = JsonSerializer.Deserialize<Scenario>(json, JsonOptions);
         }
         catch (JsonException e)
         {
@@ -117,16 +136,16 @@ internal sealed partial record Scenario
             // is (measured: "The JSON property 'stdot' could not be mapped to any .NET member
             // contained in type 'ScenarioStep'."): both are added, the line counted from 1.
             string at = e.Path is null ? "" : $" (at {e.Path}{(e.LineNumber is { } line ? $", line {line + 1}" : "")})";
-            throw new InvalidDataException($"{Repo.Relative(file)}: {e.Message}{at}", e);
+            throw new InvalidDataException($"{file}: {e.Message}{at}", e);
         }
 
         if (scenario is null)
         {
-            throw new InvalidDataException($"{Repo.Relative(file)}: the file holds null, not a scenario");
+            throw new InvalidDataException($"{file}: the file holds null, not a scenario");
         }
 
         scenario = scenario with { Name = name };
-        scenario.Validate(Repo.Relative(file));
+        scenario.Validate(file);
         return scenario;
     }
 

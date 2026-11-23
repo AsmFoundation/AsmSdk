@@ -1,0 +1,18 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A static library whose sources name no section and include nothing: sectionless.asm and
+    sectionless.s are code from their first line, as the asmstatic template's are. ImplicitUsings
+    (on by default) supplies the platform layer and, since 2026-11-23 on every OS, the section the
+    code goes to. Until then NASM's COFF output wrote sl_mul as an undefined symbol on win-x64
+    (a label before the first section directive), so a program linking this library failed with
+    "undefined symbol". ImplicitUsingsTests checks that sl_mul is defined in the text section of
+    each RID's library, and SectionlessProgram, which references it, links it for all eight.
+    It names no RID: it is built for the RIDs of the project that references it.
+      sl_mul(a, b)    a * b, a HIDDEN_FUNCTION (global for the code that links this library,
+                      exported by no image)
+  -->
+  <PropertyGroup>
+    <OutputType>StaticLibrary</OutputType>
+    <AssemblyName>sectionless</AssemblyName>
+  </PropertyGroup>
+</Project>

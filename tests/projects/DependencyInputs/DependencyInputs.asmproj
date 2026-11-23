@@ -1,0 +1,24 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    The inputs of the assemble step that are not sources, and a source taken out, as .NET names
+    them (IncrementalBuildTests, IdeIntegrationTests):
+      ../SharedIncludes/outside.inc  an include file from a folder outside the project: on the
+                                     -I path (AsmIncludeDirectory) and a None item, which makes
+                                     every source depend on it
+      blob.bin                       %incbin data: a CustomAdditionalCompileInputs item, .NET's
+                                     item for more inputs of the compile
+      excluded.asm                   not assembly at all, taken out with Compile Remove
+      readme.txt                     a None item that is no input: editing it assembles nothing
+    Exports dep_answer (42, from outside.inc) and dep_blob_size (the size of blob.bin).
+  -->
+  <PropertyGroup>
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+    <AssemblyName>depinputs</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <AsmIncludeDirectory Include="../SharedIncludes/" />
+    <None Include="../SharedIncludes/outside.inc" />
+    <CustomAdditionalCompileInputs Include="blob.bin" />
+    <Compile Remove="excluded.asm" />
+  </ItemGroup>
+</Project>

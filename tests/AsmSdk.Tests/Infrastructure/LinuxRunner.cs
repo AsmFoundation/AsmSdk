@@ -10,8 +10,8 @@ namespace AsmSdk.Tests.Infrastructure;
 /// <para>
 /// Two environment variables choose how, as tests/run.py's --run and --dotnet-run did:
 /// <c>ASMSDK_TEST_RUN</c> = auto | native | wsl | none, and <c>ASMSDK_TEST_DOTNET_RUN</c> =
-/// auto | native | docker | none. "auto" picks native on Linux, then WSL (or Docker) when it is
-/// on PATH, else none. CI sets them per runner: only the Linux job can run the outputs.
+/// auto | native | docker | none. "auto" picks native on Linux, then WSL when it is on PATH (or
+/// Docker when it answers with Linux containers), else none. CI sets them per runner: only the Linux job can run the outputs.
 /// </para>
 /// <para>
 /// "none" skips the test with the reason, rather than passing it: a run that could not happen
@@ -26,9 +26,17 @@ internal static class LinuxRunner
         () => OperatingSystem.IsLinux() ? "native" : OperatingSystem.IsWindows() && Command.OnPath("wsl") ? "wsl" : "none");
 
     /// <summary>How the .NET sample runs here: native, docker or none.</summary>
+    /// <remarks>
+    /// "auto" picks docker only when Docker answers now with Linux containers, as the musl and
+    /// scenario tests already decide: until 2026-11-23 it picked docker whenever docker was on
+    /// PATH, so with Docker Desktop installed but stopped every such test failed ("open
+    /// //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified") instead
+    /// of being skipped with the reason, and a machine's state read as an SDK failure. An explicit ASMSDK_TEST_DOTNET_RUN=docker still means
+    /// docker, and still fails when Docker is not there.
+    /// </remarks>
     /// <exception cref="InvalidOperationException">ASMSDK_TEST_DOTNET_RUN holds an unknown value (thrown by the initializer).</exception>
     public static string DotnetMode { get; } = Resolve("ASMSDK_TEST_DOTNET_RUN", ["native", "docker", "none"],
-        () => OperatingSystem.IsLinux() ? "native" : Command.OnPath("docker") ? "docker" : "none");
+        () => OperatingSystem.IsLinux() ? "native" : DockerRunsLinuxContainers() ? "docker" : "none");
 
     /// <summary>Runs a built Linux executable with the arguments "a b".</summary>
     /// <param name="executable">The executable's full path, inside the repository.</param>
@@ -119,7 +127,7 @@ internal static class LinuxRunner
     {
         if (DotnetMode == "none")
         {
-            Assert.Skip($"No Linux or Docker to run {assembly} on (ASMSDK_TEST_DOTNET_RUN=none)");
+            Assert.Skip($"No Linux, nor a running Docker with Linux containers, to run {assembly} on (ASMSDK_TEST_DOTNET_RUN=none, or auto found neither)");
         }
 
         return DotnetMode == "native"
@@ -127,6 +135,15 @@ internal static class LinuxRunner
             : Command.Run("docker", ["run", "--rm", "-v", $"{outputFolder}:/app:ro", "-w", "/app",
                 "mcr.microsoft.com/dotnet/runtime:10.0", "dotnet", assembly, .. arguments]);
     }
+
+    /// <summary>
+    /// Whether Docker can run Linux containers on this machine now: docker is on PATH, its
+    /// daemon answers, and it is in Linux-container mode (GitHub's Windows runners answer
+    /// "windows"). Asked once, by <see cref="DotnetMode"/>'s initializer.
+    /// </summary>
+    /// <returns>True when "docker info" reports the Linux OS type.</returns>
+    private static bool DockerRunsLinuxContainers() =>
+        Command.OnPath("docker") && Command.Run("docker", ["info", "--format", "{{.OSType}}"], Repo.Root).StdOut.Trim() == "linux";
 
     /// <summary>Reads a mode variable, or decides "auto".</summary>
     /// <param name="variable">The environment variable.</param>

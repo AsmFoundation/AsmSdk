@@ -6,8 +6,9 @@ namespace AsmSdk.Tests;
 
 /// <summary>
 /// Incremental builds: a rebuild without changes runs no tool, touching a public include
-/// reassembles exactly the sources that can include it, and an assembler option set outside the
-/// project file assembles again.
+/// reassembles exactly the sources that can include it, include files from outside the project
+/// and extra inputs are dependencies while other files are not, and an assembler option set
+/// outside the project file assembles again.
 /// </summary>
 /// <param name="sdk">The SDK under test (assembly fixture).</param>
 /// <remarks>
@@ -64,6 +65,50 @@ public sealed class IncrementalBuildTests(SdkUnderTest sdk)
         string[] assembled = Assembled.Matches(build.StdOut).Select(m => $"{m.Groups[1].Value}/{m.Groups[2].Value}")
             .Distinct().Order(StringComparer.Ordinal).ToArray();
         Assert.Equal(["Hello.App/main.asm", "Hello.Static/mul.asm"], assembled);
+    }
+
+    /// <summary>
+    /// What the assemble step depends on besides its sources, as .NET names it
+    /// (tests/projects/DependencyInputs): a None item ending in .inc, here from a folder outside
+    /// the project, and a CustomAdditionalCompileInputs item (a %incbin blob). Touching either
+    /// assembles again; touching another None item (readme.txt) does not. The project also takes
+    /// a source out with Compile Remove: excluded.asm is not assembly, so the first build
+    /// succeeds only if NASM never sees it.
+    /// </summary>
+    [Fact]
+    public void Include_files_and_extra_inputs_are_dependencies_and_other_files_are_not()
+    {
+        CommandResult Build() => sdk.Dotnet("build", Repo.TestProject("DependencyInputs"), "-c", "Debug", "-v:n");
+
+        // Each touched file is dated now: after every object, which the previous build wrote, and
+        // before the next build's. Not in the future: a file dated after the next build's objects
+        // stays newer than them, and the build after that would assemble again for it (measured:
+        // a blob dated now + 2 s made the readme step assemble).
+        void Touch(params string[] parts) => File.SetLastWriteTimeUtc(Repo.TestProjectPath(parts), DateTime.UtcNow);
+
+        CommandResult first = Build();
+        Assert.True(first.ExitCode == 0, first.Tail());
+        Assert.NotEmpty(AssemblerRun.Matches(first.StdOut).Select(m => m.Value));
+        Assert.DoesNotContain("excluded.asm\"", first.StdOut);
+
+        CommandResult unchanged = Build();
+        Assert.True(unchanged.ExitCode == 0, unchanged.Tail());
+        Assert.Empty(AssemblerRun.Matches(unchanged.StdOut).Select(m => m.Value));
+
+        Touch("SharedIncludes", "outside.inc");
+        CommandResult afterInclude = Build();
+        Assert.True(afterInclude.ExitCode == 0, afterInclude.Tail());
+        Assert.NotEmpty(AssemblerRun.Matches(afterInclude.StdOut).Select(m => m.Value));
+
+        Touch("DependencyInputs", "blob.bin");
+        CommandResult afterBlob = Build();
+        Assert.True(afterBlob.ExitCode == 0, afterBlob.Tail());
+        Assert.NotEmpty(AssemblerRun.Matches(afterBlob.StdOut).Select(m => m.Value));
+
+        Touch("DependencyInputs", "readme.txt");
+        CommandResult afterReadme = Build();
+        Assert.True(afterReadme.ExitCode == 0, afterReadme.Tail());
+        Assert.Empty(AssemblerRun.Matches(afterReadme.StdOut).Select(m => m.Value));
     }
 
     /// <summary>

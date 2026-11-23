@@ -128,6 +128,20 @@ public sealed class IdeIntegrationTests(SdkUnderTest sdk)
     }
 
     /// <summary>
+    /// The fast up-to-date checks also see the inputs that are no sources, as .NET names them
+    /// (tests/projects/DependencyInputs): an include file from outside the project listed as a
+    /// None item, and a CustomAdditionalCompileInputs item; not a source taken out with Compile
+    /// Remove, nor a None item that is no input (readme.txt).
+    /// </summary>
+    [Fact]
+    public void The_up_to_date_check_knows_include_files_and_extra_inputs()
+    {
+        Dictionary<string, string[]> items = Items("DependencyInputs", "freestanding", "Compile", "UpToDateCheckInput");
+        Assert.Equal(["deps.asm"], items["Compile"]);
+        Assert.Equal(["../SharedIncludes/outside.inc", "blob.bin", "deps.asm"], items["UpToDateCheckInput"].Order(StringComparer.Ordinal));
+    }
+
+    /// <summary>
     /// A design-time build, as Rider runs one on every load (Compile and CoreCompile with
     /// DesignTimeBuild and SkipCompilerExecution), runs no assembler or linker and writes no
     /// object. The control, the same targets without those properties, does run them: the probe

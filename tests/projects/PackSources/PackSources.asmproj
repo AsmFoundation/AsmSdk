@@ -1,0 +1,18 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    AsmPackSources=true: the package also carries the sources under src/, for consumers that
+    assemble them themselves. PackageTests packs it and checks what src/ holds: the Compile items
+    (lib.asm, and lib.s although linux-x64 builds only the .asm) and the None items ending in .inc
+    (include/pub.inc, private.inc), each at its path in the project; not notes.txt, a None item
+    that is no source. include/pub.inc is also the package's public include/, as for any package.
+  -->
+  <PropertyGroup>
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+    <AssemblyName>packsources</AssemblyName>
+    <PackageId>Test.PackSources</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>AsmFoundation tests</Authors>
+    <Description>Test package: an asm library packed with its sources (AsmPackSources).</Description>
+    <AsmPackSources>true</AsmPackSources>
+  </PropertyGroup>
+</Project>

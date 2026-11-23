@@ -172,7 +172,8 @@ Each SDK release names the one it was tested with.
     `<NoWarn>ASM0013</NoWarn>` silences it.
 - **`ImplicitUsings`, on by default:** every source gets the SDK's platform layer without
   writing it. NASM gets `include/asmsdk-implicit.inc` as its pre-include (`-P`): `asmsdk.inc`,
-  `default rel`, and on Linux the empty `.note.GNU-stack` section. Each `.s` source is assembled
+  `default rel`, on Linux the empty `.note.GNU-stack` section, and `section .text` (see Fixed).
+  Each `.s` source is assembled
   through a two-line file in `obj/` (`.include "asmsdk-gnu-implicit.inc"`, then the source),
   because llvm-mc has no pre-include; messages still name the source and its lines. Sources that
   write these lines themselves build as before, because both headers have guards.
@@ -237,6 +238,18 @@ Each SDK release names the one it was tested with.
 
 ### Fixed
 
+- **A NASM source that names no section links on Windows.** `ImplicitUsings` now ends with
+  `section .text` on every OS, not only after the Linux note. NASM's COFF output writes a label
+  defined before the first section directive as an undefined symbol, although its code goes to
+  `.text` (measured with the official NASM 2.16.03, 3.01 and 3.02; ELF and Mach-O are not
+  affected). So the `asmstatic` template's `mul_ints`, any `HIDDEN_FUNCTION`, program `main` or
+  `FUNCTION` of a project with an `ExportsFile` in a source without a section directive, and a
+  `LOCAL_FUNCTION` that another section points to, assembled (and archived) silently and then
+  failed to link on `win-x64` (`undefined symbol: main`). A `FUNCTION` in any other DLL escaped
+  only because its export directive switches back with `__SECT__`.
+  The PlugAndPlay scenario found it when its program first linked the template's library; the
+  Sectionless test projects now link section-less sources for all eight RIDs. The Windows
+  object of a data-only source now carries an empty `.text` section, which changes nothing.
 - **A `DefineConstants` given on the command line keeps the SDK's own symbols.**
   `-p:DefineConstants=X` (or a CI script's global property) is read-only, so MSBuild silently
   ignored the SDK's append of `DEBUG`/`RELEASE`, `FREESTANDING`/`LIBC` and the platform's

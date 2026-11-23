@@ -28,6 +28,30 @@ public sealed class PackTests(SdkUnderTest sdk)
         Assert.Equal(sdk.Version, pinned);
     }
 
+    /// <summary>
+    /// Every project in the repository that names the SDK version on its own first line
+    /// (Sdk="AsmFoundation.Sdk/x.y.z", as the templates write, and as the plug-and-play scenarios'
+    /// hand-written projects must, their folder having no msbuild-sdks pin) names the version
+    /// under test: an older one would restore another AsmFoundation.Sdk, or none from the local
+    /// feed, after a version bump.
+    /// </summary>
+    [Fact]
+    public void Inline_sdk_versions_pin_the_version_under_test()
+    {
+        var inline = new System.Text.RegularExpressions.Regex(@"Sdk=""AsmFoundation\.Sdk/([^""]+)""");
+        string[] projects = new[] { Repo.Samples, Repo.TestProjects, Repo.Scenarios }
+            .SelectMany(root => Directory.EnumerateFiles(root, "*.asmproj", SearchOption.AllDirectories))
+            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .ToArray();
+        string[] pinned = projects
+            .Select(path => (Path: path, Match: inline.Match(File.ReadAllText(path))))
+            .Where(p => p.Match.Success)
+            .Select(p => $"{Repo.Relative(p.Path)}: {p.Match.Groups[1].Value}")
+            .ToArray();
+        Assert.NotEmpty(pinned);
+        Assert.All(pinned, entry => Assert.EndsWith($": {sdk.Version}", entry));
+    }
+
     /// <summary>AsmFoundation.Sdk packs.</summary>
     [Fact]
     public void The_sdk_packs() =>

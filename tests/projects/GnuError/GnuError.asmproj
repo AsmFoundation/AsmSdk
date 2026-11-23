@@ -1,0 +1,11 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    Expected to FAIL: gnuerror.s has an unknown instruction on line 4. With ImplicitUsings (on by
+    default) llvm-mc assembles it through the wrapper the SDK writes in obj/, which includes the
+    source. DiagnosticsTests checks that the error is still an MSBuild error at the source's own
+    file, line and column, so an IDE opens the right place, followed by ASM0007.
+  -->
+  <PropertyGroup>
+    <RuntimeIdentifiers>linux-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>
