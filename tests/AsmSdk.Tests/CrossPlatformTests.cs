@@ -635,11 +635,14 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
         Assert.DoesNotContain("AsmFoundation.Sdk", reader.ReadToEnd());
     }
 
-    /// <summary>Each RID rule stops the build with its own error code (see the test projects' comments).</summary>
+    /// <summary>
+    /// Each RID rule stops the build with its own error code (see the test projects' comments).
+    /// ASM0010 (no RID at all) has no row: it now happens only on a build machine that is not one
+    /// of the eight RIDs, which no CI runner is; RidNone builds for this machine instead (below).
+    /// </summary>
     /// <param name="project">The test project that breaks the rule.</param>
     /// <param name="code">The error code it must fail with.</param>
     [Theory]
-    [InlineData("RidNone", "ASM0010")]
     [InlineData("RidUnknown", "ASM0011")]
     [InlineData("RidMacExe", "ASM0015")]
     [InlineData("RidTie", "ASM0020")]
@@ -651,6 +654,59 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
         CommandResult build = sdk.BuildTestProject(project);
         Assert.True(build.ExitCode != 0, $"{project} built, but must fail: {build.Tail()}");
         Assert.Contains(code, build.StdOut);
+    }
+
+    /// <summary>
+    /// A project that lists no RuntimeIdentifiers (RidNone, as a new project or a template's)
+    /// builds for the build machine's own RID, and for nothing else; a build, the dev loop,
+    /// warns about nothing. 0.3.0 stopped with ASM0010 here.
+    /// </summary>
+    [Fact]
+    public void A_project_without_rids_builds_for_this_machine()
+    {
+        string? rid = HostBuildRid();
+        if (rid is null)
+        {
+            Assert.Skip($"AsmSdk builds nothing for this machine ({Repo.HostRid}): RidNone stops with ASM0010 here");
+        }
+
+        CommandResult build = sdk.BuildTestProject("RidNone");
+        Assert.True(build.ExitCode == 0, build.Tail());
+        Assert.DoesNotContain("ASM0013", build.StdOut);
+        string folder = Repo.TestProjectPath("RidNone", "bin", "Release", "freestanding");
+        Assert.Equal([rid], Directory.GetDirectories(folder).Select(Path.GetFileName));
+        string library = Path.Combine(folder, rid, LibraryFile(rid, "ridnone"));
+        Assert.Contains($"Format: {Format[rid]}", sdk.ReadObj(library, "--file-headers"));
+    }
+
+    /// <summary>
+    /// dotnet pack of a project without RuntimeIdentifiers warns ASM0013, naming the one RID the
+    /// package then carries (the build machine's) and the fix; the package holds that RID alone.
+    /// A warning, not an error, even under the test projects' TreatWarningsAsErrors (MSBuild's
+    /// own warnings are not the compiler's), and NoWarn silences it like any MSBuild warning.
+    /// </summary>
+    [Fact]
+    public void Packing_a_project_without_rids_warns_that_it_carries_one()
+    {
+        string? rid = HostBuildRid();
+        if (rid is null)
+        {
+            Assert.Skip($"AsmSdk builds nothing for this machine ({Repo.HostRid})");
+        }
+
+        string output = Path.Combine(Repo.Artifacts, "test-packages", "ridnone");
+        CommandResult pack = sdk.Once("pack RidNone", () => sdk.Dotnet("pack", Repo.TestProject("RidNone"), "-c", "Release", "-o", output));
+        Assert.True(pack.ExitCode == 0, pack.Tail());
+        Assert.Contains("warning ASM0013", pack.StdOut);
+        Assert.Contains($"so this pack carries it for {rid} alone", pack.StdOut);
+        Assert.Contains("<RuntimeIdentifiers>", pack.StdOut);
+        SortedSet<string> entries = SdkUnderTest.PackageEntries(Path.Combine(output, "ridnone.1.0.0.nupkg"));
+        Assert.Equal([rid], entries.Where(e => e.StartsWith("runtimes/", StringComparison.Ordinal)).Select(e => e.Split('/')[1]).Distinct());
+
+        string quiet = Path.Combine(Repo.Artifacts, "test-packages", "ridnone-nowarn");
+        CommandResult silenced = sdk.Dotnet("pack", Repo.TestProject("RidNone"), "-c", "Release", "-o", quiet, "-p:NoWarn=ASM0013");
+        Assert.True(silenced.ExitCode == 0, silenced.Tail());
+        Assert.DoesNotContain("ASM0013", silenced.StdOut);
     }
 
     /// <summary>-r with a RID that the project's RuntimeIdentifiers do not list stops with ASM0012.</summary>
@@ -685,7 +741,7 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
     /// </summary>
     /// <param name="path">The library to copy and load.</param>
     /// <returns>The library handle.</returns>
-    private static nint LoadCopy(string path)
+    internal static nint LoadCopy(string path)
     {
         Assert.True(File.Exists(path), $"no {path}");
         string folder = Path.Combine(Repo.Artifacts, "test-run", Guid.NewGuid().ToString("N"));

@@ -66,11 +66,12 @@ Pack (per target framework)
   collide;
 - the include directories, local ones first, each with a trailing `/`;
 - the dependency list: `@(AsmInclude)`, plus every `**/*.inc` under include directories
-  that carry `AsmOrigin`;
+  that carry `AsmOrigin` (not released yet: the `None` items ending in `.inc` and the
+  `CustomAdditionalCompileInputs` items, instead of `@(AsmInclude)`);
 - the `-D` arguments from `DefineConstants`, to which `Properties.targets` has appended
   `DEBUG` or `RELEASE`, and `FREESTANDING` or `LIBC`;
 - the `ExportsFile` (`--version-script`) and `LinkerArg` arguments of the link;
-- the link inputs, from `@(AsmLinkLibrary)`.
+- the link inputs, from `@(AsmLinkLibrary)` (`@(NativeLibrary)`, not released yet).
 
 **All paths handed to tools use forward slashes.** A trailing backslash before a closing
 quote (`"C:\dir\"`) would escape the quote under Windows command-line rules and merge two
@@ -89,7 +90,7 @@ arguments into one.
   | Not tracked | Effect | Fix |
   |---|---|---|
   | `.inc` files in your own `AsmIncludeDirectory` items outside the project | stale objects | list them as `AsmInclude` items |
-  | `incbin` files | stale objects | list them as `AsmInclude` items: any file works as a dependency |
+  | `incbin` files | stale objects | list them as `AsmInclude` items: any file works as a dependency (not released yet: `CustomAdditionalCompileInputs` items) |
   | include files without the `.inc` extension | stale objects | the same |
   | `Directory.Build.props` and other imported files | a changed define does not reassemble anything | rebuild (`dotnet build --no-incremental`) after changing them |
 
@@ -99,7 +100,7 @@ arguments into one.
   1. `ResolveProjectReferences` builds the referenced project.
   2. `_AsmResolveProjectReferences` calls its `GetAsmLinkInputs` target.
   3. The returned items carry `AsmItemType`. `IncludeDirectory` items are added to
-     `AsmIncludeDirectory`, and `LinkInput` items to `AsmLinkLibrary`, all with
+     `AsmIncludeDirectory`, and `LinkInput` items to `AsmLinkLibrary` (`NativeLibrary`, not released yet), all with
      `AsmOrigin="Project"`.
 
   Transitive project references, which the .NET SDK adds, are processed the same way.
@@ -179,7 +180,7 @@ leads to them, is skipped. A target hooked anywhere else that runs a tool needs
 
 **Change a link line:**
 
-- Use `LinkerArg` items for flags, `ExportsFile` for a version script, and `AsmLinkLibrary`
+- Use `LinkerArg` items for flags, `ExportsFile` for a version script, and `AsmLinkLibrary` (`NativeLibrary`, not released yet)
   items for inputs.
 - Don't override `AsmLink`. To change the whole link, set
   `<OutputType>Objects</OutputType>` and link in your own target, after

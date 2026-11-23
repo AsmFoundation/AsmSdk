@@ -11,6 +11,39 @@ An `.asmproj` behaves like an SDK-style `.csproj`:
 This page covers what is specific to assembly. Every setting is in the
 [reference](../asmproj.md).
 
+## Templates
+
+> [!NOTE]
+> **Not released yet.** The `AsmFoundation.Templates` package is on the main branch. It is
+> released with the SDK, under the same version number.
+
+```sh
+dotnet new install AsmFoundation.Templates
+```
+
+| Template | Short name | What it creates |
+|---|---|---|
+| Assembly Library | `asmlib` | a shared library: x64 code in NASM (`add.asm`), ARM64 code in GNU syntax (`add.s`) |
+| Assembly Console App | `asmexe` | a program on the platform's C library, which `dotnet run` builds and runs |
+| Assembly Static Library | `asmstatic` | a static library with a public `include/` folder, for other asm projects |
+| Assembly + .NET Solution | `asmnet` | a `.slnx` with a C# console app, the asm library it calls through `[LibraryImport]`, and xunit v3 tests |
+
+- **`--sdk-version <version>`** sets the AsmFoundation.Sdk version the projects name on their
+  first line. It defaults to the templates package's own version, which is released with the
+  SDK of the same version, so a fresh install writes the newest one. `dotnet new` says when a
+  newer templates package exists.
+- **`--test-runner mtp-v2|vstest`** (`asmnet`) picks the test runner, as xunit's own `xunit3`
+  template does. `mtp-v2`, the default, sets Microsoft.Testing.Platform in `global.json`,
+  creating it at the repository root when there is none; the .NET 10 SDK's `dotnet test`
+  needs that. `vstest` leaves `global.json` alone.
+- **`--no-restore`** skips the restore that runs after the files are created.
+- **The projects list no `RuntimeIdentifiers`**, so they build for this machine (see
+  [Runtime identifiers](#runtime-identifiers)). Their comments show the line to add to ship
+  more platforms.
+- **Names keep their form:** `dotnet new asmnet -n my-app` writes `my-app.Native.asmproj` and
+  `[LibraryImport("my-app.Native")]`, which match the library's file name, and the C#
+  namespace `my_app.Tests`.
+
 ## A project folder
 
 ```text
@@ -38,6 +71,15 @@ A project that lists none is built for the RIDs its referencing projects ask for
 file name: `.asm` is NASM for the x64 RIDs, `.s` is GNU syntax for the ARM64 ones, and a
 qualifier (`hello.linux.asm`, `hello.win-arm64.s`) narrows a file further.
 [Platforms and runtime identifiers](platforms.md) covers all of it.
+
+> [!NOTE]
+> **Not released yet:** on the main branch, a project that lists no RIDs, and that nothing asks
+> for one, builds for the build machine's own RID instead of failing with ASM0010. A referencing
+> project's RIDs and `-r` still come first. What leaves the machine says when it carries that
+> one RID only: `dotnet pack` of the project, and a portable `dotnet publish` or `dotnet pack`
+> of a .NET project that references it, warn `ASM0013` with the line to add.
+> `<NoWarn>ASM0013</NoWarn>` silences it. ASM0010 remains for a build machine that is none of
+> the eight RIDs.
 
 ## Target frameworks
 
@@ -106,6 +148,15 @@ the linker takes only the archive members it needs.
 - **Default items:** every `**/*.asm` and `**/*.s` is an `AsmSource`, and every `**/*.inc`
   is an `AsmInclude`. `bin/` and `obj/` are excluded. Set `EnableDefaultAsmItems=false` to
   list them yourself. Listing a default source again is ASM0024.
+
+  > [!NOTE]
+  > **Not released yet:** on the main branch, .NET's item types instead. Every `**/*.asm` and
+  > `**/*.s` is a `Compile` item (`<Compile Remove="helpers.asm" />`; `EnableDefaultCompileItems`),
+  > every other file a `None` item, and every `None` item ending in `.inc` is a dependency of
+  > every source. Any other file a source reads (`%incbin` data) is a
+  > `CustomAdditionalCompileInputs` item, .NET's item for more inputs of the compile. A
+  > `Compile` item that is not `.asm` or `.s` is ASM0025. The old names are errors (ASM0110 to
+  > ASM0112) that show the new line.
 - **Name include files `.inc`.** An `.asm` file that another file `%include`s is still a
   source, so its symbols are linked twice: `duplicate symbol`. Rename it, or remove it from
   the sources with `<AsmSource Remove="helpers.asm" />`.
@@ -122,6 +173,30 @@ the linker takes only the archive members it needs.
   their include path, and what `dotnet pack` ships. A project without an `include/` folder
   packs **no** include files.
 
+### ImplicitUsings
+
+> [!NOTE]
+> **Not released yet.** On the main branch, `ImplicitUsings`, .NET's property for what every
+> source gets without writing it, is on by default in an `.asmproj`. It puts the SDK's
+> platform layer in front of every source, so a file is just code:
+>
+> ```nasm
+> FUNCTION demo_add, 2                ; no %include, no default rel, no .note.GNU-stack
+>     lea     eax, [ARG1 + ARG2]
+>     RETURN
+> ENDFUNCTION
+> ```
+>
+> - **NASM sources** get `include/asmsdk-implicit.inc` as NASM's pre-include (`-P`):
+>   `asmsdk.inc`, `default rel`, and on Linux the empty `.note.GNU-stack` section.
+> - **GNU-syntax sources** get `asmsdk-gnu.inc` and the Linux note through a two-line file
+>   the SDK writes in `obj/`, because llvm-mc has no pre-include option. Messages still name
+>   your file and its lines.
+> - **Code that already writes them keeps building:** both include files have guards, and a
+>   repeated `default rel` or note changes nothing.
+> - **`<ImplicitUsings>disable</ImplicitUsings>`** gives raw NASM back: for code with macros of
+>   its own named like `asmsdk.inc`'s, or code assembled outside AsmSdk too.
+
 ### Include folders outside the project
 
 ```xml
@@ -134,7 +209,9 @@ the linker takes only the archive members it needs.
 - **Write both lines.** With only the first, editing `../common/include/x.inc` leaves the
   old objects in place: the build reports up to date, but it is stale.
 - **What counts as a dependency:** the project's own `AsmInclude` items, plus the include
-  folders of packages and referenced projects.
+  folders of packages and referenced projects. (Not released yet: the second line is
+  `<None Include="../common/include/**/*.inc" />`, and the dependencies are the `None` items
+  ending in `.inc` and the `CustomAdditionalCompileInputs` items.)
 
 ## Defines and configurations
 
@@ -177,6 +254,20 @@ triggers (`reloc-rel-dword` and `reloc-abs-qword`).
   is printed in brackets after it.
 - **`AsmLlvmMcFlags`** passes extra arguments to llvm-mc, as `AsmFlags` does to NASM.
 
+> [!NOTE]
+> **Not released yet:** on the main branch, .NET's own warning lists take NASM's warning
+> names, as they take a compiler's codes in a `.csproj`:
+>
+> | Property | `label-orphan` in it becomes | Effect |
+> |---|---|---|
+> | `NoWarn` | `-w-label-orphan` | the warning is off |
+> | `WarningsAsErrors` | `-w+error=label-orphan` | that warning is an error |
+> | `WarningsNotAsErrors` | `-w-error=label-orphan` | that warning stays a warning under `TreatWarningsAsErrors` |
+>
+> Only entries shaped like NASM's names (lower case, with hyphens) are passed on, so one list
+> can hold .NET's and NuGet's codes too: `<NoWarn>$(NoWarn);NU5128;label-orphan</NoWarn>`.
+> llvm-mc has no per-warning switches.
+
 > [!TIP]
 > By default, NASM's messages are printed as plain text above an `MSB3073: The command …
 > exited with code 1` error, and `-v:q` hides them. Add `<AsmFlags>-Xvc</AsmFlags>`: NASM
@@ -191,6 +282,33 @@ triggers (`reloc-rel-dword` and `reloc-abs-qword`).
 - **A rebuild with no changes runs no tool.**
 - **Not tracked:** changes to `Directory.Build.props` and other imported files. After
   changing a define there, rebuild with `dotnet build --no-incremental`.
+
+> [!NOTE]
+> **Not released yet:** on the main branch, the assemblers' options are tracked wherever they
+> are set. The SDK writes them to `obj/.../asm/assemble-options.txt`, rewritten only when they
+> change, and the assemble step depends on that file, as C#'s compile depends on
+> `CoreCompileInputs.cache`. A define, `NoWarn`, `ImplicitUsings` or `AsmFlags` changed in
+> `Directory.Build.props` or on the command line assembles again, once.
+
+## Reproducible builds
+
+> [!NOTE]
+> **Not released yet.** On the main branch, a Release build is the same, byte for byte, in
+> every checkout folder, with any NuGet cache, and on every run: shared and static libraries,
+> freestanding and `libc`, and `libc` programs, for all eight RIDs (tested: the same projects
+> built in two folders of different depth, each with a NuGet cache of its own).
+>
+> - **Sources are passed by their path relative to the project folder,** so no object records
+>   where the checkout is (ELF's file symbol, COFF's `.file` record). The SDK's own startup
+>   and C library sources are assembled in their folder by file name, so no program records
+>   where the NuGet cache is.
+> - **NASM runs with `--reproducible`,** which leaves out the timestamp of a COFF object, kept
+>   verbatim in a Windows `.lib`. lld-link links with `-Brepro`, and llvm-ar writes
+>   deterministic archives.
+> - **Debug information still records the folder.** NASM 3.02 has no prefix map, so a Debug
+>   build, or a Release build with `DebugSymbols`, differs between folders.
+> - **Messages name the source relative to the project:** `add.asm(3): error : …`. IDEs open
+>   it from the project folder.
 
 ## Settings for every assembly project
 
@@ -222,6 +340,12 @@ file can hold settings for both the C# and the assembly projects of a solution:
 
   Without it, `dotnet build` fails with `MSB4025 … ProjectType '' not found`.
 - **`dotnet sln add` refuses `.asmproj` files.** Add the line by hand.
+
+  > [!NOTE]
+  > **Not released yet:** on the main branch, `dotnet sln add` adds an `.asmproj` and writes
+  > its `Type` itself: the SDK sets `DefaultProjectTypeGuid`, which the CLI reads.
+  > `dotnet add reference` still refuses one ("incompatible targeted frameworks", because the
+  > CLI does not know NuGet's target framework aliases): write the `ProjectReference` line.
 - **Classic `.sln`:** an entry needs two parts:
   - the `Project("{13B669BE-BB05-4DDF-9536-439F39A36129}") = …` line;
   - `ProjectConfigurationPlatforms` lines for Debug and Release.

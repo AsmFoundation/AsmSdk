@@ -54,6 +54,25 @@ A solution build is the one exception to ASM0010. A solution builds each project
 with no RID, besides building it through its referencing projects. A project that lists no RID
 on purpose prints "builds nothing for it by itself" there instead of failing.
 
+> [!NOTE]
+> **Not released yet: the build machine's RID is the default.** On the main branch, a project
+> that lists no RID, and that nothing asks for one, builds for the RID of the machine building
+> it, as a C++ project or a NativeAOT publish builds for its own platform first. The order:
+>
+> 1. `-r <rid>`;
+> 2. the RIDs a referencing project asks for;
+> 3. the project's own `RuntimeIdentifiers`;
+> 4. the build machine's RID: `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`,
+>    `linux-musl-x64` (Alpine x64), `linux-musl-arm64`, `osx-x64` or `osx-arm64`.
+>
+> So `dotnet build`, `dotnet run` and `dotnet test` work on a new project as they are, and a
+> solution build builds the project too: in 0.3.0 it built nothing, and a .NET app that
+> referenced the project got no library. What leaves the machine says when it would carry this
+> one RID alone: `dotnet pack` of the project, and a portable `dotnet publish` or `dotnet pack`
+> of a .NET project that references it, warn **ASM0013** with the line to add. A publish for
+> one RID (`-r`) asks for its own RID, and does not warn. ASM0010 remains for a build machine
+> that is none of the eight (FreeBSD, 32-bit Arm), which has no default.
+
 ### How the build runs
 
 Each RID is an inner build with the standard `RuntimeIdentifier` global property, exactly
@@ -109,7 +128,8 @@ their own errors:
 - **ASM0021:** a `.asm` qualified for ARM64 only, which NASM cannot assemble.
 - **ASM0023:** a listed RID that no source builds (typically ARM64 with only `.asm` files).
 - **ASM0024:** one file listed twice as an `AsmSource` (the default glob plus an explicit
-  item), as .NET reports `NETSDK1022` for `Compile` items.
+  item), as .NET reports `NETSDK1022` for `Compile` items. (Not released yet: the sources
+  are `Compile` items themselves.)
 
 
 ## Writing code that runs everywhere
@@ -172,7 +192,9 @@ ENDFUNCTION
   know *executable code*. In Debug builds (CodeView), NASM 3.02 also crashed on such a section.
 - **`.note.GNU-stack` is Linux-only:** wrap it in `%ifdef LINUX`. For macho64 the line is an
   error (`unknown section name .note.GNU-stack`). win64 makes it one more empty, executable code
-  section.
+  section. (Not released yet: `ImplicitUsings`, on by default, declares it on Linux in front of
+  every source, together with `%include "asmsdk.inc"` and `default rel`; see
+  [Projects](projects.md#implicitusings).)
 
   ```nasm
   %ifdef LINUX

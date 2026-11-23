@@ -27,8 +27,8 @@
          without it, NetConsumer gets this static library as a transitive ProjectReference from
          the .NET SDK, which is the case CrossPlatformTests checks the consumer targets skip. -->
     <!-- EverywhereStaticPrivate=all (NativeLayoutTests' pack into the feed) sets it: then the
-         package Test.Everywhere does not depend on everywherestatic, which names no RID and
-         so cannot be packed alone. -->
+         package Test.Everywhere does not depend on everywherestatic, which names no RID, so a
+         package of its own would carry the build machine's RID alone (ASM0013). -->
     <ProjectReference Include="../EverywhereStatic/EverywhereStatic.asmproj" PrivateAssets="$(EverywhereStaticPrivate)" />
   </ItemGroup>
 </Project>

@@ -7,9 +7,10 @@ namespace AsmSdk.Tests;
 
 /// <summary>
 /// The test projects in tests/projects, one SDK rule each: target framework compatibility
-/// (NU1201, NU1202), the removed 0.1 settings (ASM0100–ASM0108), an unknown target framework
-/// (ASM0003), StartupObject, ExportsFile and LinkerArg, DefineConstants and DebugSymbols, a
-/// libc-only package, and a multi-targeted project referencing a single-targeted one.
+/// (NU1201, NU1202), the replaced settings (ASM0100–ASM0112), an unknown target framework
+/// (ASM0003), a Compile item that is not asm (ASM0025), StartupObject, ExportsFile and
+/// LinkerArg, NativeLibrary, DefineConstants and DebugSymbols, a libc-only package, and a
+/// multi-targeted project referencing a single-targeted one.
 /// </summary>
 /// <param name="sdk">The SDK under test (assembly fixture).</param>
 public sealed class ProjectRuleTests(SdkUnderTest sdk)
@@ -49,13 +50,60 @@ public sealed class ProjectRuleTests(SdkUnderTest sdk)
     }
 
     /// <summary>
-    /// Every setting 0.2.0 removed fails with the error that names its .NET replacement
-    /// (ASM0100–ASM0108), before anything is assembled.
+    /// Every setting replaced by a .NET name fails with the error that names the replacement
+    /// (ASM0100–ASM0107 for 0.2.0's; after 0.3.0, ASM0109 for AsmLinkLibrary, ASM0110 for
+    /// AsmSource, ASM0111 for AsmInclude, ASM0112 for EnableDefaultAsmItems), then the ASM0108
+    /// summary, before anything is assembled. Each new name is shown with the old value.
     /// </summary>
     [Fact]
     public void The_removed_settings_fail_with_their_fixes() =>
-        ExpectFailure("OldNames", Enumerable.Range(0, 9).Select(n => $"ASM01{n.ToString("00", CultureInfo.InvariantCulture)}").ToArray(),
+        ExpectFailure("OldNames",
+            [
+                .. Enumerable.Range(0, 13).Select(n => $"ASM01{n.ToString("00", CultureInfo.InvariantCulture)}"),
+                "<NativeLibrary Include=\"libold.a\" />",
+                "<Compile Include=\"extra/old-source.asm\" />",
+                "<None Include=\"../shared/old.inc\" />",
+                "<EnableDefaultCompileItems>true</EnableDefaultCompileItems>",
+            ],
             absent: ["OldNames was assembled"]);
+
+    /// <summary>
+    /// A Compile item that is not an asm source (a .c file) stops the build with ASM0025, which
+    /// names the file, before anything is assembled: NASM would otherwise read the C file as
+    /// NASM and fail with a message about NASM's syntax.
+    /// </summary>
+    [Fact]
+    public void A_compile_item_that_is_not_asm_fails() =>
+        ExpectFailure("ForeignCompile", ["ASM0025", "helper.c cannot be compiled by an .asmproj"],
+            absent: ["ForeignCompile ->", "instruction expected"]);
+
+    /// <summary>
+    /// A package packed by AsmFoundation.Sdk 0.3.0 adds AsmLinkLibrary items through its props:
+    /// the consumer fails with ASM0109 naming that package (to be packed again), not with the
+    /// message for a project's own AsmLinkLibrary items, and links nothing without its library.
+    /// </summary>
+    [Fact]
+    public void A_package_with_the_old_link_item_names_itself() =>
+        ExpectFailure("StalePackageProps", ["ASM0109", "The package Test.StaleNative was packed by AsmFoundation.Sdk 0.3.0 or older"],
+            absent: ["AsmLinkLibrary items were replaced"]);
+
+    /// <summary>
+    /// A NativeLibrary item (NativeAOT's name for an extra link input) links a static library
+    /// built elsewhere, by its path: libnativelink.so defines static_mul from the samples'
+    /// libhellostatic.a, rather than leaving it undefined for the loader, and exports nl_square,
+    /// which calls it.
+    /// </summary>
+    [Fact]
+    public void A_NativeLibrary_item_is_linked()
+    {
+        Assert.True(sdk.SamplesBuild.ExitCode == 0, "the samples (Hello.Static's archive) did not build: " + sdk.SamplesBuild.Tail());
+        CommandResult build = sdk.BuildTestProject("NativeLibraryLink");
+        Assert.True(build.ExitCode == 0, build.Tail());
+        string symbols = sdk.ReadElf(Repo.TestProjectPath("NativeLibraryLink", "bin", "Release", "freestanding", "linux-x64", "libnativelink.so"), "--dyn-syms");
+        // Defined: a section index, not UND.
+        Assert.Matches(new Regex(@"FUNC\s+GLOBAL\s+DEFAULT\s+\d+\s+static_mul\b"), symbols);
+        Assert.Matches(new Regex(@"FUNC\s+GLOBAL\s+DEFAULT\s+\d+\s+nl_square\b"), symbols);
+    }
 
     /// <summary>A target framework other than freestanding or libc fails with ASM0003.</summary>
     [Fact]

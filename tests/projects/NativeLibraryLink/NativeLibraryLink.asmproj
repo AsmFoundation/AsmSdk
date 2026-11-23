@@ -1,0 +1,17 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A static library built elsewhere, linked by its path through a NativeLibrary item, the item
+    NativeAOT links extra native inputs with (AsmLinkLibrary until 0.3.0, see ASM0109). The
+    archive is the samples' Hello.Static, which the test suite's fixture builds in Release
+    before any test. ProjectRuleTests checks that libnativelink.so defines static_mul (the
+    archive was linked in, not left undefined) and exports nl_square. Exports:
+      nl_square(x)   x * x, through Hello.Static's static_mul
+  -->
+  <PropertyGroup>
+    <AssemblyName>nativelink</AssemblyName>
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+  <ItemGroup>
+    <NativeLibrary Include="../../../samples/Hello.Static/bin/$(Configuration)/freestanding/linux-x64/libhellostatic.a" />
+  </ItemGroup>
+</Project>

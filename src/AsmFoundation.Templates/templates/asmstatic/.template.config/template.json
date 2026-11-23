@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "AsmFoundation",
+  "classifications": [ "Assembly", "Native", "Library" ],
+  "identity": "AsmFoundation.Templates.AsmStaticLibrary",
+  "groupIdentity": "AsmFoundation.Templates.AsmStaticLibrary",
+  "name": "Assembly Static Library",
+  "shortName": "asmstatic",
+  "description": "A static library written in assembly, with a public include/ folder, built by AsmFoundation.Sdk for Windows, Linux and macOS. Other assembly projects link it through a ProjectReference or its package.",
+  "tags": {
+    "language": "Assembly",
+    "type": "project"
+  },
+  "sourceName": "AsmStatic.1",
+  "defaultName": "AsmStatic1",
+  "preferNameDirectory": true,
+  "symbols": {
+    "SdkVersion": {
+      "type": "parameter",
+      "datatype": "string",
+      "defaultValue": "__ASMSDK_VERSION__",
+      "replaces": "ASMSDK_VERSION",
+      "displayName": "AsmFoundation.Sdk version",
+      "description": "The AsmFoundation.Sdk version the project names in its Sdk attribute. Default: the version of this template package, which is released with the SDK of the same version."
+    },
+    "skipRestore": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Skip restore",
+      "description": "If specified, skips the automatic restore of the project on create."
+    },
+    "includeGuardName": {
+      "type": "generated",
+      "generator": "regex",
+      "datatype": "string",
+      "parameters": {
+        "source": "name",
+        "steps": [
+          {
+            "regex": "[^A-Za-z0-9_]",
+            "replacement": "_"
+          }
+        ]
+      }
+    },
+    "includeGuard": {
+      "type": "generated",
+      "generator": "casing",
+      "parameters": {
+        "source": "includeGuardName",
+        "toLower": false
+      },
+      "replaces": "ASMSTATIC1_INC_GUARD"
+    }
+  },
+  "primaryOutputs": [
+    { "path": "AsmStatic.1.asmproj" }
+  ],
+  "postActions": [
+    {
+      "id": "restore",
+      "condition": "(!skipRestore)",
+      "description": "Restore NuGet packages required by this project.",
+      "manualInstructions": [ { "text": "Run 'dotnet restore'" } ],
+      "actionId": "210D431B-A78B-4D2F-B762-4ED3E3EA9025",
+      "continueOnError": true
+    }
+  ]
+}

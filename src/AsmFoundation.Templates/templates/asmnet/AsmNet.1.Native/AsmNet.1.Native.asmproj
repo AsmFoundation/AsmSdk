@@ -1,0 +1,17 @@
+<Project Sdk="AsmFoundation.Sdk/ASMSDK_VERSION">
+  <!--
+    AsmNet.1.Native: the assembly library that AsmNet.1.App calls and AsmNet.1.Tests tests.
+    add.asm is the x64 code (NASM), add.s the ARM64 code (GNU syntax): each platform assembles
+    the file for its CPU.
+
+    It lists no platforms, so it is built for the ones its users ask for: this machine's for
+    "dotnet build", "dotnet run" and "dotnet test", the RID of "dotnet publish -r <rid>". To
+    ship a portable app (or a package) for several platforms, list them here:
+      <PropertyGroup>
+        <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+      </PropertyGroup>
+
+    The SDK version is the one on the first line; change it there to upgrade.
+    Documentation: https://asmfoundation.github.io/AsmSdk/guide/interop.html
+  -->
+</Project>

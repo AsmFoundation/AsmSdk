@@ -22,7 +22,7 @@ namespace AsmFoundation.Sdk.Tasks;
 /// library, so the runtime file is another file than the link input), and, for packages packed
 /// before that metadata existed, a .so or .dylib link input of a package, which is its own
 /// runtime file. A static library has no run-time file and is never copied. A link input the
-/// project names itself (an AsmLinkLibrary item of its own, such as a system library) is left
+/// project names itself (a NativeLibrary item of its own, such as a system library) is left
 /// alone unless it carries AsmRuntimeFile: copying /usr/lib/libz.so next to a program would be
 /// wrong.
 /// </para>
@@ -70,7 +70,7 @@ namespace AsmFoundation.Sdk.Tasks;
 public sealed class AsmLayOutProgramDependencies : Task
 {
     /// <summary>
-    /// The program's link inputs (AsmLinkLibrary items), each with whatever metadata its source
+    /// The program's link inputs (NativeLibrary items), each with whatever metadata its source
     /// gave it: AsmRuntimeFile and AsmRuntimeSymbols (the file to load and its PDB), AsmOrigin
     /// (Project or Package), MSBuildSourceProjectFile (the asm project that returned it) and
     /// AsmPackage (the package id).

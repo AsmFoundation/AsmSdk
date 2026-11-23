@@ -1,0 +1,26 @@
+<Project Sdk="AsmFoundation.Sdk/ASMSDK_VERSION">
+  <!--
+    AsmStatic.1: a static library written in assembly, for other assembly projects to link.
+    "dotnet build" builds it for this machine under bin/<Configuration>/freestanding/<rid>/
+    (AsmStatic.1.lib on Windows, libAsmStatic.1.a elsewhere). mul.asm is the x64 code (NASM),
+    mul.s the ARM64 code (GNU syntax).
+
+    An assembly project (a library or a program) uses it through one line in its .asmproj:
+      <ProjectReference Include="../AsmStatic.1/AsmStatic.1.asmproj" />
+    which links this library into it and puts include/ on its include path, so a NASM source
+    there can %include "AsmStatic.1.inc" and call mul_ints. "dotnet pack" packs the library and
+    include/ for every platform it lists, as a package other projects reference instead.
+
+    The functions are HIDDEN_FUNCTION: callable by the code that links this library, but
+    exported by none of the images it ends up in. FUNCTION would export them from each.
+
+    Ship it for more platforms by listing them here:
+      <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+
+    The SDK version is the one on the first line; change it there to upgrade.
+    Documentation: https://asmfoundation.github.io/AsmSdk/guide/references-and-packages.html
+  -->
+  <PropertyGroup>
+    <OutputType>StaticLibrary</OutputType>
+  </PropertyGroup>
+</Project>

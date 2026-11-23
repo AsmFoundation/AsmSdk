@@ -1,0 +1,11 @@
+<Project>
+  <!--
+    As in PlugAndPlay: a user's fresh folder, so tests/scenarios' settings (TreatWarningsAsErrors,
+    the package output folder) do not reach the template's projects. NuGet's vulnerability audit
+    is off for the same reason as there: an advisory published later against a package the
+    template pins must not change what a scenario that changed nothing prints.
+  -->
+  <PropertyGroup>
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+</Project>

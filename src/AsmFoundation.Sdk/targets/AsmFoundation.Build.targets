@@ -41,33 +41,34 @@
   <!-- ===================================================================================== -->
 
   <!--
-    The default items (AsmSource, AsmInclude, None) are declared in Sdk.props, before the project
-    body, so that a project can Update or Remove them (<None Update="data.txt"
-    CopyToOutputDirectory="PreserveNewest" />), as in a .csproj. Here, after the body, the asm
-    files the project listed itself (EnableDefaultAsmItems=false, or a file outside the folder
-    globs) are taken out of None too: each file is one item, an AsmSource never also a None.
+    The default items (Compile for the sources, None for every other file) are declared in
+    Sdk.props, before the project body, so that a project can Update or Remove them (<None
+    Update="data.txt" CopyToOutputDirectory="PreserveNewest" />), as in a .csproj. Here, after
+    the body, the sources the project listed itself (EnableDefaultCompileItems=false, or a file
+    outside the folder globs) are taken out of None too: each file is one item, a Compile item
+    never also a None.
   -->
   <ItemGroup Condition="'$(EnableDefaultNoneItems)' != 'false'">
-    <None Remove="@(AsmSource);@(AsmInclude)" />
+    <None Remove="@(Compile)" />
   </ItemGroup>
 
   <!--
     IDE integration.
 
-    AvailableItemName: the item types an IDE shows besides its built-in ones (Compile, None,
-    Content, ...). Rider's MSBuild host and Visual Studio's project system both read it; an
-    item type missing from it is not shown at all, which is how an .asmproj looked empty in
-    Rider before 0.2.0. It also offers AsmSource and AsmInclude as build actions.
+    The sources are Compile items and the include files None items, item types every IDE shows
+    without being told (0.2.0 and 0.3.0 had to declare their AsmSource and AsmInclude types as
+    AvailableItemName, or Rider showed an .asmproj empty).
 
     UpToDateCheckInput / UpToDateCheckBuilt: the fast up-to-date checks of Visual Studio and
     Rider decide whether to call MSBuild at all from these items. Without them an IDE would
     not know that editing a .asm file (or the linker's version script) makes the outputs stale,
-    and would skip the build. Visible="false": they name files that are already items.
+    and would skip the build. Visible="false": they name files that are already items. The
+    include files are the None items ending in .inc (WithMetadataValue compares the extension
+    without regard to case), plus CustomAdditionalCompileInputs, .NET's item for more inputs
+    of the compile step, which AsmPrepare also reads.
   -->
   <ItemGroup>
-    <AvailableItemName Include="AsmSource" />
-    <AvailableItemName Include="AsmInclude" />
-    <UpToDateCheckInput Include="@(AsmSource);@(AsmInclude)" Visible="false" />
+    <UpToDateCheckInput Include="@(Compile);@(None->WithMetadataValue('Extension', '.inc'));@(CustomAdditionalCompileInputs)" Visible="false" />
     <UpToDateCheckInput Include="$(ExportsFile)" Condition="'$(ExportsFile)' != ''" Visible="false" />
     <UpToDateCheckBuilt Include="$(TargetPath)" Condition="'$(_AsmRid)' != '' and '$(_AsmOutputKind)' != 'Objects'" Visible="false" />
   </ItemGroup>
@@ -162,6 +163,11 @@
          AsmLink (see _AsmResolveProgramDependencies), so that a new BinariesCopyPath relinks the
          program even when it came from the command line or a Directory.Build.props. -->
     <_AsmRunPathFile Condition="'$(_AsmRid)' != '' and '$(_AsmOutputKind)' == 'Executable'">$(AsmIntermediateDirectory)runpaths.txt</_AsmRunPathFile>
+    <!-- The assemblers' options, as a file whose text changes only when they do: an input of
+         AsmAssemble (see _AsmWriteAssembleOptions), so that ImplicitUsings, NoWarn,
+         DefineConstants or AsmFlags set on the command line or in a Directory.Build.props
+         assemble again, as .NET's CoreCompileInputs.cache recompiles C#. -->
+    <_AsmAssembleOptionsFile Condition="'$(_AsmRid)' != ''">$(AsmIntermediateDirectory)assemble-options.txt</_AsmAssembleOptionsFile>
     <!-- The loader a Linux libc program names (PT_INTERP): dotnet run checks that the machine,
          WSL or a container has it. Empty for a static program, which needs none. -->
     <_AsmRunLoader Condition="'$(_AsmUsesLibc)' == 'true' and '$(_AsmOs)' == 'Linux' and '$(_AsmOutputKind)' == 'Executable'">$(AsmDynamicLinker)</_AsmRunLoader>
@@ -259,13 +265,20 @@
       one name tie), ASM0021 (a .asm qualified for ARM64 only), ASM0022 (a RID it does not
       know), ASM0024 (a file listed twice).
     -->
-    <AsmSelectSources Condition="'$(_AsmRid)' != '' and '@(AsmSource)' != ''" Sources="@(AsmSource)" RuntimeIdentifier="$(_AsmRid)">
+    <!-- The Compile items that are asm sources: _AsmCheckProject has already refused one of
+         another kind the project listed (ASM0025), so this only keeps out what a target of
+         .NET's or a package may add to Compile during the build (none does today; measured:
+         the target framework attribute file stays out of an .asmproj, which has no language). -->
+    <ItemGroup>
+      <_AsmSourceItem Include="@(Compile)" Condition="'%(Extension)' == '.asm' or '%(Extension)' == '.s'" />
+    </ItemGroup>
+    <AsmSelectSources Condition="'$(_AsmRid)' != '' and '@(_AsmSourceItem)' != ''" Sources="@(_AsmSourceItem)" RuntimeIdentifier="$(_AsmRid)">
       <Output TaskParameter="Selected" ItemName="_AsmSelectedSource" />
     </AsmSelectSources>
     <!-- A project with sources, none of which builds this RID, would otherwise link an empty
          library for it: typically NASM-only code built for an ARM64 RID. -->
     <Error Code="ASM0023"
-           Condition="'$(_AsmRid)' != '' and '@(AsmSource)' != '' and '@(_AsmSelectedSource)' == ''"
+           Condition="'$(_AsmRid)' != '' and '@(_AsmSourceItem)' != '' and '@(_AsmSelectedSource)' == ''"
            Text="No source of this project builds $(_AsmRid). NASM files (.asm) build the x64 RIDs; ARM64 needs GNU-syntax files (.s). Add a source for $(_AsmRid) (for example name.$(_AsmRid).s), or remove $(_AsmRid) from RuntimeIdentifiers." />
 
     <!--
@@ -286,6 +299,23 @@
       <_AsmSelectedSource>
         <ObjectToolPath>$([System.IO.Path]::GetFullPath('%(ObjectFile)').Replace('\','/'))</ObjectToolPath>
         <SourceToolPath>$([System.String]::Copy('%(FullPath)').Replace('\','/'))</SourceToolPath>
+        <!-- The source as the assembler is given it: relative to the project folder, the
+             assemblers' working directory. NASM and llvm-mc record that name in the object's
+             symbol table, so an absolute path made a Release build differ from one checkout
+             folder to the next; relative, the objects of two checkouts are byte-identical
+             (measured 2026-11-23: the same source from two folders, NASM 3.02, elf64).
+             MakeRelative leaves a path on another drive absolute, which still assembles. -->
+        <SourceRelativeToolPath>$([MSBuild]::MakeRelative('$(MSBuildProjectDirectory)/', '%(FullPath)').Replace('\','/'))</SourceRelativeToolPath>
+        <!-- With ImplicitUsings, a GNU source is assembled through a generated file that
+             includes the platform layer first (see _AsmWriteImplicitUsingsWrappers); its path is
+             relative too, for the same reason. -->
+        <ImplicitUsingsWrapper Condition="'$(_AsmImplicitUsings)' == 'true' and '%(_AsmSelectedSource.AsmLanguage)' == 'Gnu'">$(AsmIntermediateDirectory)implicit/%(RecursiveDir)%(Filename)%(Extension)</ImplicitUsingsWrapper>
+      </_AsmSelectedSource>
+      <!-- Qualified metadata below: only GNU sources define the wrapper, and an unqualified
+           %(...) over items that lack it stops the build with MSB4096 (measured). -->
+      <_AsmSelectedSource>
+        <AssembledToolPath>%(_AsmSelectedSource.SourceRelativeToolPath)</AssembledToolPath>
+        <AssembledToolPath Condition="'%(_AsmSelectedSource.ImplicitUsingsWrapper)' != ''">$([MSBuild]::MakeRelative('$(MSBuildProjectDirectory)/', $([System.IO.Path]::GetFullPath('%(_AsmSelectedSource.ImplicitUsingsWrapper)'))).Replace('\','/'))</AssembledToolPath>
       </_AsmSelectedSource>
       <_AsmObject Include="@(_AsmSelectedSource->'%(ObjectToolPath)')" />
 
@@ -301,8 +331,13 @@
       </_AsmIncludeDirectoryOrdered>
 
       <!-- Dependencies of every object: all include files in the include path. Coarse but
-           never wrong: editing any .inc reassembles every source that could include it. -->
-      <_AsmDependency Include="@(AsmInclude->'%(FullPath)')" />
+           never wrong: editing any .inc reassembles every source that could include it. The
+           project's own include files are its None items ending in .inc (an include file from
+           a folder outside the project is listed as one: <None Include="../common/*.inc" />),
+           and any other file a source reads (a %incbin blob, a .mac file) is a
+           CustomAdditionalCompileInputs item, .NET's item for extra inputs of the compile. -->
+      <_AsmDependency Include="@(None->WithMetadataValue('Extension', '.inc')->'%(FullPath)')" />
+      <_AsmDependency Include="@(CustomAdditionalCompileInputs->'%(FullPath)')" />
       <_AsmDependency Include="%(_AsmIncludeDirectoryOrdered.FullPath)**/*.inc" Condition="'%(_AsmIncludeDirectoryOrdered.AsmOrigin)' != ''" />
 
       <!-- One -D per DefineConstants entry (NAME or NAME=VALUE). Properties.targets has
@@ -319,9 +354,28 @@
            exports in an ExportsFile, as a library can. -->
       <_AsmDefine Include="ASMSDK_EXECUTABLE" Condition="'$(_AsmOutputKind)' == 'Executable'" />
 
-      <!-- Link inputs: static libraries and shared objects from AsmLinkLibrary items,
-           packages and referenced projects, in the order given. -->
-      <_AsmLinkInput Include="@(AsmLinkLibrary->'%(FullPath)')" />
+      <!--
+        .NET's warning switches, for NASM's warnings by name (the owner's choice, 2026-11-23):
+          NoWarn               label-orphan  ->  -w-label-orphan        (off)
+          WarningsAsErrors     label-orphan  ->  -w+error=label-orphan  (an error)
+          WarningsNotAsErrors  label-orphan  ->  -w-error=label-orphan  (a warning again, under
+                                                                        TreatWarningsAsErrors)
+        The same lists hold .NET's and NuGet's codes (NU5128, CS1591, 1701): only entries that
+        look like NASM's names, lower case with hyphens, are passed on. NASM ignores a name it
+        does not know (measured: -w-nonsense-name assembles with no message), so a lower-case
+        code of another tool is harmless. llvm-mc (.s) has no per-warning switches.
+      -->
+      <_AsmNoWarnEntry Include="$(NoWarn)" />
+      <_AsmNoWarn Include="@(_AsmNoWarnEntry)" Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(Identity)', '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'))" />
+      <_AsmWarningAsErrorEntry Include="$(WarningsAsErrors)" />
+      <_AsmWarningAsError Include="@(_AsmWarningAsErrorEntry)" Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(Identity)', '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'))" />
+      <_AsmWarningNotAsErrorEntry Include="$(WarningsNotAsErrors)" />
+      <_AsmWarningNotAsError Include="@(_AsmWarningNotAsErrorEntry)" Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(Identity)', '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'))" />
+
+      <!-- Link inputs: static libraries and shared objects from NativeLibrary items (NativeAOT's
+           name; AsmLinkLibrary before, see ASM0109), packages and referenced projects, in the
+           order given. -->
+      <_AsmLinkInput Include="@(NativeLibrary->'%(FullPath)')" />
       <_AsmLinkInput>
         <ToolPath>$([System.String]::Copy('%(FullPath)').Replace('\','/'))</ToolPath>
       </_AsmLinkInput>
@@ -363,6 +417,21 @@
       -->
       <_AsmWarningArguments>-w+all -w-reloc-rel-dword -w-reloc-abs-qword</_AsmWarningArguments>
       <_AsmWarningArguments Condition="'$(TreatWarningsAsErrors)' == 'true'">$(_AsmWarningArguments) -w+error</_AsmWarningArguments>
+      <!-- The per-name switches come after the general ones: NASM applies its warning options
+           in order, so -w-error=name after -w+error leaves that one warning a warning. -->
+      <_AsmWarningArguments Condition="'@(_AsmNoWarn)' != ''">$(_AsmWarningArguments) @(_AsmNoWarn->'-w-%(Identity)', ' ')</_AsmWarningArguments>
+      <_AsmWarningArguments Condition="'@(_AsmWarningAsError)' != ''">$(_AsmWarningArguments) @(_AsmWarningAsError->'-w+error=%(Identity)', ' ')</_AsmWarningArguments>
+      <_AsmWarningArguments Condition="'@(_AsmWarningNotAsError)' != ''">$(_AsmWarningArguments) @(_AsmWarningNotAsError->'-w-error=%(Identity)', ' ')</_AsmWarningArguments>
+      <!--
+        Run-to-run identical objects: NASM's reproducible option leaves out what changes from
+        one run to the next, such as the timestamp of a COFF object's header. A PE file ignores
+        its objects' timestamps (lld-link links with -Brepro below), but a Windows static library
+        (.lib) holds its objects verbatim, timestamps included. With the relative source paths
+        above, a Release build is the same on every machine and in every checkout folder.
+      -->
+      <_AsmNasmReproducibleArgument>--reproducible</_AsmNasmReproducibleArgument>
+      <!-- ImplicitUsings: the platform layer as NASM's pre-include (see Properties.targets). -->
+      <_AsmNasmImplicitUsingsArgument Condition="'$(_AsmImplicitUsings)' == 'true'">-P &quot;$(AsmFoundationSdkDirectory.Replace('\','/'))include/asmsdk-implicit.inc&quot;</_AsmNasmImplicitUsingsArgument>
       <!-- The SDK's own stubs: the same warnings, always as errors (they are ours to keep clean). -->
       <_AsmSdkSourceWarningArguments>-w+all -w-reloc-rel-dword -w-reloc-abs-qword -w+error</_AsmSdkSourceWarningArguments>
       <!--
@@ -506,10 +575,78 @@
   <!-- ===================================================================================== -->
 
   <!--
+    _AsmWriteImplicitUsingsWrappers: with ImplicitUsings, writes for each GNU-syntax source the
+    file that llvm-mc assembles in its place, obj/.../asm/implicit/<the source's path>:
+      .include "asmsdk-gnu-implicit.inc"
+      .include "<the source, absolute>"
+    llvm-mc has no pre-include option (NASM's -P does this for .asm files). Diagnostics still
+    name the source and its own lines: llvm-mc reports an error in an included file at that
+    file's line. The object keeps the generated file's relative path as its name, the same on
+    every machine, so a Release build stays reproducible. WriteOnlyWhenDifferent leaves a file
+    alone when nothing changed; the object's own inputs (the source, the include files, the
+    project) still decide whether it is assembled again.
+    The conditions guard the empty case: batching over an empty list still runs a task once with
+    an empty %(Identity) (measured with MSBuild 18).
+  -->
+  <Target Name="_AsmWriteImplicitUsingsWrappers"
+          DependsOnTargets="AsmPrepare"
+          Condition="'$(_AsmImplicitUsings)' == 'true'">
+    <ItemGroup>
+      <_AsmImplicitUsingsWrapper Include="@(_AsmSelectedSource->'%(ImplicitUsingsWrapper)')"
+                                 Condition="'%(_AsmSelectedSource.ImplicitUsingsWrapper)' != ''"
+                                 SourceToolPath="%(_AsmSelectedSource.SourceToolPath)" />
+    </ItemGroup>
+    <MakeDir Condition="'@(_AsmImplicitUsingsWrapper)' != ''"
+             Directories="@(_AsmImplicitUsingsWrapper->'%(RootDir)%(Directory)')" />
+    <WriteLinesToFile Condition="'@(_AsmImplicitUsingsWrapper)' != ''"
+                      File="%(_AsmImplicitUsingsWrapper.Identity)"
+                      Lines=".include &quot;asmsdk-gnu-implicit.inc&quot;;.include &quot;%(_AsmImplicitUsingsWrapper.SourceToolPath)&quot;"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <FileWrites Include="@(_AsmImplicitUsingsWrapper)" />
+    </ItemGroup>
+  </Target>
+
+  <!--
+    _AsmWriteAssembleOptions: writes every option of both assemblers that is not a file
+    (formats, warnings, defines, include folders, ImplicitUsings, AsmFlags, AsmLlvmMcFlags) to
+    _AsmAssembleOptionsFile, rewriting it only when the text changes. AsmAssemble lists the
+    file among its inputs: before it, a property set outside the project file (on the command
+    line, in a Directory.Build.props) changed the assembler's arguments without assembling
+    again, and the build linked objects made with the old ones (the project file itself has
+    always been an input). One line per assembler, written even when the project has no source
+    of that kind: WriteLinesToFile deletes a file it has no lines for, and a missing input would
+    assemble every source on every build.
+  -->
+  <Target Name="_AsmWriteAssembleOptions"
+          Condition="'$(_AsmAssembleOptionsFile)' != ''"
+          DependsOnTargets="AsmPrepare">
+    <!-- The options are metadata, not the item's Include: an Include splits on ";" and expands
+         "*" and "?" as a file pattern (dropping the line when nothing matches), and an
+         AsmFlags value or a folder name may hold either. Metadata keeps any text as it is, and
+         the transform below makes each line one item with that text. -->
+    <ItemGroup>
+      <_AsmAssembleOptionsLine Include="nasm" Options="$(_AsmNasmMessageArguments) $(_AsmNasmFormatArguments) $(_AsmDebugArguments) $(_AsmWarningArguments) $(_AsmNasmReproducibleArgument) $(AsmFlags) $(_AsmIncludeArguments) $(_AsmDefineArguments) $(_AsmNasmImplicitUsingsArgument)" />
+      <_AsmAssembleOptionsLine Include="llvm-mc" Options="--triple=$(_AsmLlvmMcTriple) $(_AsmLlvmMcDebugArguments) $(AsmLlvmMcFlags) $(_AsmLlvmMcIncludeArguments) $(_AsmLlvmMcDefineArguments) implicit-usings=$(_AsmImplicitUsings)" />
+    </ItemGroup>
+    <MakeDir Directories="$(AsmIntermediateDirectory)" />
+    <WriteLinesToFile File="$(_AsmAssembleOptionsFile)"
+                      Lines="@(_AsmAssembleOptionsLine->'%(Identity): %(Options)')"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <FileWrites Include="$(_AsmAssembleOptionsFile)" />
+      <_AsmAssembleOptionsLine Remove="@(_AsmAssembleOptionsLine)" />
+    </ItemGroup>
+  </Target>
+
+  <!--
     AsmAssemble: one assembler run per source of this RID (target batching on the selected
     sources): NASM for .asm, llvm-mc for .s. Each batch is skipped when its object is newer than
-    the source, every include file, the project file and this SDK's targets (a new SDK version
-    may change the arguments). AsmFlags are NASM's extra arguments, AsmLlvmMcFlags llvm-mc's.
+    the source, every include file, the project file, this SDK's targets (a new SDK version
+    may change the arguments) and the assemblers' options (_AsmWriteAssembleOptions: an option
+    changed outside the project file). AsmFlags are NASM's extra arguments, AsmLlvmMcFlags llvm-mc's.
     Errors: ASM0004 (a .s source builds this RID, and the toolchain package has no llvm-mc),
     ASM0007 (an assembler run failed; after the assembler's own messages).
 
@@ -520,8 +657,8 @@
     and lets the Delete run.
   -->
   <Target Name="AsmAssemble"
-          DependsOnTargets="AsmPrepare"
-          Inputs="@(_AsmSelectedSource);@(_AsmDependency);$(MSBuildProjectFullPath);$(MSBuildThisFileFullPath)"
+          DependsOnTargets="AsmPrepare;_AsmWriteImplicitUsingsWrappers;_AsmWriteAssembleOptions"
+          Inputs="@(_AsmSelectedSource);@(_AsmDependency);$(MSBuildProjectFullPath);$(MSBuildThisFileFullPath);$(_AsmAssembleOptionsFile)"
           Outputs="%(_AsmSelectedSource.ObjectFile)">
     <Error Code="ASM0004"
            Condition="'%(_AsmSelectedSource.AsmLanguage)' == 'Gnu' and '$(AsmToolchain)' == 'Bundled' and !Exists('$(_AsmLlvmMcPath)')"
@@ -532,13 +669,13 @@
       <_AsmAssemblerExitCode>0</_AsmAssemblerExitCode>
     </PropertyGroup>
     <Exec Condition="'%(_AsmSelectedSource.AsmLanguage)' == 'Nasm'"
-          Command="$(_AsmNasm) $(_AsmNasmMessageArguments) $(_AsmNasmFormatArguments) $(_AsmDebugArguments) $(_AsmWarningArguments) $(AsmFlags) $(_AsmIncludeArguments) $(_AsmDefineArguments) -o &quot;%(_AsmSelectedSource.ObjectToolPath)&quot; &quot;%(_AsmSelectedSource.SourceToolPath)&quot;"
+          Command="$(_AsmNasm) $(_AsmNasmMessageArguments) $(_AsmNasmFormatArguments) $(_AsmDebugArguments) $(_AsmWarningArguments) $(_AsmNasmReproducibleArgument) $(AsmFlags) $(_AsmIncludeArguments) $(_AsmDefineArguments) $(_AsmNasmImplicitUsingsArgument) -o &quot;%(_AsmSelectedSource.ObjectToolPath)&quot; &quot;%(_AsmSelectedSource.AssembledToolPath)&quot;"
           WorkingDirectory="$(MSBuildProjectDirectory)"
           ContinueOnError="ErrorAndContinue">
       <Output TaskParameter="ExitCode" PropertyName="_AsmAssemblerExitCode" />
     </Exec>
     <Exec Condition="'%(_AsmSelectedSource.AsmLanguage)' == 'Gnu'"
-          Command="$(_AsmLlvmMc) --triple=$(_AsmLlvmMcTriple) --filetype=obj $(_AsmLlvmMcDebugArguments) $(AsmLlvmMcFlags) $(_AsmLlvmMcIncludeArguments) $(_AsmLlvmMcDefineArguments) -o &quot;%(_AsmSelectedSource.ObjectToolPath)&quot; &quot;%(_AsmSelectedSource.SourceToolPath)&quot;"
+          Command="$(_AsmLlvmMc) --triple=$(_AsmLlvmMcTriple) --filetype=obj $(_AsmLlvmMcDebugArguments) $(AsmLlvmMcFlags) $(_AsmLlvmMcIncludeArguments) $(_AsmLlvmMcDefineArguments) -o &quot;%(_AsmSelectedSource.ObjectToolPath)&quot; &quot;%(_AsmSelectedSource.AssembledToolPath)&quot;"
           WorkingDirectory="$(MSBuildProjectDirectory)"
           ContinueOnError="ErrorAndContinue">
       <Output TaskParameter="ExitCode" PropertyName="_AsmAssemblerExitCode" />
@@ -590,10 +727,18 @@
           Command="$(_AsmLlvmMc) --triple=$(_AsmLlvmMcTriple) --filetype=obj -o &quot;$(_AsmStubToolDirectory)libc-stub.o&quot; &quot;$(_AsmStubToolDirectory)libc-stub.s&quot;" />
     <Exec Condition="'$(_AsmOs)' == 'Linux'"
           Command="$(_AsmLinker) -shared -soname $(_AsmLibcStubName) -o &quot;$(_AsmStubToolDirectory)$(_AsmLibcStubName)&quot; &quot;$(_AsmStubToolDirectory)libc-stub.o&quot;" />
+    <!-- The SDK's own sources that end up in what a project ships (the nonshared object here,
+         the stdio wrappers and the startup code below) are assembled in their own folder, by
+         file name: an ELF object records the name it was given (its file symbol), which the
+         linker keeps in a program's or library's symbol table, and the SDK's folder is in the
+         NuGet cache, a different path on every machine. A project's sources are passed
+         relative to the project folder for the same reason (see AsmAssemble). -->
     <Exec Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmArch)' == 'x64'"
-          Command="$(_AsmNasm) $(_AsmNasmMessageArguments) -f elf64 $(_AsmSdkSourceWarningArguments) -o &quot;$(_AsmStubToolDirectory)nonshared.o&quot; &quot;$(_AsmSdkStubSourceDirectory)nonshared-x64.asm&quot;" />
+          Command="$(_AsmNasm) $(_AsmNasmMessageArguments) -f elf64 $(_AsmSdkSourceWarningArguments) -o &quot;$(_AsmStubToolDirectory)nonshared.o&quot; nonshared-x64.asm"
+          WorkingDirectory="$(_AsmSdkStubSourceDirectory)" />
     <Exec Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmArch)' == 'arm64'"
-          Command="$(_AsmLlvmMc) --triple=$(_AsmLlvmMcTriple) --filetype=obj -o &quot;$(_AsmStubToolDirectory)nonshared.o&quot; &quot;$(_AsmSdkStubSourceDirectory)nonshared-arm64.s&quot;" />
+          Command="$(_AsmLlvmMc) --triple=$(_AsmLlvmMcTriple) --filetype=obj -o &quot;$(_AsmStubToolDirectory)nonshared.o&quot; nonshared-arm64.s"
+          WorkingDirectory="$(_AsmSdkStubSourceDirectory)" />
     <Delete Condition="'$(_AsmOs)' == 'Linux'" Files="$(AsmIntermediateDirectory)stubs/libasmsdk_nonshared.a" />
     <Exec Condition="'$(_AsmOs)' == 'Linux'"
           Command="$(_AsmArchiver) rcsD $(_AsmSystemArchiveFormatArgument) &quot;$(_AsmStubToolDirectory)libasmsdk_nonshared.a&quot; &quot;$(_AsmStubToolDirectory)nonshared.o&quot;" />
@@ -624,9 +769,11 @@
     <Exec Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmUsesLibc)' == 'true'"
           Command="$(_AsmLibrarian) -def:&quot;$(_AsmStubToolDirectory)ucrtbase.def&quot; -machine:$(_AsmPeMachine) -out:&quot;$(_AsmStubToolDirectory)ucrtbase.lib&quot;" />
     <Exec Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmUsesLibc)' == 'true' and '$(_AsmArch)' == 'x64'"
-          Command="$(_AsmNasm) $(_AsmNasmMessageArguments) -f win64 $(_AsmSdkSourceWarningArguments) -o &quot;$(_AsmStubToolDirectory)winstdio.obj&quot; &quot;$(_AsmSdkStubSourceDirectory)winstdio-x64.asm&quot;" />
+          Command="$(_AsmNasm) $(_AsmNasmMessageArguments) -f win64 $(_AsmSdkSourceWarningArguments) -o &quot;$(_AsmStubToolDirectory)winstdio.obj&quot; winstdio-x64.asm"
+          WorkingDirectory="$(_AsmSdkStubSourceDirectory)" />
     <Exec Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmUsesLibc)' == 'true' and '$(_AsmArch)' == 'arm64'"
-          Command="$(_AsmLlvmMc) --triple=$(_AsmLlvmMcTriple) --filetype=obj -o &quot;$(_AsmStubToolDirectory)winstdio.obj&quot; &quot;$(_AsmSdkStubSourceDirectory)winstdio-arm64.s&quot;" />
+          Command="$(_AsmLlvmMc) --triple=$(_AsmLlvmMcTriple) --filetype=obj -o &quot;$(_AsmStubToolDirectory)winstdio.obj&quot; winstdio-arm64.s"
+          WorkingDirectory="$(_AsmSdkStubSourceDirectory)" />
     <Delete Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmUsesLibc)' == 'true'" Files="$(AsmIntermediateDirectory)stubs/asmsdk_winstdio.lib" />
     <Exec Condition="'$(_AsmOs)' == 'Windows' and '$(_AsmUsesLibc)' == 'true'"
           Command="$(_AsmArchiver) rcsD $(_AsmSystemArchiveFormatArgument) &quot;$(_AsmStubToolDirectory)asmsdk_winstdio.lib&quot; &quot;$(_AsmStubToolDirectory)winstdio.obj&quot;" />
@@ -662,6 +809,8 @@
       <_AsmCrtSource Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmArch)' == 'x64'">$(AsmFoundationSdkDirectory)stubs/crt1.asm</_AsmCrtSource>
       <_AsmCrtSource Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmArch)' == 'arm64'">$(AsmFoundationSdkDirectory)stubs/crt1-arm64.s</_AsmCrtSource>
       <_AsmCrtSource Condition="'$(_AsmOs)' == 'Windows'">$(AsmFoundationSdkDirectory)stubs/wincrt-$(_AsmArch)$(_AsmStubSourceExtension)</_AsmCrtSource>
+      <!-- Its file name alone: _AsmBuildCrt assembles it in the stubs folder. -->
+      <_AsmCrtSourceName Condition="'$(_AsmCrtSource)' != ''">$([System.IO.Path]::GetFileName('$(_AsmCrtSource)'))</_AsmCrtSourceName>
       <_AsmCrtObjectName Condition="'$(_AsmOs)' == 'Linux'">crt1.o</_AsmCrtObjectName>
       <_AsmCrtObjectName Condition="'$(_AsmOs)' == 'Windows'">wincrt.obj</_AsmCrtObjectName>
     </PropertyGroup>
@@ -697,10 +846,14 @@
           Inputs="$(_AsmCrtSource)"
           Outputs="$(AsmIntermediateDirectory)stubs/$(_AsmCrtObjectName)">
     <MakeDir Directories="$(AsmIntermediateDirectory)stubs" />
+    <!-- In the SDK's stubs folder, by file name: crt1.o is linked into every Linux libc program,
+         and its file symbol must not record the NuGet cache's path (see _AsmBuildSystemLibraries). -->
     <Exec Condition="'$(_AsmArch)' == 'x64'"
-          Command="$(_AsmNasm) $(_AsmNasmMessageArguments) -f $(_AsmNasmFormat) $(_AsmSdkSourceWarningArguments) -o &quot;$(_AsmStubToolDirectory)$(_AsmCrtObjectName)&quot; &quot;$(_AsmCrtSource.Replace('\','/'))&quot;" />
+          Command="$(_AsmNasm) $(_AsmNasmMessageArguments) -f $(_AsmNasmFormat) $(_AsmSdkSourceWarningArguments) -o &quot;$(_AsmStubToolDirectory)$(_AsmCrtObjectName)&quot; $(_AsmCrtSourceName)"
+          WorkingDirectory="$(_AsmSdkStubSourceDirectory)" />
     <Exec Condition="'$(_AsmArch)' == 'arm64'"
-          Command="$(_AsmLlvmMc) --triple=$(_AsmLlvmMcTriple) --filetype=obj -o &quot;$(_AsmStubToolDirectory)$(_AsmCrtObjectName)&quot; &quot;$(_AsmCrtSource.Replace('\','/'))&quot;" />
+          Command="$(_AsmLlvmMc) --triple=$(_AsmLlvmMcTriple) --filetype=obj -o &quot;$(_AsmStubToolDirectory)$(_AsmCrtObjectName)&quot; $(_AsmCrtSourceName)"
+          WorkingDirectory="$(_AsmSdkStubSourceDirectory)" />
     <ItemGroup>
       <FileWrites Include="$(AsmIntermediateDirectory)stubs/$(_AsmCrtObjectName)" />
     </ItemGroup>
@@ -737,7 +890,7 @@
     <ItemGroup>
       <_AsmProgramProjectReference Include="@(_MSBuildProjectReferenceExistent)" Condition="'%(Extension)' == '.asmproj'" />
     </ItemGroup>
-    <AsmLayOutProgramDependencies LinkLibraries="@(AsmLinkLibrary)"
+    <AsmLayOutProgramDependencies LinkLibraries="@(NativeLibrary)"
                                   ReferencedPrograms="@(AsmReferencedProgram)"
                                   ProjectReferences="@(_AsmProgramProjectReference)"
                                   PackageReferences="@(PackageReference)"
@@ -1017,21 +1170,27 @@
     as broken). Hooking the common targets' _CheckForInvalidConfigurationAndPlatform instead,
     as 0.3.0's first draft did, made every Clean and Rebuild run it (measured: Rebuild of a
     project with a RID-less reference failed with ASM0010).
-    Errors:
-      ASM0010  no RID at all: not in the project, not asked for by a referencing project, no -r
+    Errors and warnings:
+      ASM0010  no RID at all: not in the project, not asked for by a referencing project, no -r,
+               and the build machine is not one of the eight RIDs (so there is no default)
       ASM0011  a RID AsmSdk does not build
       ASM0012  a RID asked for by a referencing project (or -r) that the project does not list
+      ASM0013  (warning) a publish or pack carries a project built for the default RID alone,
+               the build machine's (see _AsmBuildMachineRid in AsmFoundation.Properties.targets)
 
-    A solution build is the one exception to ASM0010. A solution builds each of its projects
-    by itself, with no RID, besides building it again through every project that references
-    it, with theirs. A project that lists no RIDs on purpose (it builds what its referencing
-    projects ask for) has nothing to build by itself there, so it says so in a message and
-    builds nothing; the builds through its references still check what they ask for. Visual
-    Studio builds the projects of a solution one at a time, so BuildingInsideVisualStudio
-    counts as a solution build too. Footgun: the property flows to the projects a solution
-    builds, so a .NET project that references a RID-less .asmproj without naming RIDs gets
-    no binary instead of ASM0010 in a solution build (the AsmSdk consumer targets for .NET
-    projects name the RIDs for it).
+    Why ASM0013 warns on publish and pack only: the default RID is right for the dev loop
+    (build, run, test on this machine) and wrong for what leaves it. A portable "dotnet publish"
+    of a .NET app, or a "dotnet pack", that carries a RID-less asm project would hold that
+    one platform's library and quietly lack every other's. The CLI marks both commands with the
+    global properties _IsPublishing and _IsPacking, which reach referenced projects too. A
+    RID-specific publish asks for its own RID, which is an inner build here: no warning.
+
+    A solution build was 0.3.0's one exception to ASM0010: it built nothing for a project that
+    lists no RIDs (only the builds through its references did), and a .NET project that
+    referenced such a project without naming RIDs got no binary at all. With the build
+    machine's RID as the default, a solution build builds that RID; the exception (a message,
+    nothing built) remains only where there is no default. Visual Studio builds the projects of
+    a solution one at a time, so BuildingInsideVisualStudio counts as a solution build too.
   -->
   <PropertyGroup>
     <_AsmNothingToBuild Condition="'$(_AsmRid)' == '' and '$(_AsmBuildRuntimeIdentifiers)' == '' and ('$(BuildingSolutionFile)' == 'true' or '$(BuildingInsideVisualStudio)' == 'true')">true</_AsmNothingToBuild>
@@ -1051,7 +1210,17 @@
     </ItemGroup>
     <Error Code="ASM0010"
            Condition="'@(_AsmRidToCheck)' == '' and '$(_AsmNothingToBuild)' != 'true'"
-           Text="This project names no runtime identifier to build. Add &lt;RuntimeIdentifiers&gt;win-x64;linux-x64;osx-arm64&lt;/RuntimeIdentifiers&gt; (any of @(_AsmSupportedRid, ', ')), let the project that references it choose: &lt;ProjectReference Include=&quot;...&quot; RuntimeIdentifiers=&quot;linux-x64;win-x64&quot; /&gt;, or build one with -r &lt;rid&gt;." />
+           Text="This project names no runtime identifier to build, and this build machine ($(NETCoreSdkRuntimeIdentifier)) is not one AsmSdk builds for, so there is no default. Add &lt;RuntimeIdentifiers&gt;win-x64;linux-x64;osx-arm64&lt;/RuntimeIdentifiers&gt; (any of @(_AsmSupportedRid, ', ')), let the project that references it choose: &lt;ProjectReference Include=&quot;...&quot; RuntimeIdentifiers=&quot;linux-x64;win-x64&quot; /&gt;, or build one with -r &lt;rid&gt;." />
+    <!-- The word the warning uses for the command: pack when packing (a .NET library packed
+         with an asm reference embedded is packing too), publish otherwise. -->
+    <PropertyGroup>
+      <_AsmPublishOrPackWord Condition="'$(_IsPacking)' == 'true'">pack</_AsmPublishOrPackWord>
+    </PropertyGroup>
+    <!-- In the RID outer build only: an inner build has its RID from -r or a referencing
+         project, never from the default. -->
+    <Warning Code="ASM0013"
+             Condition="'$(_AsmRid)' == '' and '$(_AsmRidsFromBuildMachine)' == 'true' and ('$(_IsPublishing)' == 'true' or '$(_IsPacking)' == 'true')"
+             Text="$(MSBuildProjectName) lists no RuntimeIdentifiers, so this $([MSBuild]::ValueOrDefault('$(_AsmPublishOrPackWord)', 'publish')) carries it for $(_AsmBuildMachineRid) alone: the build machine's platform, its default. List the platforms it should ship in the project: &lt;RuntimeIdentifiers&gt;win-x64;linux-x64;osx-arm64&lt;/RuntimeIdentifiers&gt; (any of @(_AsmSupportedRid, ', ')), or have the referencing project name them (RuntimeIdentifiers=&quot;...&quot; on its ProjectReference), or build for one platform with -r &lt;rid&gt;." />
     <Error Code="ASM0011"
            Condition="'@(_AsmUnsupportedRid)' != ''"
            Text="AsmSdk does not build for @(_AsmUnsupportedRid, ', '). Supported runtime identifiers: @(_AsmSupportedRid, ', ')." />

@@ -16,12 +16,12 @@
     <OutputType>Exe</OutputType>
     <AssemblyName>everywhere-package-program</AssemblyName>
     <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
-    <EnableDefaultAsmItems>false</EnableDefaultAsmItems>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <BinariesCopyPath Condition="!$(RuntimeIdentifier.StartsWith('win-'))">RidFolders</BinariesCopyPath>
     <EverywhereFolder Condition="!$(RuntimeIdentifier.StartsWith('win-'))">lib/{rid}</EverywhereFolder>
   </PropertyGroup>
   <ItemGroup>
-    <AsmSource Include="../EverywhereProgram/program.asm;../EverywhereProgram/program.s" />
+    <Compile Include="../EverywhereProgram/program.asm;../EverywhereProgram/program.s" />
     <PackageReference Include="Test.Everywhere" Version="1.0.0" BinariesCopyPath="$(EverywhereFolder)" />
   </ItemGroup>
 </Project>

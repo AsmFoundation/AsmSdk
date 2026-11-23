@@ -29,11 +29,14 @@ namespace AsmFoundation.Sdk.Tasks;
 /// </list>
 /// <para>Errors: ASM0020 (two files of one name tie for a RID), ASM0021 (a NASM file qualified
 /// only for ARM64 targets), ASM0022 (unsupported RID; the targets check it first), ASM0024 (the
-/// same file is an AsmSource item twice).</para>
+/// same file is a Compile item twice).</para>
 /// </remarks>
 public sealed class AsmSelectSources : Task
 {
-    /// <summary>Every source of the project (the AsmSource items), of either language.</summary>
+    /// <summary>
+    /// Every source of the project, of either language: its Compile items that end in .asm or
+    /// .s (AsmPrepare passes no other; an .asmproj refuses another Compile item with ASM0025).
+    /// </summary>
     [Required]
     public ITaskItem[] Sources { get; set; } = Array.Empty<ITaskItem>();
 
@@ -63,7 +66,7 @@ public sealed class AsmSelectSources : Task
             return false;
         }
 
-        // The same file twice (the default **/*.asm glob plus an explicit AsmSource item) would
+        // The same file twice (the default **/*.asm glob plus an explicit Compile item) would
         // compete with itself and be reported as a tie, and the order lookup below would throw
         // on the duplicate key. .NET reports duplicate Compile items the same way (NETSDK1022).
         string[] duplicates = Sources
@@ -74,7 +77,7 @@ public sealed class AsmSelectSources : Task
         if (duplicates.Length != 0)
         {
             Log.LogError(null, "ASM0024", null, duplicates[0], 0, 0, 0, 0,
-                "Duplicate AsmSource items: {0}. The SDK includes **/*.asm and **/*.s by default; remove the explicit item, or set EnableDefaultAsmItems to false and list every source yourself.",
+                "Duplicate Compile items: {0}. The SDK includes **/*.asm and **/*.s by default; remove the explicit item, or set EnableDefaultCompileItems to false and list every source yourself.",
                 string.Join(", ", duplicates));
             return false;
         }
@@ -162,7 +165,7 @@ public sealed class AsmSelectSources : Task
     }
 
     /// <summary>A source file split into the parts the rules look at.</summary>
-    /// <param name="Item">The AsmSource item.</param>
+    /// <param name="Item">The source's Compile item.</param>
     /// <param name="Key">Folder and name without qualifier and extension: files with the same key compete.</param>
     /// <param name="Qualifier">The qualifier, or empty.</param>
     /// <param name="Language">Nasm (.asm) or Gnu (.s).</param>
@@ -170,7 +173,7 @@ public sealed class AsmSelectSources : Task
     private sealed record Candidate(ITaskItem Item, string Key, string Qualifier, string Language, int Score)
     {
         /// <summary>Splits a source item's file name.</summary>
-        /// <param name="item">The AsmSource item.</param>
+        /// <param name="item">The source's Compile item.</param>
         /// <returns>The candidate, scored 0 until the selection scores it.</returns>
         public static Candidate From(ITaskItem item)
         {

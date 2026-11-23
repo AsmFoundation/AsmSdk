@@ -1,0 +1,6 @@
+<Project>
+  <!--
+    Empty on purpose, as in PlugAndPlay: central package management stays off, as in a user's
+    fresh folder; the template's test project writes its package versions inline.
+  -->
+</Project>

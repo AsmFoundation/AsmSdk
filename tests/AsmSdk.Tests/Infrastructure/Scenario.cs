@@ -19,10 +19,11 @@ namespace AsmSdk.Tests.Infrastructure;
 /// against tests/scenarios/scenario.schema.json; docs/ecosystem/scenarios.md describes it.
 /// </para>
 /// <para>
-/// The placeholders, in "run", "stdout" and "files": <c>{rid}</c> (this machine's RID),
-/// <c>{exe:name}</c> (name.exe on Windows, name elsewhere), <c>{lib:name}</c> (this RID's shared
-/// library file: name.dll, libname.dylib or libname.so) and <c>{port:service}</c> (the host port
-/// a service container's port was published on).
+/// The placeholders, in "run", "stdout", "stderr", "absent" and "files": <c>{rid}</c> (this
+/// machine's RID), <c>{version}</c> (the AsmFoundation.Sdk version under test, which the
+/// templates package carries too), <c>{exe:name}</c> (name.exe on Windows, name elsewhere),
+/// <c>{lib:name}</c> (this RID's shared library file: name.dll, libname.dylib or libname.so) and
+/// <c>{port:service}</c> (the host port a service container's port was published on).
 /// </para>
 /// </remarks>
 internal sealed partial record Scenario
@@ -148,9 +149,10 @@ internal sealed partial record Scenario
     }
 
     /// <summary>
-    /// Replaces the placeholders of one string from scenario.json with this machine's values.
+    /// Replaces the placeholders of one string from scenario.json with this machine's values
+    /// (<c>{version}</c> with the SDK version under test, read from Directory.Build.props).
     /// </summary>
-    /// <param name="text">A command line, an expected output or a file path.</param>
+    /// <param name="text">A command line, an expected or unwanted output, or a file path.</param>
     /// <param name="ports">The host port of each started service, by service name.</param>
     /// <returns>The text with every placeholder replaced.</returns>
     /// <exception cref="InvalidDataException">
@@ -166,6 +168,7 @@ internal sealed partial record Scenario
             return (kind, argument.Length != 0) switch
             {
                 ("rid", false) => Repo.HostRid,
+                ("version", false) => Repo.SdkVersion(),
                 ("exe", true) => OperatingSystem.IsWindows() ? argument + ".exe" : argument,
                 ("lib", true) => CrossPlatformTests.LibraryFile(Repo.HostRid, argument),
                 ("port", true) when ports.TryGetValue(argument, out int port) => port.ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -242,8 +245,8 @@ internal sealed partial record Scenario
 
     /// <summary>
     /// Checks what the JSON reader cannot: at least one step, a command in each, closed quotes,
-    /// known placeholders with the arguments they need, and services with unique names, an
-    /// image and a port.
+    /// no empty expected or absent text, known placeholders with the arguments they need, and
+    /// services with unique names, an image and a port.
     /// </summary>
     /// <param name="file">The scenario file, relative to the repository root, for the messages.</param>
     /// <exception cref="InvalidDataException">The first problem found, naming the file.</exception>
@@ -299,7 +302,14 @@ internal sealed partial record Scenario
                 throw new InvalidDataException($"{where}: {e.Message}", e);
             }
 
-            foreach (string text in step.Stdout.Prepend(step.Run).Concat(step.Files))
+            // An empty text would match any output: as an expectation it checks nothing, and as
+            // an absent text it fails every step, so both are typos to report.
+            if (step.Stdout.Concat(step.Stderr).Concat(step.Absent).Any(string.IsNullOrEmpty))
+            {
+                throw new InvalidDataException($"{where} has an empty text in \"stdout\", \"stderr\" or \"absent\"");
+            }
+
+            foreach (string text in step.Stdout.Prepend(step.Run).Concat(step.Stderr).Concat(step.Absent).Concat(step.Files))
             {
                 foreach (Match match in Placeholder().Matches(text))
                 {
@@ -307,7 +317,7 @@ internal sealed partial record Scenario
                     bool hasArgument = match.Groups[2].Value.Length != 0;
                     bool known = kind switch
                     {
-                        "rid" => !hasArgument,
+                        "rid" or "version" => !hasArgument,
                         "exe" or "lib" => hasArgument,
                         "port" => hasArgument && serviceNames.Contains(match.Groups[2].Value),
                         _ => false,
@@ -315,7 +325,7 @@ internal sealed partial record Scenario
                     if (!known)
                     {
                         throw new InvalidDataException(
-                            $"{where}: unknown placeholder {match.Value} (known: {{rid}}, {{exe:name}}, {{lib:name}}, {{port:service}} of a declared service)");
+                            $"{where}: unknown placeholder {match.Value} (known: {{rid}}, {{version}}, {{exe:name}}, {{lib:name}}, {{port:service}} of a declared service)");
                     }
                 }
             }
@@ -352,6 +362,18 @@ internal sealed record ScenarioStep
 
     /// <summary>Texts that must each appear in the command's standard output (placeholders allowed).</summary>
     public IReadOnlyList<string> Stdout { get; init; } = [];
+
+    /// <summary>
+    /// Texts that must each appear in the command's standard error (placeholders allowed): where
+    /// the .NET CLI writes the message of a command it refuses, such as dotnet add reference's.
+    /// </summary>
+    public IReadOnlyList<string> Stderr { get; init; } = [];
+
+    /// <summary>
+    /// Texts that must appear in neither standard output nor standard error (placeholders
+    /// allowed): a warning that must not fire, such as ASM0013 on a publish for one RID.
+    /// </summary>
+    public IReadOnlyList<string> Absent { get; init; } = [];
 
     /// <summary>
     /// Files or folders, relative to the scenario's folder, that must exist after the command

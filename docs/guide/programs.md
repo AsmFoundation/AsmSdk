@@ -107,7 +107,7 @@ Which files are copied:
   import library `calc.dll.lib`, and `calc.dll` is the file copied. Its PDB goes along when
   there is one.
 - Not copied: a static library (its code is inside the program), and a link input the
-  project names itself with `AsmLinkLibrary` (a system library stays where it is).
+  project names itself with `AsmLinkLibrary`, renamed `NativeLibrary` on the main branch (a system library stays where it is).
 
 ## dotnet publish
 

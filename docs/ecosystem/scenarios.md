@@ -31,9 +31,12 @@ failure line shows what the scenario does without opening its file.
 | `OptunaSharpAsm` | [OptunaSharp](https://github.com/SciSharp/OptunaSharp) 1.1.0 from nuget.org beside asm. A seeded TPE study minimizes a function computed in asm, and every evaluation must equal C#'s, bit for bit. OptunaSharp brings NumSharp and the native OpenBLAS libraries, which the publish carries beside the asm library. | `dotnet build`, `dotnet run`, `dotnet publish -r {rid} -o out`, the published app |
 | `CSharpStartsAsmProgram` | A C# app references an asm program and starts it as a helper process. It finds the program where the .NET host says native files are. | `dotnet build`, `dotnet run`, `dotnet publish -r {rid} -o out`, the published app |
 | `AsmProgramTool` | An asm program packed as a .NET tool (`PackAsTool`). `dotnet tool install` picks this machine's RID package, and the command starts the program directly. | `dotnet pack`, `dotnet tool install --tool-path tools`, the command |
+| `PlugAndPlay` | A .NET developer's start, from the `dotnet new` templates under test. `asmnet` makes a C# app, an asm library and xunit tests that build without warnings, run and test with no RID, no `global.json` pin and nothing written by hand. `dotnet sln add` takes a new `.asmproj`. `dotnet add reference` still refuses one, a .NET CLI limit this step watches for. A portable publish and a pack warn `ASM0013`; a publish for one RID does not. `asmexe` runs and `asmstatic` builds. | `dotnet new install`, `dotnet new asmnet`, `dotnet build`, `dotnet run`, `dotnet test --solution`, `dotnet new asmlib`, `dotnet sln add`, `dotnet sln list`, `dotnet add reference`, `dotnet publish`, `dotnet pack`, `dotnet publish -r {rid} -o out`, the published app, `dotnet new asmexe`, `dotnet run`, `dotnet new asmstatic`, `dotnet build` |
+| `PlugAndPlayVSTest` | `asmnet --test-runner vstest`: the tests run with a plain `dotnet test` and no `global.json` entry. The name has a hyphen (`my-app`), so files and the library keep it, and the C# namespace gets `my_app`. | `dotnet new install`, `dotnet new asmnet`, `dotnet test` (VSTest), `dotnet run` |
 
 Every asm project of the scenarios builds for all eight RIDs, from one x64 source (NASM) and one
-ARM64 source (GNU syntax). Each CI runner therefore runs its own platform's code: Windows x64 and
+ARM64 source (GNU syntax), except the plug-and-play ones, whose projects come from the templates
+and list no RIDs: they build for the machine that runs them. Each CI runner therefore runs its own platform's code: Windows x64 and
 Arm, Linux x64 and ARM64, and Apple silicon. `KvAsmClient` needs Docker that runs `linux/amd64`
 containers, because KvAsm is x86-64 Linux code. That means the Linux x64 runner on CI, or a
 machine with Docker Desktop. Elsewhere it is skipped, and the skip gives the reason.
@@ -107,6 +110,8 @@ tests/scenarios/
 | `steps[].run` | The command line. Required. |
 | `steps[].exitCode` | The exit status the command must return; `0` when left out. |
 | `steps[].stdout` | Texts that must each appear in the command's standard output. |
+| `steps[].stderr` | Texts that must each appear in the command's standard error, where the .NET CLI says why it refused a command. |
+| `steps[].absent` | Texts that must appear in neither standard output nor standard error, such as a warning that must not fire. |
 | `steps[].files` | Files or folders, relative to the scenario's folder, that must exist after the command. |
 | `steps[].description` | Why the step is there, for the log. |
 | `rids` | The build machines the scenario runs on (`win-x64`, `linux-arm64`, ...); every machine when left out. |
@@ -123,17 +128,24 @@ OS. How the first word is run:
 - **`dotnet`** gets the test environment: the isolated NuGet cache in `artifacts/test-nuget`, no
   telemetry, no MSBuild variables from the machine, and `MSBUILDDISABLENODEREUSE=1`. Node reuse is
   turned off through the environment, never by adding switches to the command.
+- **Each scenario has a .NET CLI home of its own** (`DOTNET_CLI_HOME`), emptied before each run:
+  `artifacts/scenarios/.cli-home/<Name>`. What `dotnet new install` and global tools put in a
+  user's profile goes there, so a scenario never sees a template an earlier run or the developer
+  installed, and leaves nothing behind. The first-run steps that a fresh home would take outside
+  it are off (adding the tools folder to the user's `PATH`, creating a developer certificate),
+  and the CLI's messages are English (`DOTNET_CLI_UI_LANGUAGE=en`), because steps compare them.
 - **A path with a slash** is a file of the scenario's folder, such as `out/App` or
   `tools/asm-hello`. On Windows a path without an extension gets `.exe`, `.cmd` or `.bat`, as a
   shell would find it, and a `.cmd` runs through `cmd.exe`.
 - **Any other name** is looked up on `PATH`. A step that needs a shell can run `sh -c '...'`, but
   it then runs only where `sh` exists.
 
-**Placeholders**, in `run`, `stdout` and `files`:
+**Placeholders**, in `run`, `stdout`, `stderr`, `absent` and `files`:
 
 | Placeholder | Expands to |
 |---|---|
 | `{rid}` | This machine's RID: `win-x64`, `linux-arm64`, `osx-arm64`, ... |
+| `{version}` | The AsmFoundation.Sdk version under test, which the templates package has too: `dotnet new install AsmFoundation.Templates@{version}` |
 | `{exe:name}` | `name.exe` on Windows, `name` elsewhere |
 | `{lib:name}` | This RID's shared library file: `name.dll`, `libname.so` or `libname.dylib` |
 | `{port:service}` | The host port that the service's port was published on |
@@ -158,7 +170,10 @@ scenario packs itself must be named `Scenario.*`. It then goes to the local feed
   runs on in `rids`.
 - Keep the build free of warnings: the scenarios build with `TreatWarningsAsErrors`. NuGet's
   vulnerability audit (`NU1901`-`NU1904`) is the exception, so an advisory published later
-  cannot break a scenario that changed nothing.
+  cannot break a scenario that changed nothing. The plug-and-play scenarios are the other
+  exception: their own `Directory.Build.props`, `Directory.Packages.props` and `global.json`
+  stand for a user's fresh folder (empty, but for NuGet's audit, which is off). Their build
+  steps check `0 Warning(s)` instead, and their `ASM0013` steps expect a warning.
 - Make the expected output deterministic: fixed seeds, and integer values in floating-point
   checks, or a check the program makes itself.
 - Pin every version, including images.

@@ -158,11 +158,11 @@
          assembly consumers that link statically take the .a. -->
     <AsmProduceStaticLibrary Condition="'$(AsmProduceStaticLibrary)' == ''">false</AsmProduceStaticLibrary>
 
-    <!-- Default items: every *.asm (NASM) and *.s (GNU syntax, llvm-mc) is a source and every
-         *.inc a dependency, as in a .csproj every *.cs is compiled. Which sources build which
-         runtime identifier is decided per RID by their file-name qualifiers (see AsmPrepare).
-         Set EnableDefaultAsmItems=false to list them yourself. -->
-    <EnableDefaultAsmItems Condition="'$(EnableDefaultAsmItems)' == ''">true</EnableDefaultAsmItems>
+    <!-- Default items (declared in Sdk.props): every *.asm (NASM) and *.s (GNU syntax,
+         llvm-mc) is a Compile item, as in a .csproj every *.cs is, and every *.inc a None item
+         that every source depends on. Which sources build which runtime identifier is decided
+         per RID by their file-name qualifiers (see AsmPrepare). .NET's
+         EnableDefaultCompileItems=false lists the sources yourself. -->
   </PropertyGroup>
 
   <!-- ===================================================================================== -->
@@ -179,11 +179,12 @@
       osx-x64, osx-arm64          Mach-O (ld64.lld): Intel and Apple silicon Macs
     x86-64 code is NASM (.asm); ARM64 code is GNU syntax (.s) for the bundled llvm-mc.
 
-    Required, the owner's choice for 0.3.0: there is no default RID. A project builds the
-    RuntimeIdentifiers it lists (or the one RuntimeIdentifier), or those a referencing project
+    What a project builds, first match wins: the one given with -r; those a referencing project
     asks for on its ProjectReference (RuntimeIdentifiers metadata, which arrives here as the
-    global property AsmRequestedRuntimeIdentifiers), or the one given with -r. With none of
-    these, the build stops with ASM0010, which names all three.
+    global property AsmRequestedRuntimeIdentifiers); the RuntimeIdentifiers it lists (or the one
+    RuntimeIdentifier); and with none of these, the build machine's own RID (see
+    _AsmBuildMachineRid below; 0.3.0 had no default and stopped with ASM0010 here). ASM0010 is
+    left for a build machine that is not one of the eight.
 
     One build per RID, exactly like `dotnet build -r <rid>`: an inner build with the global
     property RuntimeIdentifier, its outputs in bin/<Configuration>/<TargetFramework>/<rid>/
@@ -308,6 +309,38 @@
   </PropertyGroup>
 
   <!-- ===================================================================================== -->
+  <!-- The platform layer in every source: ImplicitUsings                                     -->
+  <!-- ===================================================================================== -->
+
+  <!--
+    ImplicitUsings, .NET's switch for "the common imports come for free", the owner's choice for
+    plug-and-play sources (2026-11-23). On (enable or true, the default in an .asmproj), every
+    source gets the SDK's platform layer before its first line, so a source file is just code:
+      NASM (.asm)     include/asmsdk-implicit.inc, as NASM's pre-include (-P): asmsdk.inc (the
+                      FUNCTION, ARG1, RETURN, PLT, ... macros), "default rel", and on Linux the
+                      .note.GNU-stack section that marks the stack non-executable
+      GNU (.s)        include/asmsdk-gnu-implicit.inc, the same for llvm-mc, which has no
+                      pre-include option: the SDK assembles a generated file in obj/ that includes
+                      it and then the source (see _AsmWriteImplicitUsingsWrappers)
+    disable (or false) gives raw sources back: nothing is added, and each file includes what
+    it uses, as in 0.3.0 and before. That is the way out for a codebase whose own macros share
+    a name with the layer's (FUNCTION, RETURN, ARG1, ...).
+
+    Safe to combine with an explicit %include "asmsdk.inc" or .include "asmsdk-gnu.inc" in a
+    source: both files have include guards, so the second inclusion adds nothing. An explicit
+    .note.GNU-stack declaration at a file's end is the same declaration again.
+
+    Why the .NET name means something else here: in Microsoft.NET.Sdk, ImplicitUsings adds
+    Using items in Microsoft.NET.Sdk.CSharp.props and generates global usings in targets that
+    are imported for C# only (Language C#), so in an .asmproj the property is free; this SDK
+    gives it the same meaning for assembly.
+  -->
+  <PropertyGroup>
+    <ImplicitUsings Condition="'$(ImplicitUsings)' == ''">enable</ImplicitUsings>
+    <_AsmImplicitUsings Condition="'$(ImplicitUsings)' == 'enable' or '$(ImplicitUsings)' == 'true'">true</_AsmImplicitUsings>
+  </PropertyGroup>
+
+  <!-- ===================================================================================== -->
   <!-- Debug information: DebugSymbols and DebugType                                          -->
   <!-- ===================================================================================== -->
   <PropertyGroup>
@@ -379,6 +412,38 @@
 
     <AsmToolchainPackageId>AsmFoundation.Toolchain.$(AsmHostRid)</AsmToolchainPackageId>
     <_AsmExe Condition="$([MSBuild]::IsOSPlatform('Windows'))">.exe</_AsmExe>
+  </PropertyGroup>
+
+  <!--
+    The default RID: the build machine's own platform, for a project that names none and that
+    nothing asks for. The owner's choice for plug and play (2026-11-23), replacing 0.3.0's
+    "no default RID": a bare <Project Sdk="AsmFoundation.Sdk"> now builds, runs and tests on
+    the machine at hand, the way a C++ project reference builds for the machine you are on.
+    Measured with 0.3.0 before the change, on a new solution: the bare library stopped with
+    ASM0010, `dotnet run` of a C# app referencing it too, and a solution build went green while
+    the app got no native library at all.
+
+    It is the last fallback, after a referencing project's request and the project's own list
+    (see _AsmBuildRuntimeIdentifiers above), so -r, RuntimeIdentifiers and a RID-specific
+    consumer decide exactly as before. Computed from the .NET SDK's own RID, normalized like the
+    toolchain's host RID, but never from a project's AsmHostRid: that property picks the tools
+    (linux-x64 tools on an Alpine machine with gcompat, for one), while the code built by
+    default must run on the machine itself (linux-musl-x64 there). A build machine that is not
+    one of the eight RIDs (FreeBSD, 32-bit Arm) gets no default, and ASM0010 says so.
+
+    Footgun, warned about: the default ships one platform. A portable "dotnet publish" of a .NET
+    app, or "dotnet pack", that carries an asm project built this way warns with ASM0013 (see
+    _AsmCheckRuntimeIdentifiers), because the result would lack every other OS's library.
+  -->
+  <PropertyGroup>
+    <_AsmBuildMachineRid Condition="$([MSBuild]::IsOSPlatform('Windows'))">win-$(_AsmSdkArch)</_AsmBuildMachineRid>
+    <_AsmBuildMachineRid Condition="'$(_AsmBuildMachineRid)' == '' and $([MSBuild]::IsOSPlatform('OSX'))">osx-$(_AsmSdkArch)</_AsmBuildMachineRid>
+    <_AsmBuildMachineRid Condition="'$(_AsmBuildMachineRid)' == '' and $([MSBuild]::IsOSPlatform('Linux')) and '$(_AsmSdkRidIsMusl)' == 'true'">linux-musl-$(_AsmSdkArch)</_AsmBuildMachineRid>
+    <_AsmBuildMachineRid Condition="'$(_AsmBuildMachineRid)' == '' and $([MSBuild]::IsOSPlatform('Linux'))">linux-$(_AsmSdkArch)</_AsmBuildMachineRid>
+    <_AsmBuildMachineRidSupported Condition="'$(_AsmBuildMachineRid)' != '' and $([System.String]::Copy(';$(_AsmSupportedRuntimeIdentifiers);').Contains(';$(_AsmBuildMachineRid);'))">true</_AsmBuildMachineRidSupported>
+    <!-- Recorded, for ASM0013 and the messages: the RIDs below are the default, not a choice. -->
+    <_AsmRidsFromBuildMachine Condition="'$(_AsmBuildRuntimeIdentifiers)' == '' and '$(_AsmBuildMachineRidSupported)' == 'true'">true</_AsmRidsFromBuildMachine>
+    <_AsmBuildRuntimeIdentifiers Condition="'$(_AsmRidsFromBuildMachine)' == 'true'">$(_AsmBuildMachineRid)</_AsmBuildRuntimeIdentifiers>
   </PropertyGroup>
 
   <!--
@@ -459,7 +524,23 @@
       ASM0105  AsmEntryPoint       -> StartupObject
       ASM0106  AsmLinkFlags        -> LinkerArg items and ExportsFile
       ASM0107  AsmOutputKind       -> OutputType
-      ASM0108  the summary that stops the build after any of ASM0100 to ASM0107
+      ASM0109  AsmLinkLibrary items -> NativeLibrary items (NativeAOT's name), after 0.3.0;
+               also raised for items a package's props add, which means that package was
+               packed by AsmFoundation.Sdk 0.3.0 or older and must be packed again
+      ASM0110  AsmSource items     -> Compile items, after 0.3.0
+      ASM0111  AsmInclude items    -> None items (an include file is a None item ending in
+               .inc; any other extra input of the assembler a CustomAdditionalCompileInputs
+               item), after 0.3.0
+      ASM0112  EnableDefaultAsmItems -> EnableDefaultCompileItems, after 0.3.0
+      ASM0108  the summary that stops the build after any of ASM0100 to ASM0107 or ASM0109 to
+               ASM0112 (0108 was the last of the 0.2.0 series, so the later renames went on
+               from 0109)
+      ASM0025  a Compile item that is not an asm source (.asm for NASM, .s for llvm-mc): an
+               .asmproj compiles nothing else, and NASM would read a .c or .cs file as NASM
+
+    The renames after 0.3.0 follow the owner's rule of 2026-11-23: "We discard unnecessary
+    *Asm* in favor of preexisting in the ecosystem. No backwards compatibility." An old name is
+    an error that shows the new one, never an alias.
 
     The removed-setting errors use ContinueOnError="ErrorAndContinue" so that one build lists
     every setting to change, instead of one per attempt (an Error task otherwise ends the
@@ -477,8 +558,19 @@
 
     <PropertyGroup>
       <!-- Any removed setting at all: their values concatenated are empty only when none is set. -->
-      <_AsmUsesRemovedSettings Condition="'$(AsmLibraryName)$(AsmRuntime)$(AsmDefineConstants)@(AsmDefine)$(AsmDebugInfo)$(AsmEntryPoint)$(AsmLinkFlags)$(AsmOutputKind)' != ''">true</_AsmUsesRemovedSettings>
+      <_AsmUsesRemovedSettings Condition="'$(AsmLibraryName)$(AsmRuntime)$(AsmDefineConstants)@(AsmDefine)$(AsmDebugInfo)$(AsmEntryPoint)$(AsmLinkFlags)$(AsmOutputKind)@(AsmLinkLibrary)@(AsmSource)@(AsmInclude)$(EnableDefaultAsmItems)' != ''">true</_AsmUsesRemovedSettings>
     </PropertyGroup>
+    <ItemGroup>
+      <!-- The packages whose props added AsmLinkLibrary items (AsmPackage metadata, written by
+           0.3.0's pack step): named in ASM0109, so the message says which package to repack. -->
+      <_AsmStalePackage Include="@(AsmLinkLibrary->'%(AsmPackage)')" Condition="'%(AsmLinkLibrary.AsmPackage)' != ''" />
+      <!-- Compile items an asm project cannot assemble, as the project listed them (this runs
+           before any target of the build could add one). -->
+      <_AsmForeignCompileItem Include="@(Compile)" Condition="'%(Extension)' != '.asm' and '%(Extension)' != '.s'" />
+    </ItemGroup>
+    <Error Code="ASM0025"
+           Condition="'@(_AsmForeignCompileItem)' != ''"
+           Text="@(_AsmForeignCompileItem->'%(Identity)', ', ') cannot be compiled by an .asmproj: its Compile items are asm sources, .asm (NASM, x64) or .s (GNU syntax, ARM64 and x64). Keep another file in the project as a None item (&lt;None Include=&quot;...&quot; /&gt;), and build C or C# in a project of its own." />
 
     <Error Code="ASM0100"
            ContinueOnError="ErrorAndContinue"
@@ -512,8 +604,28 @@
            ContinueOnError="ErrorAndContinue"
            Condition="'$(AsmOutputKind)' != ''"
            Text="AsmOutputKind was removed in AsmFoundation.Sdk 0.2.0. Use OutputType: Exe, Library (a shared library, the default), StaticLibrary or Objects." />
+    <Error Code="ASM0109"
+           ContinueOnError="ErrorAndContinue"
+           Condition="'@(AsmLinkLibrary)' != '' and '@(_AsmStalePackage)' == ''"
+           Text="AsmLinkLibrary items were replaced after AsmFoundation.Sdk 0.3.0 by NativeLibrary items, NativeAOT's name for the same link inputs: &lt;NativeLibrary Include=&quot;@(AsmLinkLibrary->'%(Identity)', ';')&quot; /&gt;." />
+    <Error Code="ASM0109"
+           ContinueOnError="ErrorAndContinue"
+           Condition="'@(_AsmStalePackage)' != ''"
+           Text="The package @(_AsmStalePackage->Distinct(), ', ') was packed by AsmFoundation.Sdk 0.3.0 or older: its props add AsmLinkLibrary items, which later SDKs replaced with NativeLibrary items. Pack it again with this SDK and reference the new version." />
+    <Error Code="ASM0110"
+           ContinueOnError="ErrorAndContinue"
+           Condition="'@(AsmSource)' != ''"
+           Text="AsmSource items were replaced after AsmFoundation.Sdk 0.3.0 by Compile items, .NET's name for the files a project compiles: &lt;Compile Include=&quot;@(AsmSource->'%(Identity)', ';')&quot; /&gt; (and Compile Remove or Update, as in a .csproj). Every *.asm and *.s of the project folder is one already." />
+    <Error Code="ASM0111"
+           ContinueOnError="ErrorAndContinue"
+           Condition="'@(AsmInclude)' != ''"
+           Text="AsmInclude items were replaced after AsmFoundation.Sdk 0.3.0 by None items: every source depends on each None item ending in .inc, so an include file from another folder is &lt;None Include=&quot;@(AsmInclude->'%(Identity)', ';')&quot; /&gt;, and any other file a source reads is a CustomAdditionalCompileInputs item. Every *.inc of the project folder is a None item already." />
+    <Error Code="ASM0112"
+           ContinueOnError="ErrorAndContinue"
+           Condition="'$(EnableDefaultAsmItems)' != ''"
+           Text="EnableDefaultAsmItems was replaced after AsmFoundation.Sdk 0.3.0 by .NET's EnableDefaultCompileItems: &lt;EnableDefaultCompileItems&gt;$(EnableDefaultAsmItems)&lt;/EnableDefaultCompileItems&gt; turns the default *.asm and *.s Compile items off (the *.inc files are None items, under EnableDefaultNoneItems)." />
     <Error Code="ASM0108"
            Condition="'$(_AsmUsesRemovedSettings)' == 'true'"
-           Text="This project uses settings that AsmFoundation.Sdk 0.2.0 replaced with the .NET properties of the same purpose; the errors above name each replacement. The 0.2.0 entry of https://github.com/AsmFoundation/AsmSdk/blob/main/CHANGELOG.md lists them all." />
+           Text="This project uses settings that AsmFoundation.Sdk replaced with the .NET names of the same purpose; the errors above name each replacement. The CHANGELOG lists them all: https://github.com/AsmFoundation/AsmSdk/blob/main/CHANGELOG.md" />
   </Target>
 </Project>

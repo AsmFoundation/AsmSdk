@@ -1,0 +1,14 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    .NET's warning switches reaching NASM by warning name. orphan.asm has a label alone on a
+    line without a colon, which NASM warns about as label-orphan. Built as it is, under
+    TreatWarningsAsErrors (tests/projects/Directory.Build.props), it is expected to FAIL with
+    that warning as an error; WarningSwitchTests (tests/AsmSdk.Tests) builds it again with
+    NoWarn, WarningsAsErrors and WarningsNotAsErrors on the command line, which must turn the
+    same warning off, into an error, or back into a warning.
+  -->
+  <PropertyGroup>
+    <AssemblyName>warnings</AssemblyName>
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

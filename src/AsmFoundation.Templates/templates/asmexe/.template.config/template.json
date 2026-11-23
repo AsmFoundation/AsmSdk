@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "AsmFoundation",
+  "classifications": [ "Assembly", "Native", "Console" ],
+  "identity": "AsmFoundation.Templates.AsmConsoleApp",
+  "groupIdentity": "AsmFoundation.Templates.AsmConsoleApp",
+  "name": "Assembly Console App",
+  "shortName": "asmexe",
+  "description": "A program written in assembly (NASM for x64, GNU syntax for ARM64) on the platform's C library, built by AsmFoundation.Sdk for Windows, Linux and macOS. dotnet run builds and runs it.",
+  "tags": {
+    "language": "Assembly",
+    "type": "project"
+  },
+  "sourceName": "AsmApp.1",
+  "defaultName": "AsmApp1",
+  "preferNameDirectory": true,
+  "symbols": {
+    "SdkVersion": {
+      "type": "parameter",
+      "datatype": "string",
+      "defaultValue": "__ASMSDK_VERSION__",
+      "replaces": "ASMSDK_VERSION",
+      "displayName": "AsmFoundation.Sdk version",
+      "description": "The AsmFoundation.Sdk version the project names in its Sdk attribute. Default: the version of this template package, which is released with the SDK of the same version."
+    },
+    "skipRestore": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Skip restore",
+      "description": "If specified, skips the automatic restore of the project on create."
+    }
+  },
+  "primaryOutputs": [
+    { "path": "AsmApp.1.asmproj" }
+  ],
+  "postActions": [
+    {
+      "id": "restore",
+      "condition": "(!skipRestore)",
+      "description": "Restore NuGet packages required by this project.",
+      "manualInstructions": [ { "text": "Run 'dotnet restore'" } ],
+      "actionId": "210D431B-A78B-4D2F-B762-4ED3E3EA9025",
+      "continueOnError": true
+    }
+  ]
+}

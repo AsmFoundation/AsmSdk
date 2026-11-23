@@ -18,10 +18,10 @@
     <Version>1.0.0</Version>
     <Authors>AsmFoundation tests</Authors>
     <Description>Test package: an assembly program as a .NET tool, for eight runtime identifiers.</Description>
-    <EnableDefaultAsmItems>false</EnableDefaultAsmItems>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
   <ItemGroup>
-    <AsmSource Include="../EverywhereProgram/program.asm;../EverywhereProgram/program.s" />
+    <Compile Include="../EverywhereProgram/program.asm;../EverywhereProgram/program.s" />
     <ProjectReference Include="../Everywhere/Everywhere.asmproj" />
   </ItemGroup>
 </Project>

@@ -76,7 +76,7 @@
           "run": {
             "type": "string",
             "minLength": 1,
-            "description": "The command line, run in the scenario's folder without a shell: whitespace separates arguments, and double or single quotes group them. dotnet gets the test environment (the isolated NuGet cache). A path with a slash is a file of the scenario's folder (on Windows .exe, .cmd or .bat is tried when it has no extension); any other name is looked up on PATH. Placeholders: {rid}, {exe:name}, {lib:name}, {port:service}."
+            "description": "The command line, run in the scenario's folder without a shell: whitespace separates arguments, and double or single quotes group them. dotnet gets the test environment (the isolated NuGet cache, the scenario's own CLI home for dotnet new install and global tools, English messages). A path with a slash is a file of the scenario's folder (on Windows .exe, .cmd or .bat is tried when it has no extension); any other name is looked up on PATH. Placeholders: {rid}, {version} (the AsmFoundation.Sdk version under test, also the templates'), {exe:name}, {lib:name}, {port:service}."
           },
           "description": {
             "type": "string",
@@ -89,8 +89,18 @@
           },
           "stdout": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": { "type": "string", "minLength": 1 },
             "description": "Texts that must each appear in the command's standard output. Placeholders are allowed."
+          },
+          "stderr": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "description": "Texts that must each appear in the command's standard error, where the .NET CLI writes why it refused a command. Placeholders are allowed."
+          },
+          "absent": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "description": "Texts that must appear in neither standard output nor standard error, such as a warning that must not fire. Placeholders are allowed."
           },
           "files": {
             "type": "array",

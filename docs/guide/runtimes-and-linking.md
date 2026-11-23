@@ -104,6 +104,8 @@ for a `libc` one. A program with an `ExportsFile` gets `-implib:<name>.lib` inst
 
 **Order:** your objects come first, then `AsmLinkLibrary` items in the order added, so
 references and packages come after anything you list yourself, then the system libraries.
+(Not released yet: the item is `NativeLibrary`, NativeAOT's name for the same inputs, and
+`AsmLinkLibrary` is error ASM0109.)
 The lld drivers resolve symbols from archives regardless of order, unlike GNU `ld`, so the
 order matters only with `AsmToolchain=System` on Linux.
 
@@ -296,7 +298,7 @@ The macOS list has the same groups, with macOS's names: `__error` for errno, `kq
 `AsmLibcSymbol` takes the C name on every OS: the SDK adds macOS's underscore. On Windows it
 adds the name to the UCRT import library, so the name must be a real `ucrtbase.dll` export.
 A function that exists only in another DLL needs that DLL's import library, as an
-`AsmLinkLibrary` item.
+`AsmLinkLibrary` item (`NativeLibrary`, not released yet).
 
 **Versions and limits:**
 

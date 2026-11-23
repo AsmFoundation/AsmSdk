@@ -1,0 +1,8 @@
+<Project>
+  <!--
+    Empty on purpose: central package management stays off here, as in a user's fresh folder.
+    The test project the asmnet template creates writes its package versions inline (as
+    xunit's own template does), which tests/scenarios' central management would reject
+    (NU1008).
+  -->
+</Project>

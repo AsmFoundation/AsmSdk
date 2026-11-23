@@ -10,10 +10,10 @@
     <AssemblyName>program-layout-windows</AssemblyName>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <BinariesCopyPath>native</BinariesCopyPath>
-    <EnableDefaultAsmItems>false</EnableDefaultAsmItems>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
   <ItemGroup>
-    <AsmSource Include="../EverywhereProgram/program.asm" />
+    <Compile Include="../EverywhereProgram/program.asm" />
     <ProjectReference Include="../Everywhere/Everywhere.asmproj" />
   </ItemGroup>
 </Project>

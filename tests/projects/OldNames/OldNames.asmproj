@@ -1,9 +1,11 @@
 <Project Sdk="AsmFoundation.Sdk">
   <!--
-    Expected to FAIL: every setting that AsmFoundation.Sdk 0.1.0 had and 0.2.0 replaced with a
-    .NET property. ProjectRuleTests (tests/AsmSdk.Tests) checks that one build reports all of
-    them (ASM0100 to ASM0107) and then stops with the ASM0108 summary, before anything is
-    assembled.
+    Expected to FAIL: every setting that AsmFoundation.Sdk replaced with a .NET name, each
+    reported with its replacement. ProjectRuleTests (tests/AsmSdk.Tests) checks that one build
+    reports all of them (ASM0100 to ASM0107: 0.1.0's settings, replaced in 0.2.0; ASM0109 to
+    ASM0112: AsmLinkLibrary, AsmSource, AsmInclude and EnableDefaultAsmItems, replaced by .NET's
+    NativeLibrary, Compile, None and EnableDefaultCompileItems after 0.3.0) and then stops with
+    the ASM0108 summary, before anything is assembled.
   -->
   <PropertyGroup>
     <AsmLibraryName>old</AsmLibraryName>
@@ -13,8 +15,12 @@
     <AsmEntryPoint>my_entry</AsmEntryPoint>
     <AsmLinkFlags>-z defs</AsmLinkFlags>
     <AsmOutputKind>Executable</AsmOutputKind>
+    <EnableDefaultAsmItems>true</EnableDefaultAsmItems>
   </PropertyGroup>
   <ItemGroup>
     <AsmDefine Include="BAR=1" />
+    <AsmLinkLibrary Include="libold.a" />
+    <AsmSource Include="extra/old-source.asm" />
+    <AsmInclude Include="../shared/old.inc" />
   </ItemGroup>
 </Project>

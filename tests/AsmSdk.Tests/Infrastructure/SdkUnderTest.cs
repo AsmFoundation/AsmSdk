@@ -54,15 +54,22 @@ public sealed class SdkUnderTest : IAsyncLifetime
     public IReadOnlyDictionary<string, CommandResult> PackToolchains { get; private set; } = null!;
 
     /// <summary>
+    /// dotnet pack of AsmFoundation.Templates (the dotnet new templates), at the SDK's version,
+    /// into the local feed: the plug-and-play scenarios install it from there with
+    /// dotnet new install, and the projects it creates name this SDK version.
+    /// </summary>
+    public CommandResult PackTemplates { get; private set; } = null!;
+
+    /// <summary>
     /// The Release build of samples/Samples.slnx, at normal verbosity: several tests read the
     /// NASM and linker command lines from its log.
     /// </summary>
     public CommandResult SamplesBuild { get; private set; } = null!;
 
     /// <summary>
-    /// Packs the SDK and the staged toolchains, after removing everything a previous run left
-    /// (the NuGet cache, test packages, every sample's and test project's bin/ and obj/), then
-    /// builds the samples.
+    /// Packs the SDK, the staged toolchains and the templates, after removing everything a
+    /// previous run left (the NuGet cache, test packages, every sample's and test project's bin/
+    /// and obj/), then builds the samples.
     /// </summary>
     /// <returns>A completed task (the work is synchronous).</returns>
     /// <exception cref="InvalidOperationException">
@@ -136,6 +143,7 @@ public sealed class SdkUnderTest : IAsyncLifetime
         PackSdk = Dotnet("pack", "src/AsmFoundation.Sdk/AsmFoundation.Sdk.csproj", "-c", "Release");
         PackToolchains = StagedRids.ToDictionary(rid => rid, rid =>
             Dotnet("pack", "toolchain/AsmFoundation.Toolchain.csproj", "-c", "Release", $"-p:ToolchainRid={rid}"));
+        PackTemplates = Dotnet("pack", "src/AsmFoundation.Templates/AsmFoundation.Templates.csproj", "-c", "Release");
         SamplesBuild = Dotnet("build", "samples/Samples.slnx", "-c", "Release", "-v:n");
         return ValueTask.CompletedTask;
     }

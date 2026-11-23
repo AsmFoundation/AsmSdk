@@ -10,6 +10,15 @@ tutorial.
 
 ## A source file skeleton
 
+> [!NOTE]
+> **Not released yet:** on the main branch, `ImplicitUsings` (on by default in an `.asmproj`)
+> puts `%include "asmsdk.inc"`, `default rel` and, on Linux, the `.note.GNU-stack` section in
+> front of every source, through NASM's pre-include. A source in an AsmSdk project then needs
+> none of the three lines below, though writing them changes nothing. They still matter in a
+> project with `<ImplicitUsings>disable</ImplicitUsings>`, and in a file assembled outside
+> AsmSdk, so the skeleton keeps them and the reasons follow. See
+> [Projects](projects.md#implicitusings).
+
 ```nasm
 ; crc.asm - one public function; see include/crc.inc for its contract.
 default rel                         ; RIP-relative addressing for every [label] operand

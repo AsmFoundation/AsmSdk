@@ -1,0 +1,22 @@
+<Project Sdk="AsmFoundation.Sdk/ASMSDK_VERSION">
+  <!--
+    AsmLibrary.1: a shared library written in assembly. "dotnet build" builds it for this
+    machine: AsmLibrary.1.dll on Windows, libAsmLibrary.1.so on Linux, libAsmLibrary.1.dylib on
+    macOS, under bin/<Configuration>/freestanding/<rid>/. add.asm is the x64 code (NASM), add.s
+    the ARM64 code (GNU syntax): each platform assembles the file for its CPU.
+
+    Ship it for more platforms by listing them here; a .NET app that references this project
+    then carries every one:
+      <PropertyGroup>
+        <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+      </PropertyGroup>
+
+    Call it from C#: add <ProjectReference Include="../AsmLibrary.1/AsmLibrary.1.asmproj" /> to the
+    .csproj, then declare each function on a static partial class:
+      [LibraryImport("AsmLibrary.1", EntryPoint = "add_ints")]
+      internal static partial int AddInts(int a, int b);
+
+    The SDK version is the one on the first line; change it there to upgrade.
+    Documentation: https://asmfoundation.github.io/AsmSdk/
+  -->
+</Project>

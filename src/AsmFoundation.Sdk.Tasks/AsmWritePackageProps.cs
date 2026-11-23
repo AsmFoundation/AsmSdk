@@ -158,7 +158,9 @@ public sealed class AsmWritePackageProps : Task
 
         foreach (ITaskItem library in LinkLibraries.OrderBy(l => l.GetMetadata("RuntimeIdentifier"), StringComparer.Ordinal))
         {
-            var link = new XElement("AsmLinkLibrary",
+            // NativeLibrary, NativeAOT's item for link inputs (AsmLinkLibrary until 0.3.0: a consumer
+            // on a later SDK stops with ASM0109 on a package written with that name).
+            var link = new XElement("NativeLibrary",
                 new XAttribute("Include", "$(MSBuildThisFileDirectory)../../" + library.ItemSpec.Replace('\\', '/')),
                 new XAttribute("Condition", $"'$({ridProperty})' == '{library.GetMetadata("RuntimeIdentifier")}'"),
                 new XAttribute("AsmOrigin", "Package"),

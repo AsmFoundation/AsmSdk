@@ -349,8 +349,10 @@
 
     <ItemGroup>
       <TfmSpecificPackageFile Include="@(AsmPublicInclude)" Condition="'$(_AsmPackIsFirstTargetFramework)' == 'true'" PackagePath="include/%(RecursiveDir)%(Filename)%(Extension)" />
-      <TfmSpecificPackageFile Include="@(AsmSource)" Condition="'$(AsmPackSources)' == 'true' and '$(_AsmPackIsFirstTargetFramework)' == 'true'" PackagePath="src/%(RecursiveDir)%(Filename)%(Extension)" />
-      <TfmSpecificPackageFile Include="@(AsmInclude)" Condition="'$(AsmPackSources)' == 'true' and '$(_AsmPackIsFirstTargetFramework)' == 'true'" PackagePath="src/%(RecursiveDir)%(Filename)%(Extension)" />
+      <!-- AsmPackSources: the asm sources (Compile items) and include files (None items ending
+           in .inc) under src/, for consumers that assemble them themselves. -->
+      <TfmSpecificPackageFile Include="@(Compile)" Condition="'$(AsmPackSources)' == 'true' and '$(_AsmPackIsFirstTargetFramework)' == 'true' and ('%(Extension)' == '.asm' or '%(Extension)' == '.s')" PackagePath="src/%(RecursiveDir)%(Filename)%(Extension)" />
+      <TfmSpecificPackageFile Include="@(None->WithMetadataValue('Extension', '.inc'))" Condition="'$(AsmPackSources)' == 'true' and '$(_AsmPackIsFirstTargetFramework)' == 'true'" PackagePath="src/%(RecursiveDir)%(Filename)%(Extension)" />
       <TfmSpecificPackageFile Include="$(_AsmEmptyLibMarkerPath)" PackagePath="lib/$(_AsmNuGetFramework)/_._" />
       <TfmSpecificPackageFile Include="@(_AsmPackedRidFile)" PackagePath="%(_AsmPackedRidFile.PackagePath)" />
       <TfmSpecificPackageFile Include="$(_AsmGeneratedPropsPath)" PackagePath="build/$(_AsmNuGetFramework)/$(PackageId).props" />

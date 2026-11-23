@@ -1,0 +1,104 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    AsmFoundation.Templates: the "dotnet new" templates for assembly projects built with
+    AsmFoundation.Sdk, the owner's choice for plug and play (2026-11-23):
+      asmlib     an assembly shared library, x64 (NASM) and ARM64 (GNU syntax) sources
+      asmexe     an assembly program on the platform's C library (dotnet run runs it)
+      asmstatic  an assembly static library with a public include/ folder
+      asmnet     a solution: a C# console app, the assembly library it calls, and xunit tests
+    Measured before: "dotnet new search asm" found only WebAssembly templates, and a .NET
+    developer had to write every .asmproj and .slnx entry by hand.
+
+    The package carries the templates under content/, as every template package does
+    (PackageType Template). Packed with the SDK's version: each template's SdkVersion
+    parameter defaults to it, so "dotnet new asmlib" writes the SDK version this package was
+    released with (see _AsmStampTemplateVersion). Nothing here is compiled.
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <PackageId>AsmFoundation.Templates</PackageId>
+    <PackageType>Template</PackageType>
+    <Title>AsmFoundation templates for dotnet new</Title>
+    <Description>dotnet new templates for assembly projects built with AsmFoundation.Sdk: an assembly library (asmlib), an assembly program (asmexe), a static library (asmstatic), and a solution with a C# app, the assembly library it calls and its tests (asmnet). The projects build for this machine with dotnet build, run with dotnet run, test with dotnet test, and target Windows, Linux and macOS on x64 and ARM64.</Description>
+    <PackageTags>dotnet-new;templates;assembly;asm;nasm;native;interop;msbuild-sdk</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- Nothing managed: no assembly, no dependencies, only the templates. The template
+         sources are not items of this project (EnableDefaultItems), so the C# files in them are
+         never compiled here, and no assembly info is generated to compile instead. -->
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- Each template's settings live in a .template.config folder: NuGet leaves files and
+         folders that start with a dot out of a package unless told otherwise. -->
+    <NoDefaultExcludes>true</NoDefaultExcludes>
+    <!-- NU5128: a template package has no lib/ folder by design. CS2008: nothing to compile. -->
+    <NoWarn>$(NoWarn);NU5128;CS2008</NoWarn>
+    <!-- Where the templates are copied with the version stamped in, for packing. -->
+    <_AsmStagedTemplates>$(BaseIntermediateOutputPath)templates/</_AsmStagedTemplates>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="../../LICENSE" Pack="true" PackagePath="/" />
+    <!-- The template sources, as written: bin/ and obj/ of a build someone ran in place stay out. -->
+    <_AsmTemplateSource Include="templates/**/*" Exclude="templates/**/bin/**;templates/**/obj/**" />
+  </ItemGroup>
+
+  <!--
+    AsmStampTemplateVersion: copies each template file to the staging folder with the token
+    __ASMSDK_VERSION__ replaced by this package's version. Every template file is text (XML,
+    JSON, assembly, C#), written back as UTF-8 without a byte order mark, its line endings as
+    they were. An inline task, because MSBuild's own text tasks split on ";" (assembly comments
+    start with one) and ReadLinesFromFile drops empty lines.
+    Parameters:
+      Files            the template files
+      SourceRoot       the folder they are relative to (templates/), with a trailing separator
+      DestinationRoot  the staging folder, with a trailing separator
+      Version          the version to stamp in
+  -->
+  <UsingTask TaskName="AsmStampTemplateVersion" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Files ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <SourceRoot ParameterType="System.String" Required="true" />
+      <DestinationRoot ParameterType="System.String" Required="true" />
+      <Version ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        // Each file keeps its path below the templates folder, so the template layout is
+        // unchanged; only the token differs.
+        var utf8 = new System.Text.UTF8Encoding(false);
+        foreach (var file in Files)
+        {
+            string source = file.GetMetadata("FullPath");
+            string relative = source.Substring(System.IO.Path.GetFullPath(SourceRoot).Length);
+            string destination = System.IO.Path.Combine(DestinationRoot, relative);
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(destination));
+            string text = System.IO.File.ReadAllText(source);
+            System.IO.File.WriteAllText(destination, text.Replace("__ASMSDK_VERSION__", Version), utf8);
+        }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <!--
+    _AsmStampTemplateVersion: stages the templates with the version stamped in and hands the
+    staged copies to pack as content/<template>/..., the layout "dotnet new install" reads.
+    Runs before NuGet collects the package files, so the Content items it adds are packed.
+  -->
+  <Target Name="_AsmStampTemplateVersion" BeforeTargets="_GetPackageFiles">
+    <RemoveDir Directories="$(_AsmStagedTemplates)" />
+    <AsmStampTemplateVersion Files="@(_AsmTemplateSource)"
+                             SourceRoot="$(MSBuildProjectDirectory)/templates/"
+                             DestinationRoot="$(_AsmStagedTemplates)"
+                             Version="$(Version)" />
+    <ItemGroup>
+      <_AsmStagedTemplate Include="$(_AsmStagedTemplates)**/*" />
+      <Content Include="@(_AsmStagedTemplate)"
+               Pack="true"
+               PackagePath="content/%(RecursiveDir)%(Filename)%(Extension)" />
+    </ItemGroup>
+  </Target>
+</Project>

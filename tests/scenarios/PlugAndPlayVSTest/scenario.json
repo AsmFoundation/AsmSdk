@@ -1,0 +1,32 @@
+{
+  "$schema": "../scenario.schema.json",
+  "description": "The asmnet template with --test-runner vstest, for repositories whose tests run on VSTest: its tests run with a plain dotnet test and no global.json entry, as xunit's own template's VSTest choice does. The name has a hyphen, so each of the template's names is checked in its form: my-app.Native for files, paths and the library .NET loads, my_app.Tests for the C# namespace. The folder's own global.json, Directory.Build.props and Directory.Packages.props stand for a user's fresh folder (empty, but for NuGet's audit, which is off).",
+  "steps": [
+    {
+      "run": "dotnet new install AsmFoundation.Templates@{version}",
+      "description": "Installs the templates under test from the local feed, into this scenario's own CLI home.",
+      "stdout": ["asmnet"]
+    },
+    {
+      "run": "dotnet new asmnet -n my-app --test-runner vstest",
+      "description": "The VSTest choice: Microsoft.NET.Test.Sdk, xunit.runner.visualstudio and xunit.v3.mtp-off, and global.json left alone.",
+      "absent": ["Post action failed", "Restore failed", "global.json"],
+      "files": [
+        "my-app/my-app.slnx",
+        "my-app/my-app.App/my-app.App.csproj",
+        "my-app/my-app.Native/my-app.Native.asmproj",
+        "my-app/my-app.Tests/my-app.Tests.csproj"
+      ]
+    },
+    {
+      "run": "dotnet test my-app/my-app.slnx",
+      "description": "VSTest runs the five tests against the library built for this machine (libmy-app.Native.so, my-app.Native.dll, ...).",
+      "stdout": ["Passed!", "Passed:     5"],
+      "files": ["my-app/my-app.Tests/bin/Debug/net10.0/runtimes/{rid}/native/{lib:my-app.Native}"]
+    },
+    {
+      "run": "dotnet run --project my-app/my-app.App",
+      "stdout": ["add_ints(40, 2) = 42"]
+    }
+  ]
+}

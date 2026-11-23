@@ -130,6 +130,9 @@
   <Target Name="_AsmConfigureEachAsmProjectReference" Outputs="%(_AsmProjectReference.Identity)" Condition="'@(_AsmProjectReference)' != ''">
     <!-- Properties keep their values from one batch to the next: start each one empty. -->
     <PropertyGroup>
+      <!-- The command word ASM0013 uses: pack when this .NET project is packed (an asm library
+           embedded with PrivateAssets="all"), publish otherwise. -->
+      <_AsmConsumerCommandWord Condition="'$(_IsPacking)' == 'true'">pack</_AsmConsumerCommandWord>
       <_AsmSelectedRid />
       <_AsmReferenceProperties />
       <_AsmReferenceKind />
@@ -172,6 +175,19 @@
     <ItemGroup Condition="'$(_AsmReferenceDelivered)' != 'true'">
       <_MSBuildProjectReferenceExistent Remove="@(_AsmProjectReference)" />
     </ItemGroup>
+
+    <!--
+      ASM0013 for a portable publish or pack of this .NET project: the asm reference names no
+      RIDs (neither in its project nor on this ProjectReference), so it is built for the build
+      machine's RID alone, its default, and the published app or the package would carry only
+      that platform's library. Warned here, in the .NET project, because this is where the
+      command is known: _IsPublishing is one of the properties these targets keep from the
+      asm project's build (see _AsmConsumerPropertiesToRemove), so that build and publish build
+      it alike. A RID-specific publish asks for its own RID: no warning.
+    -->
+    <Warning Code="ASM0013"
+             Condition="'$(_AsmReferenceDelivered)' == 'true' and '$(RuntimeIdentifier)' == '' and '$(_AsmReferenceRids)' == '' and '%(_AsmProjectReference.RuntimeIdentifiers)' == '' and ('$(_IsPublishing)' == 'true' or '$(_IsPacking)' == 'true')"
+             Text="%(_AsmProjectReference.Filename) lists no RuntimeIdentifiers, so this portable $([MSBuild]::ValueOrDefault('$(_AsmConsumerCommandWord)', 'publish')) of $(MSBuildProjectName) carries its library for the build machine's platform alone (its default). List the platforms in %(_AsmProjectReference.Filename)%(_AsmProjectReference.Extension) (&lt;RuntimeIdentifiers&gt;win-x64;linux-x64;osx-arm64&lt;/RuntimeIdentifiers&gt;) or on this ProjectReference (RuntimeIdentifiers=&quot;...&quot;), or publish for one platform with -r &lt;rid&gt;." />
 
     <ItemGroup Condition="'$(_AsmReferenceDelivered)' == 'true' and '$(RuntimeIdentifier)' != ''">
       <_AsmReferenceDeclaredRid Include="$(_AsmReferenceRids)" />

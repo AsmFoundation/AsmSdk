@@ -54,8 +54,8 @@ public sealed class NativeLayoutTests(SdkUnderTest sdk)
     /// <returns>The pack's result.</returns>
     /// <remarks>
     /// With its static library linked in, not a dependency (EverywhereStaticPrivate=all):
-    /// everywherestatic names no RID and cannot be packed alone, so a package that depended on it
-    /// could not be restored.
+    /// everywherestatic names no RID and is not packed into the feed (alone it would carry the
+    /// build machine's RID only, ASM0013), so a package that depended on it could not be restored.
     /// </remarks>
     internal static CommandResult PackEverywhere(SdkUnderTest sdk) =>
         sdk.Once("pack Everywhere into the feed", () => sdk.Dotnet("pack", Repo.TestProject("Everywhere"), "-c", "Release", "-p:EverywhereStaticPrivate=all"));

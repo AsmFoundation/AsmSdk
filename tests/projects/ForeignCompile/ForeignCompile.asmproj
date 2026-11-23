@@ -1,0 +1,14 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    Expected to FAIL with ASM0025: helper.c is a Compile item, and an .asmproj compiles asm only
+    (.asm for NASM, .s for llvm-mc). Without the check NASM would read the C file as NASM and
+    fail on its first line with a message about NASM syntax. ProjectRuleTests checks the error
+    names the file and that nothing was assembled.
+  -->
+  <PropertyGroup>
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="helper.c" />
+  </ItemGroup>
+</Project>

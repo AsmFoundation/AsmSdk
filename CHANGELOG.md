@@ -143,6 +143,97 @@ Each SDK release names the one it was tested with.
   `tests/scenarios/Directory.Packages.props`, so the scenarios also restore under central
   package management. See
   [Scenario tests](https://asmfoundation.github.io/AsmSdk/ecosystem/scenarios.html).
+- **`dotnet new` templates: the `AsmFoundation.Templates` package,** released with the SDK under
+  the same version:
+  - `asmlib`: a shared library, x64 code in NASM and ARM64 code in GNU syntax;
+  - `asmexe`: a program on the platform's C library, which `dotnet run` builds and runs;
+  - `asmstatic`: a static library with a public `include/` folder;
+  - `asmnet`: a `.slnx` with a C# console app, the asm library it calls through
+    `[LibraryImport]`, and xunit v3 tests of that library.
+
+  The projects name the SDK version on their first line
+  (`<Project Sdk="AsmFoundation.Sdk/<version>">`), so they need no `global.json`, as
+  `dotnet new mstest --sdk` writes `MSTest.Sdk/4.2.3`. The version is the templates package's,
+  the newest at install; `--sdk-version` picks another. MSBuild takes an exact SDK version only:
+  `*`, `0.*`, `latest` and no version all fail (measured). `asmnet --test-runner mtp-v2|vstest`
+  mirrors xunit's own `xunit3` template: `mtp-v2`, the default, sets Microsoft.Testing.Platform
+  in `global.json`. A name with a hyphen keeps it in files, paths and the library name
+  (`my-app.Native`), and becomes `my_app` in the C# namespace. The two plug-and-play scenarios
+  build, run, test (both runners), `sln add`, publish and pack what the templates create.
+- **A project that lists no `RuntimeIdentifiers` builds for the build machine's RID** (the
+  owner's choice). It used to stop with `ASM0010`: so did `dotnet run` of a C# app that
+  referenced it, and a solution build went green while the app got no native library at all.
+  The order is now `-r`, a referencing project's RIDs, the project's own list, then the
+  machine's RID: `win-x64`, `linux-musl-arm64` and so on. `ASM0010` remains for a machine that
+  is none of the eight.
+  - **`ASM0013` (a warning) says when that one RID leaves the machine:** a `dotnet pack` of the
+    project, or a portable `dotnet publish` or `dotnet pack` of a .NET project that references
+    it. The message names the line to add. A publish with `-r` does not warn, and
+    `<NoWarn>ASM0013</NoWarn>` silences it.
+- **`ImplicitUsings`, on by default:** every source gets the SDK's platform layer without
+  writing it. NASM gets `include/asmsdk-implicit.inc` as its pre-include (`-P`): `asmsdk.inc`,
+  `default rel`, and on Linux the empty `.note.GNU-stack` section. Each `.s` source is assembled
+  through a two-line file in `obj/` (`.include "asmsdk-gnu-implicit.inc"`, then the source),
+  because llvm-mc has no pre-include; messages still name the source and its lines. Sources that
+  write these lines themselves build as before, because both headers have guards.
+  `<ImplicitUsings>disable</ImplicitUsings>` gives raw NASM back. A source that relied on NASM's
+  implicit `default abs` (which NASM 3 warns about) now gets `default rel`: write `default abs`
+  in it, which wins, as the test project for `ASM0080` now does.
+- **.NET's warning switches reach NASM by warning name.** `NoWarn` gives `-w-<name>`,
+  `WarningsAsErrors` gives `-w+error=<name>`, and `WarningsNotAsErrors` gives `-w-error=<name>`.
+  They are passed after `-w+error`, so they win. Only entries shaped like NASM's names (lower
+  case, hyphens) are passed on, so one list can also hold `NU5128` or `CS1591`. Before, this
+  took `<AsmFlags>-w-label-orphan</AsmFlags>`.
+- **Reproducible Release builds.** NASM and llvm-mc get each source by its path relative to the
+  project folder, and the SDK's own startup and C library sources by file name, in their folder.
+  NASM also runs with `--reproducible`. The same projects built in two checkout folders, each
+  with its own NuGet cache, give byte-identical outputs for all eight RIDs: freestanding and
+  libc shared libraries, static libraries, and libc programs. Before, ELF file symbols and COFF
+  `.file` records held the checkout's path, and a Linux libc program held the NuGet cache's.
+  Debug information still records the folder, because NASM 3.02 has no prefix map.
+- **`dotnet sln add` takes an `.asmproj`.** The SDK sets `DefaultProjectTypeGuid` to the
+  generic project type, and the CLI writes it as the entry's `Type`. Before, the CLI printed
+  "unknown project type", added nothing, and still exited 0. `dotnet add reference` still
+  refuses an `.asmproj` ("incompatible targeted frameworks"): the CLI parses the
+  `TargetFramework` text and does not know NuGet's aliases
+  ([dotnet/sdk#57317](https://github.com/dotnet/sdk/issues/57317), reproduced there with plain
+  C# projects). The plug-and-play scenario checks for this, so it fails the day the CLI accepts
+  one.
+- **An assembler option set outside the project file assembles again.** The options go to
+  `obj/.../asm/assemble-options.txt`, rewritten only when they change, and the assemble step
+  depends on that file, as C#'s compile depends on `CoreCompileInputs.cache`. Before, a
+  `DefineConstants`, `NoWarn` or `AsmFlags` set in `Directory.Build.props` or with `-p:`
+  linked the objects assembled without it.
+
+### Changed
+
+- **`NativeLibrary` replaces `AsmLinkLibrary`** (no compatibility, the owner's rule).
+  `NativeLibrary` is NativeAOT's item for extra link inputs, as `LinkerArg` already was for
+  linker arguments. Packages now write `NativeLibrary` items in their props.
+  - **`ASM0109`, an error, catches both cases.** An `AsmLinkLibrary` item in a project gets the
+    replacement line. One added by a package packed with 0.3.0 gets the package's name, to be
+    packed again. `ASM0108` then stops the build, as for the other renamed settings.
+- **The sources are `Compile` items and the include files `None` items,** .NET's own item types,
+  in place of `AsmSource` and `AsmInclude` (the owner's rule: "We discard unnecessary *Asm* in
+  favor of preexisting in the ecosystem"). `<Compile Remove="old/**" />` and
+  `<Compile Include="../shared/x.asm" />` work as in a `.csproj`, and `.NET`'s
+  `EnableDefaultCompileItems` replaces `EnableDefaultAsmItems`. Every `None` item ending in
+  `.inc` is a dependency of every source, and any other file a source reads is a
+  `CustomAdditionalCompileInputs` item, .NET's item for more inputs of the compile. IDEs show the
+  files with their usual Build Action, and no `AvailableItemName` is declared. Measured before
+  the switch: Rider's engine (ReSharper InspectCode 2026.3) never analyzes a `.asm` or `.s`
+  `Compile` item as C#, though it does a `.cs` one in the same project, and Visual Studio's C#
+  language service needs the `CSharp` and `Managed` capabilities, which an `.asmproj` lacks
+  (a test checks they stay absent).
+  - **`ASM0110` to `ASM0112`, errors, catch the old names** (`AsmSource`, `AsmInclude`,
+    `EnableDefaultAsmItems`) and show the new line; `ASM0108` then stops the build.
+  - **`ASM0025`:** a `Compile` item that is not `.asm` or `.s`. NASM would otherwise read a
+    `.c` file as NASM.
+- **NASM's messages name a source by its path relative to the project** (`add.asm(3): error :
+  …`), the path it now gets. IDEs open it from the project folder.
+- **The test suite's tool-run pattern sees NASM again.** It matched `nasm -f`, but `-Xvc` comes
+  first. Since then, the incremental-build and design-time tests had checked only the linker and
+  the archiver.
 
 ### Fixed
 

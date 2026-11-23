@@ -8,6 +8,32 @@ This page builds three things:
 
 All three go in one solution, built with `dotnet build`.
 
+> [!NOTE]
+> **Not released yet: plug and play.** On the main branch, the solution this page builds by
+> hand comes from a template:
+>
+> ```sh
+> dotnet new install AsmFoundation.Templates
+> dotnet new asmnet -n Demo          # a C# app, the asm library it calls, and xunit tests
+> cd Demo
+> dotnet run --project Demo.App      # add_ints(40, 2) = 42
+> dotnet test
+> ```
+>
+> `asmlib`, `asmexe` and `asmstatic` create one project each: a shared library, a program,
+> a static library. And what the steps below write by hand is no longer needed:
+>
+> - **No `RuntimeIdentifiers` needed.** A project that lists none builds for the machine
+>   building it: `win-x64` on Windows x64, `osx-arm64` on an Apple silicon Mac. List the
+>   platforms to ship. A portable publish or a pack that would carry one platform only warns
+>   `ASM0013`.
+> - **No boilerplate in the sources.** `ImplicitUsings`, on by default, puts the platform layer
+>   in front of every file: `asmsdk.inc` and `default rel`, or `asmsdk-gnu.inc`, plus
+>   `.note.GNU-stack` on Linux. A source is just code.
+> - **`dotnet sln add` takes an `.asmproj`,** and writes its project type itself.
+>
+> See [Projects](projects.md#templates) for the templates' options.
+
 ## What you need
 
 - **The .NET SDK.** AsmSdk's own CI uses .NET 10. `.slnx` solutions need the .NET 9.0.200
@@ -29,6 +55,19 @@ Create `global.json` next to where your solution will be:
 ```
 
 MSBuild resolves `<Project Sdk="AsmFoundation.Sdk">` through this entry, from nuget.org.
+
+A project can also name the version itself, on its first line, and then needs no `global.json`:
+
+```xml
+<Project Sdk="AsmFoundation.Sdk/0.3.0">
+```
+
+That version wins over `global.json`'s. It suits a project that stands alone, or is copied
+between repositories; the templates write projects this way, as Microsoft's own
+`dotnet new mstest --sdk` writes `Sdk="MSTest.Sdk/4.2.3"`. `global.json` suits a solution with
+several asm projects: one line to change on an upgrade. Either way the version is exact:
+MSBuild's NuGet SDK resolver takes no `*`, range or `latest` (measured: each fails with "no
+version specified").
 
 ## 2. A shared library
 
@@ -294,6 +333,15 @@ docker run --rm -v "$PWD:/w" -w /w mcr.microsoft.com/dotnet/runtime:10.0 dotnet 
   `dotnet build App.slnx` fails with `MSB4025 … ProjectType '' not found`.
 - **Add the entries by hand.** `dotnet sln add` refuses `.asmproj` files ("unknown project
   type").
+
+> [!NOTE]
+> **Not released yet:** on the main branch, `dotnet sln App.slnx add Hello/Hello.asmproj`
+> works. The SDK names the project type (`DefaultProjectTypeGuid`), and the CLI writes the
+> `Type` above itself. `dotnet add reference` still refuses an `.asmproj` ("incompatible
+> targeted frameworks"): the CLI parses the `TargetFramework` text and doesn't know NuGet's
+> aliases (`freestanding`, `libc`), reported as
+> [dotnet/sdk#57317](https://github.com/dotnet/sdk/issues/57317). Write the `ProjectReference`
+> line as in step 4.
 
 `dotnet build App.slnx` now builds everything.
 

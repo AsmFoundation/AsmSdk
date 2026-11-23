@@ -1,0 +1,13 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    Expected to FAIL with ASM0109 naming the package: stale-package.props is what the props of
+    a package packed by AsmFoundation.Sdk 0.3.0 add to every consumer, an AsmLinkLibrary item
+    marked with its package's id (AsmPackage). Later SDKs read NativeLibrary items instead, so
+    the consumer must be told which package to pack again, rather than link without its
+    library. Imported directly, as NuGet would import the package's build/ props after restore.
+  -->
+  <Import Project="stale-package.props" />
+  <PropertyGroup>
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

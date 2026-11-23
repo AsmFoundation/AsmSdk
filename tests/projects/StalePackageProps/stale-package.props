@@ -1,0 +1,7 @@
+<Project>
+  <!-- The link input a 0.3.0 package's props added (AsmWritePackageProps of 0.3.0), for the
+       package Test.StaleNative; the path is never read: ASM0109 stops the build first. -->
+  <ItemGroup>
+    <AsmLinkLibrary Include="$(MSBuildThisFileDirectory)native/linux-x64/freestanding/libstale.a" AsmPackage="Test.StaleNative" />
+  </ItemGroup>
+</Project>

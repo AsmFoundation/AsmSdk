@@ -1,0 +1,16 @@
+<Project>
+  <!--
+    The plug-and-play scenarios stand for a user's fresh folder, so MSBuild's upward search stops
+    here, and tests/scenarios' settings (TreatWarningsAsErrors, the package output folder) do not
+    reach the projects the templates create. Their build steps check " 0 Warning(s)" instead, and
+    the ASM0013 steps see a warning, not an error.
+
+    The one setting: NuGet's vulnerability audit is off. The templates pin xunit's packages, and
+    an advisory published later against one of them would add a warning (NU1901-NU1904) to a
+    build that changed nothing; tests/scenarios keeps those warnings from being errors for the
+    same reason, but here every warning counts.
+  -->
+  <PropertyGroup>
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+</Project>

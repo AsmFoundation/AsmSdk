@@ -29,11 +29,29 @@ namespace AsmSdk.Tests.Infrastructure;
 /// -nodeReuse:false because a step's arguments are its author's, and some verbs (dotnet tool,
 /// and dotnet run after "--") must not get MSBuild switches.
 /// </para>
+/// <para>
+/// Each scenario also gets a .NET CLI home of its own (DOTNET_CLI_HOME, see
+/// <see cref="CliHome"/>), so what its steps install for the user (dotnet new install of the
+/// templates under test, global tools) lands there, never in the developer's own profile, and
+/// a scenario sees no template or tool an earlier run or the developer installed. A fresh home
+/// would make the first dotnet command add its global-tools folder to the user's PATH (on
+/// Windows, in the registry) and create a developer certificate: both are turned off.
+/// The CLI's messages are English (DOTNET_CLI_UI_LANGUAGE), because steps compare them.
+/// </para>
 /// </remarks>
 internal static class ScenarioRunner
 {
     /// <summary>artifacts/scenarios/: where scenarios run, each in a folder of its name.</summary>
     public static string WorkRoot => Path.Combine(Repo.Artifacts, "scenarios");
+
+    /// <summary>
+    /// The .NET CLI home of one scenario: artifacts/scenarios/.cli-home/&lt;Name&gt;, emptied before
+    /// each run. Outside the scenario's own folder, so no project glob of its steps sees it, and
+    /// under <see cref="WorkRoot"/>, which the fixture deletes before every test run.
+    /// </summary>
+    /// <param name="scenario">The scenario.</param>
+    /// <returns>The folder that DOTNET_CLI_HOME names for the scenario's steps.</returns>
+    public static string CliHome(Scenario scenario) => Path.Combine(WorkRoot, ".cli-home", scenario.Name);
 
     /// <summary>How long a service may take to show its ready text or accept a connection, image pull excluded.</summary>
     private static readonly TimeSpan ReadyTimeout = TimeSpan.FromMinutes(2);
@@ -102,6 +120,12 @@ internal static class ScenarioRunner
         var environment = new Dictionary<string, string?>(sdk.TestEnvironment, StringComparer.OrdinalIgnoreCase)
         {
             ["MSBUILDDISABLENODEREUSE"] = "1",
+            // The scenario's own CLI home (see the remarks above), and the two first-run steps a
+            // fresh home would take outside it: PATH in the user's profile, a dev certificate.
+            ["DOTNET_CLI_HOME"] = CliHome(scenario),
+            ["DOTNET_ADD_GLOBAL_TOOLS_TO_PATH"] = "false",
+            ["DOTNET_GENERATE_ASPNET_CERTIFICATE"] = "false",
+            ["DOTNET_CLI_UI_LANGUAGE"] = "en",
         };
 
         for (int i = 0; i < scenario.Steps.Count; i++)
@@ -132,6 +156,19 @@ internal static class ScenarioRunner
                     $"{where}{Environment.NewLine}its standard output lacks \"{expected}\"{Environment.NewLine}{result.Tail()}");
             }
 
+            foreach (string expected in step.Stderr.Select(text => Scenario.Expand(text, services.Ports)))
+            {
+                Assert.True(result.StdErr.Contains(expected, StringComparison.Ordinal),
+                    $"{where}{Environment.NewLine}its standard error lacks \"{expected}\"{Environment.NewLine}{result.Tail()}");
+            }
+
+            // Both streams: an unwanted warning is unwanted wherever the tool printed it.
+            foreach (string unwanted in step.Absent.Select(text => Scenario.Expand(text, services.Ports)))
+            {
+                Assert.False(result.Output.Contains(unwanted, StringComparison.Ordinal),
+                    $"{where}{Environment.NewLine}its output holds \"{unwanted}\", which must not appear{Environment.NewLine}{result.Tail()}");
+            }
+
             foreach (string file in step.Files.Select(text => Scenario.Expand(text, services.Ports)))
             {
                 string path = Path.GetFullPath(Path.Combine(folder, file));
@@ -144,7 +181,8 @@ internal static class ScenarioRunner
     /// <summary>
     /// Makes the scenario's work folder: the shared files of tests/scenarios into
     /// artifacts/scenarios, then a fresh copy of the scenario's folder (an earlier run's copy is
-    /// deleted first), without build outputs or IDE state.
+    /// deleted first), without build outputs or IDE state, and an empty CLI home
+    /// (<see cref="CliHome"/>).
     /// </summary>
     /// <param name="scenario">The scenario.</param>
     /// <returns>The work folder: artifacts/scenarios/&lt;Name&gt;.</returns>
@@ -153,6 +191,16 @@ internal static class ScenarioRunner
     private static string Prepare(Scenario scenario)
     {
         Directory.CreateDirectory(WorkRoot);
+
+        // A template or tool an earlier run installed must not be found by this one: the home
+        // starts empty, and the CLI fills it on first use.
+        string cliHome = CliHome(scenario);
+        if (Directory.Exists(cliHome))
+        {
+            Directory.Delete(cliHome, recursive: true);
+        }
+
+        Directory.CreateDirectory(cliHome);
 
         // Directory.Build.props, Directory.Packages.props, global.json, nuget.config: what makes
         // the folder a repository of its own (MSBuild and dotnet search upward for them, and

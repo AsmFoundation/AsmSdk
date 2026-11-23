@@ -1,5 +1,13 @@
 <Project Sdk="AsmFoundation.Sdk">
-  <!-- Expected to FAIL with ASM0010 when built by itself: it names no runtime identifier, and
-       nothing asks for one. (A project like it is built for the RIDs its referencing projects
-       ask for, as EverywhereStatic is.) -->
+  <!--
+    Names no runtime identifier, as a new project does (and as the dotnet new templates write
+    one): built by itself, it builds for the build machine's own RID, the default after 0.3.0
+    (0.3.0 stopped with ASM0010 here). A referencing project's RIDs, or -r, still choose
+    instead. Packing it warns ASM0013: the package would carry that one RID alone.
+    CrossPlatformTests checks the build, the warning and its NoWarn; IncrementalBuildTests
+    rebuilds it in Debug with an option from the command line.
+  -->
+  <PropertyGroup>
+    <AssemblyName>ridnone</AssemblyName>
+  </PropertyGroup>
 </Project>

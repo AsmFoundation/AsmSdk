@@ -87,8 +87,21 @@ In a `.slnx` solution, give the project the generic MSBuild project type:
 <Project Path="Hello/Hello.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
 ```
 
+A project can name the SDK version itself instead of `global.json`:
+`<Project Sdk="AsmFoundation.Sdk/0.3.0">`.
+
 The [getting started guide](https://asmfoundation.github.io/AsmSdk/guide/getting-started.html)
 builds a library, a program and a C# caller for seven platforms.
+
+Not released yet: on `main`, plug and play. `dotnet new install AsmFoundation.Templates`, then
+`dotnet new asmnet -n Demo`, creates a C# app, the asm library it calls and xunit tests, which
+`dotnet build`, `run` and `test` take as they are (`asmlib`, `asmexe` and `asmstatic` create one
+project each). A project that lists no `RuntimeIdentifiers` builds for the build machine's
+platform, with `ASM0013` when a pack or a portable publish would ship that one alone.
+`ImplicitUsings` puts `asmsdk.inc`, `default rel` and the Linux `.note.GNU-stack` in front of
+every source, and `dotnet sln add` writes the project type itself. `NoWarn`,
+`WarningsAsErrors` and `WarningsNotAsErrors` take NASM's warning names, `NativeLibrary`
+replaces `AsmLinkLibrary`, and Release builds are byte-identical in any folder.
 
 ## What it builds
 
@@ -220,7 +233,7 @@ and the `Hello.*` samples are Linux x64 code (system calls, glibc).
 ## IDEs
 
 Rider, Visual Studio and VS Code show an `.asmproj` like a `.csproj`: its `.asm` and `.s`
-sources (`AsmSource`), `.inc` files (`AsmInclude`) and every other file of the
+sources (`AsmSource`; not released yet: `Compile`), `.inc` files (`AsmInclude`; not released yet: `None`) and every other file of the
 folder (`None`). Opening a solution never assembles or links: design-time builds
 skip the tools. See [IDEs](https://asmfoundation.github.io/AsmSdk/guide/ides.html).
 

@@ -1,6 +1,6 @@
 # CI - on each build machine the bundled toolchain exists for (win-x64, win-arm64, linux-x64,
-# linux-arm64, osx-arm64): stage that machine's toolchain, pack AsmFoundation.Sdk and the
-# toolchain package, and run the end-to-end tests (tests/AsmSdk.Tests).
+# linux-arm64, osx-arm64): stage that machine's toolchain, pack AsmFoundation.Sdk, its dotnet
+# new templates and the toolchain package, and run the end-to-end tests (tests/AsmSdk.Tests).
 #
 # One job per machine, independent of the others: a slow runner (hosted macOS and ARM runners
 # can queue for many minutes) does not hold up the other results. Each job:
@@ -10,9 +10,10 @@
 #      nasm.exe, which it runs under emulation. The staged folder is cached by the hash of the
 #      pins and the program, so the 0.7-2 GB LLVM archives are only downloaded when a pin
 #      changes.
-#   2. tests/AsmSdk.Tests (xunit v3, dotnet test) packs the SDK and that toolchain, builds the
-#      samples and the test projects with them for every RID, and checks the outputs with the
-#      bundled llvm-readobj, the package layouts, incremental builds and IDE integration.
+#   2. tests/AsmSdk.Tests (xunit v3, dotnet test) packs the SDK, the templates and that
+#      toolchain, builds the samples and the test projects with them for every RID, and checks
+#      the outputs with the bundled llvm-readobj, the package layouts, incremental builds and
+#      IDE integration.
 #      CrossPlatformTests runs what the machine itself can run: its own RID's library loaded
 #      into the test process, its own libc program, the portable .NET consumer, the x64 build
 #      under the ARM machines' x64 emulation, the musl program in an Alpine container where
@@ -33,6 +34,9 @@
 #      with asm libraries, unit tests of asm code, NumSharp, OptunaSharp and KvAsm.Client
 #      (from nuget.org, pinned) beside asm, programs, tools. KvAsmClient starts the KvAsm image,
 #      so it needs linux/amd64 containers: the Linux x64 runner runs it, the others skip it.
+#      PlugAndPlay and PlugAndPlayVSTest install the dotnet new templates the suite packs
+#      (AsmFoundation.Templates) into a CLI home of their own and take what they create through
+#      build, run, test (Microsoft.Testing.Platform and VSTest), sln add, publish and pack.
 #   The only prerequisite is the .NET SDK: no Python since 0.2.0.
 #   3. The staged toolchain is kept as an artifact: release.yml packs all five from it.
 #

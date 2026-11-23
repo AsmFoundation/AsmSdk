@@ -57,6 +57,8 @@ let .NET's own RID rules choose the library.
   A RID the asm project does not list is ASM0012, as with `-r`. An asm project that lists no
   RIDs of its own builds exactly these. A portable build that names none for such a project
   stops with ASM0010. A RID-specific build needs no list: it builds its own RID.
+  (Not released yet: such a portable build gets the build machine's RID, and a portable
+  `dotnet publish` or `dotnet pack` of the app warns ASM0013 that it carries that one only.)
 - **Only shared libraries are copied.** A referenced static library, program or object-file
   project is something an app cannot load. It is skipped with a message, and stays for the
   asm projects that link it. This includes the static libraries that the .NET SDK adds as

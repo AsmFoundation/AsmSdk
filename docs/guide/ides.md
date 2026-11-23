@@ -13,6 +13,14 @@ action each. Building from the IDE runs the same `dotnet build` targets as the c
 `bin/`, `obj/`, the project file and the other `DefaultItemExcludes` are never items, exactly as
 in a `.csproj`.
 
+> [!NOTE]
+> **Not released yet:** on the main branch, the sources are `Compile` items
+> (`EnableDefaultCompileItems`) and the include files `None` items, the item types every IDE
+> knows, so the IDE's Build Action says `Compile`, as for C#, and no `AvailableItemName` is
+> declared. Measured before the switch: Rider's engine (ReSharper InspectCode 2026.3) never
+> analyzes a `.asm` or `.s` `Compile` item as C#, and Visual Studio's C# language service needs
+> the `CSharp` and `Managed` capabilities, which an `.asmproj` does not have.
+
 > **Before 0.2.0** an `.asmproj` looked empty in Rider and Visual Studio, and opening a solution
 > assembled and linked every asm project. 0.2.0 fixed both; the sections below say how.
 
@@ -78,7 +86,8 @@ already diagnostics.
   language support; a TextMate grammar for x86 or NASM syntax adds highlighting
   (**Settings | Editor | TextMate Bundles**).
 - **Visual Studio:** a `.slnx` lists an `.asmproj` with the generic MSBuild project type,
-  `Type="13B669BE-BB05-4DDF-9536-439F39A36129"` (see [Projects](projects.md)).
+  `Type="13B669BE-BB05-4DDF-9536-439F39A36129"` (see [Projects](projects.md)). Not released
+  yet: `dotnet sln add` writes that type itself.
 - **VS Code:** the C# Dev Kit's solution view uses the same project system as Visual Studio.
   Highlighting comes from a NASM or x86 grammar extension.
 

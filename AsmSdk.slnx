@@ -1,9 +1,10 @@
 <Solution>
-  <!-- The SDK package and the toolchain package projects, and the end-to-end test project.
-       The samples have their own solution (samples/Samples.slnx): they consume the packed SDK
-       like a user would, and the test project builds them that way. -->
+  <!-- The SDK package, the templates package and the toolchain package projects, and the
+       end-to-end test project. The samples have their own solution (samples/Samples.slnx): they
+       consume the packed SDK like a user would, and the test project builds them that way. -->
   <Project Path="src/AsmFoundation.Sdk/AsmFoundation.Sdk.csproj" />
   <Project Path="src/AsmFoundation.Sdk.Tasks/AsmFoundation.Sdk.Tasks.csproj" />
+  <Project Path="src/AsmFoundation.Templates/AsmFoundation.Templates.csproj" />
   <Project Path="toolchain/AsmFoundation.Toolchain.csproj" />
   <Folder Name="/tests/">
     <Project Path="tests/AsmSdk.Tests/AsmSdk.Tests.csproj" />

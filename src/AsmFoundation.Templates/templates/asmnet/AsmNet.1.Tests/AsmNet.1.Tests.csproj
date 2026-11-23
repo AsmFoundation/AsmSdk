@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <!-- [LibraryImport] generates its marshalling code as unsafe code. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--#if (TestRunner == "vstest") -->
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" />
+    <PackageReference Include="xunit.v3.mtp-off" Version="4.0.3" />
+    <!--#else-->
+    <PackageReference Include="xunit.v3.mtp-v2" Version="4.0.3" />
+    <!--#endif-->
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The tests call the assembly library directly: the reference builds it for this machine
+         and puts it in the test output, as for the app. -->
+    <ProjectReference Include="../AsmNet.1.Native/AsmNet.1.Native.asmproj" />
+  </ItemGroup>
+
+</Project>

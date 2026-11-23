@@ -1,0 +1,21 @@
+<Project Sdk="AsmFoundation.Sdk/ASMSDK_VERSION">
+  <!--
+    AsmApp.1: a program written in assembly. "dotnet run" builds it for this machine and runs it;
+    "dotnet build" leaves it under bin/<Configuration>/libc/<rid>/ (AsmApp.1.exe on Windows,
+    AsmApp.1 elsewhere). main.asm is the x64 code (NASM), main.s the ARM64 code (GNU syntax).
+
+    TargetFramework libc links the platform's C library (the UCRT on Windows, glibc or musl on
+    Linux, libSystem on macOS), so main is a C main and puts is at hand. Remove the line for a
+    freestanding program: no C library, an entry point of its own and the OS's system calls.
+
+    Ship it for more platforms by listing them, then "dotnet publish" writes publish/<rid>/:
+      <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+
+    The SDK version is the one on the first line; change it there to upgrade.
+    Documentation: https://asmfoundation.github.io/AsmSdk/guide/programs.html
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>libc</TargetFramework>
+  </PropertyGroup>
+</Project>

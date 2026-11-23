@@ -1,4 +1,4 @@
-; Never assembled: the build stops at ASM0010 first.
+; answer.asm - RidNone's code, built for the build machine's RID (x64 machines: this file).
 %include "asmsdk.inc"
 section .text
 FUNCTION answer

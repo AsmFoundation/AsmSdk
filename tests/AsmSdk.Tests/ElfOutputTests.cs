@@ -80,14 +80,16 @@ public sealed class ElfOutputTests(SdkUnderTest sdk)
     /// <summary>
     /// NASM receives the configuration, target framework and platform symbols: -DRELEASE
     /// -DFREESTANDING -DLINUX -DX64 for the freestanding linux-x64 build of Hello.Library,
-    /// -DRELEASE -DLIBC -DLINUX -DX64 for its libc build.
+    /// -DRELEASE -DLIBC -DLINUX -DX64 for its libc build, then the ImplicitUsings pre-include
+    /// (-P asmsdk-implicit.inc, on by default) and the source by its path relative to the
+    /// project folder (hello.asm), which no object then records as an absolute path.
     /// </summary>
     [Fact]
     public void NASM_receives_the_configuration_and_runtime_symbols()
     {
         RequireSamples();
-        Assert.Matches(new Regex(@"-DRELEASE -DFREESTANDING -DLINUX -DX64 -o ""[^""]*Hello\.Library/obj/Release/freestanding/linux-x64/"), sdk.SamplesBuild.StdOut);
-        Assert.Matches(new Regex(@"-DRELEASE -DLIBC -DLINUX -DX64 -o ""[^""]*Hello\.Library/obj/Release/libc/linux-x64/"), sdk.SamplesBuild.StdOut);
+        Assert.Matches(new Regex(@"-DRELEASE -DFREESTANDING -DLINUX -DX64 -P ""[^""]*/include/asmsdk-implicit\.inc"" -o ""[^""]*Hello\.Library/obj/Release/freestanding/linux-x64/[^""]*"" ""hello\.asm"""), sdk.SamplesBuild.StdOut);
+        Assert.Matches(new Regex(@"-DRELEASE -DLIBC -DLINUX -DX64 -P ""[^""]*/include/asmsdk-implicit\.inc"" -o ""[^""]*Hello\.Library/obj/Release/libc/linux-x64/[^""]*"" ""hello\.asm"""), sdk.SamplesBuild.StdOut);
     }
 
     /// <summary>A libc library is linked against the stub (DT_NEEDED libc.so.6) and imports strlen from glibc.</summary>

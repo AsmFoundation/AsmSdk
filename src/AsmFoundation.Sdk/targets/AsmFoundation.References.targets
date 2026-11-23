@@ -123,7 +123,8 @@
 
   <!--
     _AsmResolveProjectReferences: collects GetAsmLinkInputs from every referenced .asmproj and
-    adds them to this project's AsmIncludeDirectory and AsmLinkLibrary items. ProjectReference
+    adds them to this project's AsmIncludeDirectory and NativeLibrary items (NativeAOT's name for
+    link inputs; AsmLinkLibrary until 0.3.0). ProjectReference
     items to anything else (for example a .csproj holding a generator) are left alone.
 
     The referenced project is called exactly as ResolveProjectReferences calls it, so the
@@ -151,7 +152,7 @@
     </MSBuild>
     <ItemGroup>
       <AsmIncludeDirectory Include="@(_AsmReferencedOutput)" Condition="'%(_AsmReferencedOutput.AsmItemType)' == 'IncludeDirectory'" />
-      <AsmLinkLibrary Include="@(_AsmReferencedOutput)" Condition="'%(_AsmReferencedOutput.AsmItemType)' == 'LinkInput'" />
+      <NativeLibrary Include="@(_AsmReferencedOutput)" Condition="'%(_AsmReferencedOutput.AsmItemType)' == 'LinkInput'" />
       <!-- A referenced program's files: a program delivers them (_AsmResolveProgramDependencies);
            anything else ignores them. -->
       <AsmReferencedProgram Include="@(_AsmReferencedOutput)" Condition="'%(_AsmReferencedOutput.AsmItemType)' == 'Program'" />

@@ -1,0 +1,17 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    Bare sources for all eight RIDs: implicit.asm and implicit.s name no include, no "default
+    rel" and no .note.GNU-stack section. ImplicitUsings (on by default, not set here) supplies
+    all three: asmsdk.inc / asmsdk-gnu.inc through NASM's pre-include and llvm-mc's generated
+    wrapper. ImplicitUsingsTests checks that every RID builds (TreatWarningsAsErrors: NASM 3
+    warns about memory operands in a file that names no default), exports both functions, marks
+    the Linux stacks non-executable, and that the host's library answers. Exports:
+      ib_add(a, b)    a + b
+      ib_answer()     42, read from read-only data (RIP-relative through "default rel" on x64,
+                      ADDRESS on ARM64)
+  -->
+  <PropertyGroup>
+    <AssemblyName>implicit</AssemblyName>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

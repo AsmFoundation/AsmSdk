@@ -1,0 +1,12 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    Expected to FAIL: ImplicitUsings is disabled, as a project with raw NASM or macros of its
+    own would do, and bare.asm still uses FUNCTION without including asmsdk.inc. NASM stops at
+    the first line ("instruction expected, found `FUNCTION ..."): proof that the disabled
+    project gets no pre-include. The same code builds in ImplicitUsings, where it is enabled.
+  -->
+  <PropertyGroup>
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+</Project>

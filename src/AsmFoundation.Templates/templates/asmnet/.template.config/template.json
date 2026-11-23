@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "AsmFoundation",
+  "classifications": [ "Assembly", "Native", "Console", "Test", "Solution" ],
+  "identity": "AsmFoundation.Templates.AsmNetSolution",
+  "groupIdentity": "AsmFoundation.Templates.AsmNetSolution",
+  "name": "Assembly + .NET Solution",
+  "shortName": "asmnet",
+  "description": "A solution with a C# console app, the assembly library it calls through [LibraryImport] (NASM for x64, GNU syntax for ARM64), and xUnit.net v3 tests of that library. Built by AsmFoundation.Sdk and the .NET SDK for Windows, Linux and macOS.",
+  "tags": {
+    "language": "C#",
+    "type": "solution"
+  },
+  "sourceName": "AsmNet.1",
+  "defaultName": "AsmNet1",
+  "preferNameDirectory": true,
+  "symbols": {
+    "SdkVersion": {
+      "type": "parameter",
+      "datatype": "string",
+      "defaultValue": "__ASMSDK_VERSION__",
+      "replaces": "ASMSDK_VERSION",
+      "displayName": "AsmFoundation.Sdk version",
+      "description": "The AsmFoundation.Sdk version the assembly project names in its Sdk attribute. Default: the version of this template package, which is released with the SDK of the same version."
+    },
+    "TestRunner": {
+      "type": "parameter",
+      "datatype": "choice",
+      "defaultValue": "mtp-v2",
+      "enableQuotelessLiterals": true,
+      "displayName": "Test runner for 'dotnet test' and Test Explorer",
+      "description": "Test runner for 'dotnet test' and Test Explorer, as in xUnit.net's own xunit3 template. mtp-v2 also sets Microsoft.Testing.Platform as the runner in global.json (created when there is none), which 'dotnet test' needs from the .NET 10 SDK on.",
+      "choices": [
+        {
+          "choice": "mtp-v2",
+          "displayName": "Microsoft.Testing.Platform v2",
+          "description": "Microsoft.Testing.Platform v2"
+        },
+        {
+          "choice": "vstest",
+          "displayName": "VSTest",
+          "description": "VSTest"
+        }
+      ]
+    },
+    "skipRestore": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Skip restore",
+      "description": "If specified, skips the automatic restore of the solution on create."
+    }
+  },
+  "primaryOutputs": [
+    { "path": "AsmNet.1.slnx" },
+    { "path": "AsmNet.1.App/AsmNet.1.App.csproj" },
+    { "path": "AsmNet.1.Native/AsmNet.1.Native.asmproj" },
+    { "path": "AsmNet.1.Tests/AsmNet.1.Tests.csproj" }
+  ],
+  "postActions": [
+    {
+      "id": "restore",
+      "condition": "(!skipRestore)",
+      "description": "Restore NuGet packages required by this solution.",
+      "manualInstructions": [ { "text": "Run 'dotnet restore'" } ],
+      "actionId": "210D431B-A78B-4D2F-B762-4ED3E3EA9025",
+      "continueOnError": true,
+      "args": {
+        "files": [ "AsmNet.1.slnx" ]
+      }
+    },
+    {
+      "id": "addJsonProperty",
+      "condition": "(TestRunner != \"vstest\")",
+      "description": "Create or update 'global.json' file required by Microsoft.Testing.Platform.",
+      "manualInstructions": [ { "text": "If using .NET 10 SDK or later, add \"test\": { \"runner\": \"Microsoft.Testing.Platform\" } to global.json, creating it at the repository root when there is none: https://xunit.net/docs/getting-started/v3/microsoft-testing-platform#using-net-sdk-version-10-or-later" } ],
+      "actionId": "695A3659-EB40-4FF5-A6A6-C9C4E629FCB0",
+      "continueOnError": true,
+      "args": {
+        "allowFileCreation": true,
+        "allowPathCreation": true,
+        "jsonFileName": "global.json",
+        "parentPropertyPath": "test",
+        "newJsonPropertyName": "runner",
+        "newJsonPropertyValue": "Microsoft.Testing.Platform",
+        "detectRepositoryRoot": true,
+        "includeAllDirectoriesInSearch": false,
+        "includeAllParentDirectoriesInSearch": true
+      }
+    }
+  ]
+}

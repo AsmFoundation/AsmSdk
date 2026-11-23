@@ -60,7 +60,7 @@ MSBuild reads a project in this order, and the order explains most surprises:
 
 | Property | Default | Meaning and footguns |
 |---|---|---|
-| `RuntimeIdentifiers` | none | the RIDs the code supports, semicolon-separated. `dotnet build` builds each one in its own inner build. **There is no default:** a project that lists none is built for what its referencing projects ask for, or for `-r`, and otherwise fails with `ASM0010`. Restore always lists all seven, so the SDK overwrites the property after reading your list. |
+| `RuntimeIdentifiers` | none | the RIDs the code supports, semicolon-separated. `dotnet build` builds each one in its own inner build. **There is no default:** a project that lists none is built for what its referencing projects ask for, or for `-r`, and otherwise fails with `ASM0010`. Restore always lists all seven, so the SDK overwrites the property after reading your list. **Not released yet:** with none listed and none asked for, the build machine's own RID (`win-x64` on Windows x64); `ASM0013` warns a `dotnet pack`, or a portable publish or pack of a referencing .NET project, that carries that one RID; `ASM0010` remains for a machine that is none of the eight. |
 | `RuntimeIdentifier` | none | one RID: what an inner build is for (`-r`, or a referencing project). In the project, a list of one. A RID the project's list does not have is `ASM0012`, and a RID outside the seven `ASM0011`. |
 | `AsmRequestedRuntimeIdentifiers` | none | a global property the consumer targets set: the RIDs a `ProjectReference`'s `RuntimeIdentifiers` metadata asks for, comma-separated. They replace the project's list in its RID outer build. |
 | `IsRidAgnostic` | `false` (set by the SDK) | tells referencing projects to pass their `RuntimeIdentifier` on, so a RID-specific build of a referencing project builds this project for its RID. |
@@ -69,8 +69,9 @@ MSBuild reads a project in this order, and the order explains most surprises:
   Without one, it is the *RID outer build*: it builds each RID (in parallel when the build is)
   and links nothing itself, as the outer build of a multi-targeted project builds each
   framework. A solution build of a project that lists no RID builds nothing for it by itself,
-  with a message, instead of `ASM0010`.
-- **Sources per RID.** Every `AsmSource` competes per RID by file name: `.asm` is NASM for the
+  with a message, instead of `ASM0010`. (Not released yet: it builds the build machine's RID,
+  like any build of the project.)
+- **Sources per RID.** Every `AsmSource` (not released yet: every `.asm` or `.s` `Compile` item) competes per RID by file name: `.asm` is NASM for the
   x64 RIDs, `.s` is GNU syntax for llvm-mc, and a qualifier before the extension (`x.win.asm`,
   `x.linux-musl.asm`, `x.unix.s`, `x.arm64.s`) narrows a file. The most specific file of a
   name wins. See [Platforms](guide/platforms.md#sources-per-platform), and `ASM0020` to
@@ -170,7 +171,7 @@ deletes the image, so the next build links and checks again.
 
 | Property | Default | Meaning and footguns |
 |---|---|---|
-| `EnableDefaultAsmItems` | `true` | adds `**/*.asm` and `**/*.s` as `AsmSource` and `**/*.inc` as `AsmInclude`, excluding `bin/`, `obj/` and the other `DefaultItemExcludes`. Set `false` to list them yourself. |
+| `EnableDefaultAsmItems` | `true` | adds `**/*.asm` and `**/*.s` as `AsmSource` and `**/*.inc` as `AsmInclude`, excluding `bin/`, `obj/` and the other `DefaultItemExcludes`. Set `false` to list them yourself. **Not released yet:** .NET's `EnableDefaultCompileItems` instead, for the `**/*.asm` and `**/*.s` `Compile` items; the `.inc` files are `None` items (`EnableDefaultNoneItems`); `EnableDefaultAsmItems` is `ASM0112`. |
 | `EnableDefaultNoneItems` | `true` (.NET's own switch) | adds every other file of the project folder as a `None` item, as a `.csproj` does, so IDEs show it: a linker script, a C header, a README. The asm items are taken out of `None`, so each file is one item. Set `false` to list `None` items yourself. |
 | `DefineConstants` | empty, then the SDK appends its symbols | semicolon-separated `NAME` or `NAME=VALUE`: `-DNAME` for NASM, `--defsym NAME=1` (or `=VALUE`, integers only) for llvm-mc. After your project body the SDK appends `DEBUG` or `RELEASE` (the configuration name in upper case, with `-`, `.` and spaces as `_`, exactly like C#), `FREESTANDING` or `LIBC`, `WINDOWS`, `LINUX` or `MACOS` (plus `MUSL`), and `X64` or `ARM64`, so setting the property never drops them. `DisableImplicitConfigurationDefines=true` turns the first off, and `DisableImplicitFrameworkDefines=true` the others. C#'s `TRACE` is not added. The SDK also defines `ASMSDK_EXPORTS_FILE` with an `ExportsFile`, and `ASMSDK_EXECUTABLE` in a program. |
 | `DebugSymbols` | `true` in Debug (from `Microsoft.NET.Sdk.props`), `false` otherwise | debug information: DWARF (`-g -F dwarf`, llvm-mc `-g`) on Linux and macOS; CodeView (`-g -F cv8`) and a PDB on Windows. Set `true` for it in Release. Unlike .NET, whose Release builds still write a PDB, a Release build stays free of debug information by default. |
@@ -178,6 +179,8 @@ deletes the image, so the next build links and checks again.
 | `AsmFlags` | empty | extra NASM arguments. They are placed before `-I` and `-D`. Recommended: `-Xvc`, which makes NASM messages MSBuild diagnostics. |
 | `AsmLlvmMcFlags` | empty | extra llvm-mc arguments, for `.s` sources. |
 | `TreatWarningsAsErrors` | `false` | adds `-w+error` to NASM. NASM 3 warns `implicit DEFAULT ABS is deprecated` on any memory operand in a file without `default rel` or `default abs`. With this property, that warning fails the build. |
+| `NoWarn`, `WarningsAsErrors`, `WarningsNotAsErrors` (not released yet) | .NET's | each entry shaped like a NASM warning name (lower case, hyphens: `label-orphan`) becomes `-w-<name>`, `-w+error=<name>` or `-w-error=<name>`, after `-w+error`, so it wins; other entries (`NU5128`, `CS1591`, `1701`) are left to the tools they belong to. NASM ignores a name it does not know. llvm-mc has no per-warning switches. MSBuild's own warnings (`ASM0013`) are silenced by `NoWarn` as any MSBuild warning is. |
+| `ImplicitUsings` (not released yet) | `enable` | `enable` or `true`: the platform layer in front of every source. NASM gets `-P include/asmsdk-implicit.inc` (`asmsdk.inc`, `default rel`, and on Linux `.note.GNU-stack`); each `.s` is assembled through `obj/.../asm/implicit/<path>`, two `.include` lines (`asmsdk-gnu-implicit.inc`, then the source), since llvm-mc has no pre-include. `disable` (or anything else) gives raw NASM. Code that writes the includes itself is unaffected: both headers have guards. In a `.asmproj` the .NET meaning (C# global usings) does not apply. |
 | `AsmIntermediateDirectory` | `$(IntermediateOutputPath)asm/` (`obj/<Configuration>/<tfm>/<rid>/asm/`) | objects in `obj/`, the system library stand-ins and startup code in `stubs/`, generated package files in `pack/`. |
 
 **The NASM warning set is fixed:** `-w+all -w-reloc-rel-dword -w-reloc-abs-qword`.
@@ -212,7 +215,7 @@ the triples.
 
 | Property | Default | Meaning and footguns |
 |---|---|---|
-| `AsmPackSources` | `false` | also pack `AsmSource` and `AsmInclude` items into the package's `src/`, keeping their relative paths. |
+| `AsmPackSources` | `false` | also pack `AsmSource` and `AsmInclude` items into the package's `src/`, keeping their relative paths (not released yet: the `.asm` and `.s` `Compile` items and the `None` items ending in `.inc`). |
 | `AsmPackageLinkKind` | `Static` | what a consuming `.asmproj` links: `Static` takes the package's static library when it has one, otherwise its shared one (on Windows, the DLL's import library). `Shared` takes the shared one when it has one, otherwise the static one. |
 | `DisableAsmConsumerTargets` | `false` | `true` drops the implicit `PackageReference` to `AsmFoundation.Sdk` that brings the consumer targets to referencing .NET projects. They then get no `runtimes/` layout and no `deps.json` entries. |
 | `PackageId`, `Version`, `Authors`, `Description`, `PackageLicenseExpression`, `PackageReadmeFile`, … | as for any NuGet package | standard NuGet metadata. `NU5128` is suppressed on purpose. |
@@ -277,6 +280,7 @@ Read-only in practice.
 | Property | Value | Why |
 |---|---|---|
 | `UsingAsmFoundationSdk` | `true` | detect asm projects in `Directory.Build.*`, targets and package props |
+| `DefaultProjectTypeGuid` (not released yet) | `{13B669BE-BB05-4DDF-9536-439F39A36129}` | the generic project type of SDK-style projects (Visual Studio's Common Project System). `dotnet sln add` reads it and writes it as the entry's `Type`; without it the CLI printed an unknown project type and added nothing, with exit code 0 |
 | `AsmFoundationSdkDirectory` | the SDK package root | where `Sdk/`, `targets/`, `include/` and `stubs/` live |
 | `EnableDefaultItems` | `false` | no managed `Compile`, `None` or `EmbeddedResource` globs. The managed `None` glob removes `**/*$(DefaultLanguageSourceExtension)` right after including `**/*`, and an `.asmproj` has no language extension, so it would remove every file again. The SDK declares its own `None` glob instead (`EnableDefaultNoneItems`). |
 | `DisableImplicitFrameworkReferences`, `AutomaticallyUseReferenceAssemblyPackages` | `true`, `false` | no NETStandard.Library reference |
@@ -307,26 +311,30 @@ Read-only in practice.
 |---|---|---|
 | `AsmSource` | `**/*.asm` and `**/*.s` | the sources. For each RID, the SDK picks one file per name by extension and qualifier (see [Runtime identifiers](#runtime-identifiers)), and runs NASM or llvm-mc once on it. An `.asm` that another file `%include`s is a source too, which gives `duplicate symbol`. Rename it `.inc`, or `<AsmSource Remove="x.asm" />`. Listing a source the default already includes is `ASM0024`. |
 | `AsmInclude` | `**/*.inc` | build dependencies: editing one reassembles every source. Also packed under `src/` with `AsmPackSources`. **List include files from folders outside the project here too**, or edits to them will not rebuild. |
+| `Compile` (not released yet) | `**/*.asm` and `**/*.s` (`EnableDefaultCompileItems`) | the sources, replacing `AsmSource`, with .NET's semantics: `<Compile Remove="old/**" />`, `<Compile Include="../shared/x.asm" />`. Only `.asm` and `.s` (`ASM0025` for another). The same per-RID selection by extension and qualifier. |
+| `None` (not released yet) | every other file, `**/*.inc` among them (`EnableDefaultNoneItems`) | each `None` item ending in `.inc` is a dependency of every source, replacing `AsmInclude`: an include file from another folder is `<None Include="../common/include/**/*.inc" />`. |
+| `CustomAdditionalCompileInputs` (not released yet) | none | .NET's item for more inputs of the compile: any other file a source reads (`%incbin` data, a `.mac` file), so editing it reassembles. |
 | `AsmIncludeDirectory` | `include/` (when it exists), then the project folder; the SDK's `include/` last | the `-I` paths. Items without `AsmOrigin` come first, in the order added; items from packages and references after; the SDK's own folder (`asmsdk.inc`, `asmsdk-gnu.inc`) last, so a project file of the same name wins. NASM tries the working directory, which is the project folder, before any of them. |
 | `LinkerArg` | none | extra linker arguments, NativeAOT's item name, appended to every link line in order: `<LinkerArg Include="-z defs" />`. One item may hold several words; they are not quoted, so a path with spaces must carry its own quotes. **Footguns:** NativeAOT hands `LinkerArg` to clang (`-Wl,…`), and the SDK runs the linker directly, so write the linker's own syntax; and each OS's linker has its own (ld.lld: `-z defs`; lld-link: `-opt:ref`; ld64.lld: `-dead_strip`), so condition an item on `$(RuntimeIdentifier)`. |
-| `AsmLinkLibrary` | none | extra link inputs (`.a`, `.lib`, `.so`, `.dylib`, `.o`), in order, after your objects. References and packages add theirs here. |
+| `AsmLinkLibrary` | none | extra link inputs (`.a`, `.lib`, `.so`, `.dylib`, `.o`), in order, after your objects. References and packages add theirs here. **Not released yet:** renamed `NativeLibrary`, NativeAOT's item for the same inputs; `AsmLinkLibrary` is then `ASM0109`, and so is a package packed by 0.3.0, whose props still add it. |
+| `NativeLibrary` (not released yet) | none | extra link inputs (`.a`, `.lib`, `.so`, `.dylib`, `.o`), in order, after your objects: `<NativeLibrary Include="../third_party/libz.a" />`. References and packages add theirs here. A program copies the shared libraries that references and packages add next to itself; one the project names itself (`/usr/lib/libz.so`) stays where it is. |
 | `AsmLibcSymbol` | none | extra C function names for the C library stand-in (`TargetFramework=libc`): the Linux stub, `libSystem.tbd` (the underscore is added) or the UCRT import library (the name must be a `ucrtbase.dll` export). A program fails with `undefined symbol` until the function is listed; so does a Windows DLL or a dylib. A Linux shared library links anyway, and the function binds at load time. |
 | `AsmPublicIncludeDirectory` | `include/` when it exists, else the project folder | what a referencing `.asmproj` adds to its `-I` path. Declaring any item replaces the default. |
 | `AsmPublicInclude` | `include/**/*`, only when `include/` exists | the files packed into the package's `include/`. **Without an `include/` folder, the default is empty** and the package has no include files. Declaring any item replaces the default; packed paths are `include/%(RecursiveDir)%(Filename)%(Extension)`. |
 | `PackageDownload` | `AsmFoundation.Toolchain.<host-rid>` at `[<version>]` | added when `AsmToolchain=Bundled`, `AsmToolchainDirectory` is empty, `AsmToolchainVersion` is set and the build machine has a package. A `PackageDownload` is not a dependency of your package. |
 | `None` | every other file of the project folder (`EnableDefaultNoneItems`) | what IDEs show besides the sources and includes. The asm items are removed from it, so a file is never both. |
-| `AvailableItemName` | `AsmSource`, `AsmInclude` | the item types an IDE shows besides its built-in ones, and offers as build actions. Rider's MSBuild host and Visual Studio's project system read it; without it an `.asmproj` looks empty. |
-| `UpToDateCheckInput`, `UpToDateCheckBuilt` | the `AsmSource` and `AsmInclude` items and the `ExportsFile`; the output of each RID (unless `Objects`) | what the fast up-to-date checks of Visual Studio and Rider compare, so that editing a source makes the IDE build. `Visible="false"`: they name files that are items already. |
+| `AvailableItemName` | `AsmSource`, `AsmInclude` (not released yet: none; `Compile` and `None` are the IDEs' own types) | the item types an IDE shows besides its built-in ones, and offers as build actions. Rider's MSBuild host and Visual Studio's project system read it; without it an `.asmproj` looks empty. |
+| `UpToDateCheckInput`, `UpToDateCheckBuilt` | the `AsmSource` and `AsmInclude` items and the `ExportsFile` (not released yet: the `Compile` items, the `None` items ending in `.inc`, `CustomAdditionalCompileInputs` and the `ExportsFile`); the output of each RID (unless `Objects`) | what the fast up-to-date checks of Visual Studio and Rider compare, so that editing a source makes the IDE build. `Visible="false"`: they name files that are items already. |
 
 **Metadata the SDK reads or writes:**
 
 | Metadata | On | Values |
 |---|---|---|
-| `AsmOrigin` | `AsmIncludeDirectory`, `AsmLinkLibrary` | `Package`, `Project` or `Sdk`. A directory with any `AsmOrigin` is ordered after local ones, and its `**/*.inc` become build dependencies. |
+| `AsmOrigin` | `AsmIncludeDirectory`, `AsmLinkLibrary` (`NativeLibrary`, not released yet) | `Package`, `Project` or `Sdk`. A directory with any `AsmOrigin` is ordered after local ones, and its `**/*.inc` become build dependencies. |
 | `AsmPackage` | the same | the package id that contributed the item |
 | `AsmProject` | the same | the referenced project's name |
 | `AsmItemType` | items returned by `GetAsmLinkInputs` | `IncludeDirectory` or `LinkInput` |
-| `ObjectFile`, `ObjectToolPath`, `SourceToolPath` | the sources selected for the RID, computed by `AsmPrepare` | `$(AsmIntermediateDirectory)obj/%(RecursiveDir)%(Filename).o` (the qualifier stays in the name: `io.linux.o`), and the absolute forward-slash paths handed to the assembler |
+| `ObjectFile`, `ObjectToolPath`, `SourceToolPath` | the sources selected for the RID, computed by `AsmPrepare` | `$(AsmIntermediateDirectory)obj/%(RecursiveDir)%(Filename).o` (the qualifier stays in the name: `io.linux.o`), and the absolute forward-slash paths handed to the assembler. Not released yet: the assembler is handed `AssembledToolPath`, the source's path relative to the project folder (`SourceRelativeToolPath`), or the `ImplicitUsingsWrapper` file's, so no object records the checkout folder |
 | `RuntimeIdentifiers` | a `ProjectReference` to an `.asmproj`, in a .NET project | the RIDs a portable build of the .NET project carries (passed on as `AsmRequestedRuntimeIdentifiers`) |
 | `BinariesCopyPath` | a `ProjectReference` to an `.asmproj`, or a `PackageReference` to an asm package, in a .NET project | where that library goes in the .NET project's output and publish folder: `Auto`, `Runtimes`, `AppFolder`, `RidFolders`, or a folder with an optional `{rid}` (see [Where the binaries go](guide/interop.md#where-the-binaries-go-binariescopypath)). Wins over the project's `BinariesCopyPath` property |
 | `PrivateAssets` | a `ProjectReference` to an `.asmproj`, in a .NET library | `all`: `dotnet pack` puts every RID's library into the .NET package (`runtimes/<rid>/native/`) instead of depending on the asm package, and the reference does not flow to referencing projects |
@@ -344,13 +352,15 @@ Read-only in practice.
 
 | Target | Runs | Notes |
 |---|---|---|
-| `_AsmCheckProject` | before restore takes package references, and before the build's configuration check | raises `ASM0003` for an unknown target framework, and `ASM0100` to `ASM0108` for settings removed in 0.2.0 |
-| `_AsmCheckRuntimeIdentifiers` | before the RID outer build dispatches, and before an inner build prepares | raises `ASM0010`, `ASM0011` and `ASM0012`; in a solution build, a project with no RID builds nothing with a message |
+| `_AsmCheckProject` | before restore takes package references, and before the build's configuration check | raises `ASM0003` for an unknown target framework, and `ASM0100` to `ASM0108` for settings removed in 0.2.0 (not released yet: `ASM0109` for `AsmLinkLibrary`) |
+| `_AsmCheckRuntimeIdentifiers` | before the RID outer build dispatches, and before an inner build prepares | raises `ASM0010`, `ASM0011` and `ASM0012`; in a solution build, a project with no RID builds nothing with a message (not released yet: it builds the build machine's RID, and `ASM0013` warns a publish or pack) |
 | `_AsmBuildEachRuntimeIdentifier` | the RID outer build's `Build` | builds the project once per RID, with `RuntimeIdentifier` as a global property |
 | `_AsmCleanEachRuntimeIdentifier` | after `Clean`, in the outer build of each framework | cleans each RID's inner build |
 | `_AsmResolveToolchain` | before `AsmPrepare` | locates the tools, raises `ASM0001`, `ASM0002` and `ASM0005`, and runs `chmod +x` on the bundled tools on Linux and macOS (NuGet drops the execute bit) |
 | `AsmPrepare` | before assembling, linking and packing | selects the sources of the RID (`AsmSelectSources`: `ASM0020` to `ASM0024`), computes object paths, the ordered include directories, dependencies, defines, link inputs, and the `ExportsFile` and `LinkerArg` arguments; depends on `_AsmResolveProjectReferences` |
-| `AsmAssemble` | once per out-of-date source (target batching) | NASM or llvm-mc (`ASM0004` without llvm-mc). Inputs: the source, every dependency `.inc`, the project file, the SDK's targets. Output: the object. A failed run deletes the object and raises `ASM0007` |
+| `AsmAssemble` | once per out-of-date source (target batching) | NASM or llvm-mc (`ASM0004` without llvm-mc). Inputs: the source, every dependency `.inc`, the project file, the SDK's targets (not released yet: and `assemble-options.txt`). Output: the object. A failed run deletes the object and raises `ASM0007` |
+| `_AsmWriteImplicitUsingsWrappers` (not released yet) | before `AsmAssemble`, with `ImplicitUsings` | writes `obj/.../asm/implicit/<path>.s` for each GNU-syntax source of the RID (two `.include` lines), only when its text changes |
+| `_AsmWriteAssembleOptions` (not released yet) | before `AsmAssemble` | writes both assemblers' options (formats, warnings, defines, include folders, `ImplicitUsings`, `AsmFlags`, `AsmLlvmMcFlags`) to `obj/.../asm/assemble-options.txt`, only when they change: an input of `AsmAssemble`, so an option set in `Directory.Build.props` or on the command line assembles again, as `CoreCompileInputs.cache` does for C# |
 | `_AsmBuildSystemLibraries` | linked outputs that use the C library, and every Windows one | writes the stand-ins from the SDK's symbol lists: the Linux stub and `libasmsdk_nonshared.a`, `libSystem.tbd`, the `kernel32.lib` and `ucrtbase.lib` import libraries and `asmsdk_winstdio.lib` |
 | `_AsmBuildCrt` | `libc` executables with no `StartupObject`, on Linux and Windows | `stubs/crt1.asm` or `crt1-arm64.s` → `crt1.o`; `stubs/wincrt-<arch>` → `wincrt.obj` |
 | `AsmLink` | unless `Objects` | links (`ASM0015` for a macOS freestanding program), then checks a Windows or macOS image (`AsmCheckImage`: `ASM0080` to `ASM0082`). Inputs: objects, link inputs, the `ExportsFile`, the project file. Outputs: `$(TargetPath)` and the static library |
@@ -417,15 +427,17 @@ by `dotnet clean` only if you add it to `FileWrites` too.
 | `ASM0005` | `AsmToolchain=System` without `AsmLinkerCommand`, for a Windows or macOS RID, or for a linked Linux RID of another architecture than the build machine's: the default `ld` links the machine's own ELF only. | `AsmLinkerCommand` `lld-link`, `ld64.lld` or `ld.lld` (or a cross `ld`). |
 | `ASM0006` | No toolchain package for this build machine (Intel Mac, musl). | `AsmToolchain=System`, `AsmToolchainDirectory`, or `AsmHostRid`. |
 | `ASM0007` | The assembler failed on a source; its object was deleted. | Read the assembler's line above it. |
-| `ASM0010` | No RID to build: none listed, none asked for, no `-r`. | `RuntimeIdentifiers`, a `ProjectReference`'s `RuntimeIdentifiers`, or `-r`. |
+| `ASM0010` | No RID to build: none listed, none asked for, no `-r`. Not released yet: only on a build machine that is none of the eight RIDs (elsewhere its RID is the default). | `RuntimeIdentifiers`, a `ProjectReference`'s `RuntimeIdentifiers`, or `-r`. |
 | `ASM0011` | A RID outside the seven. | One of the seven. |
 | `ASM0012` | A RID asked for that the project does not list. | Add it, if the code supports it. |
+| `ASM0013` (warning, not released yet) | A `dotnet pack` of a project that lists no RIDs, or a portable publish or pack of a .NET project that references one, carries the build machine's RID alone. | List the platforms to ship in `RuntimeIdentifiers` (or on the `ProjectReference`), or publish with `-r <rid>`; `<NoWarn>ASM0013</NoWarn>` when one RID is the intent. |
 | `ASM0015` | A freestanding program for macOS. | `TargetFramework=libc`, or a library. |
 | `ASM0020` | Two files of one name apply equally to a RID. | Keep one, or qualify one more narrowly. |
 | `ASM0021` | A `.asm` file qualified for ARM64 only. | ARM64 code goes in `.s` files. |
 | `ASM0022` | The source selection was asked for an unknown RID. | An internal check: report it. |
 | `ASM0023` | No source builds a listed RID. | Add a source for it (ARM64: a `.s` file), or remove the RID. |
-| `ASM0024` | One source listed twice as `AsmSource`. | Remove the explicit item, or `EnableDefaultAsmItems=false`. |
+| `ASM0024` | One source listed twice as `AsmSource` (not released yet: as `Compile`). | Remove the explicit item, or `EnableDefaultAsmItems=false` (not released yet: `EnableDefaultCompileItems=false`). |
+| `ASM0025` (not released yet) | A `Compile` item that is not an asm source (`.c`, `.cs`): an `.asmproj` compiles `.asm` and `.s` only. | Make it a `None` item; build other languages in a project of their own. |
 | `ASM0030` | The `ExportsFile` cannot be read, has an `extern "C++"` block, or a pattern on Windows. | List exact names. |
 | `ASM0040` | A RID-specific .NET build references an asm project none of whose RIDs serves its RID. | Add a serving RID (the message lists them). |
 | `ASM0041`, `ASM0042` | The .NET SDK's RID graph, or the `deps.json`, cannot be read. | Repair the .NET SDK; rebuild. |
@@ -450,12 +462,14 @@ by `dotnet clean` only if you add it to `FileWrites` too.
 | `ASM0092` (not released yet) | `dotnet run --no-build` before a build. | Build first. |
 | `ASM0093` (not released yet) | `AsmRunIn` is not `Auto`, `Host`, `Wsl` or `Docker`. | One of those. |
 | `ASM0100` to `ASM0107` | A setting of AsmFoundation.Sdk 0.1.0 that 0.2.0 replaced. Each error names its replacement: `AsmLibraryName` → `AssemblyName`, `AsmRuntime` → `TargetFramework`, `AsmDefineConstants` and `AsmDefine` items → `DefineConstants`, `AsmDebugInfo` → `DebugSymbols`, `AsmEntryPoint` → `StartupObject`, `AsmLinkFlags` → `LinkerArg` items and `ExportsFile`, `AsmOutputKind` → `OutputType`. | Make the change the error names. One build lists every removed setting. |
-| `ASM0108` | The summary that stops the build after `ASM0100` to `ASM0107`. | Fix those. |
+| `ASM0108` | The summary that stops the build after `ASM0100` to `ASM0107` (and `ASM0109`, not released yet). | Fix those. |
+| `ASM0110`, `ASM0111`, `ASM0112` (not released yet) | `AsmSource` items, `AsmInclude` items and `EnableDefaultAsmItems`, replaced after 0.3.0 by .NET's `Compile` items, `None` items (each `None` item ending in `.inc` is a dependency of every source; other extra inputs are `CustomAdditionalCompileInputs`) and `EnableDefaultCompileItems`. Each error shows the new line. | Make the change the error shows. |
+| `ASM0109` (not released yet) | An `AsmLinkLibrary` item, renamed `NativeLibrary` (NativeAOT's name) after 0.3.0. In the project, the error shows the new line; added by a package's props (a package packed by 0.3.0), it names the package. | `<NativeLibrary Include="..." />`; pack the named package again with this SDK. |
 | `NU1201` | A project references an `.asmproj` whose target frameworks it cannot use: a `freestanding` project and a `libc`-only reference. | Make the reference target `freestanding` too (or both), or make this project `libc`. |
 | `NU1202` | The same for a package. | The same, for the package's project. |
 | `MSB3073 … exited with code 1` | The linker, or a stand-in's tool, failed. | Read the line above it. Add `<AsmFlags>-Xvc</AsmFlags>` so NASM's messages become MSBuild errors with file and line. |
 | `MSB4236` / SDK not found | `global.json` or `nuget.config` does not lead to `AsmFoundation.Sdk`. | Check `msbuild-sdks` and the feeds (see [The toolchain](toolchain/index.md)). |
-| `MSB4025 … ProjectType '' not found` | `.slnx` entry without a type. | Add `Type="13B669BE-BB05-4DDF-9536-439F39A36129"`. |
+| `MSB4025 … ProjectType '' not found` | `.slnx` entry without a type. | Add `Type="13B669BE-BB05-4DDF-9536-439F39A36129"` (not released yet: `dotnet sln add` writes it). |
 
 [Troubleshooting](guide/troubleshooting.md) has the full messages, and the NASM and linker
 errors.

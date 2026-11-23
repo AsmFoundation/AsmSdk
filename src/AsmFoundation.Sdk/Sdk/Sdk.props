@@ -41,6 +41,17 @@
     <!-- Lets packages and Directory.Build.* files detect an asm project. -->
     <UsingAsmFoundationSdk>true</UsingAsmFoundationSdk>
 
+    <!--
+      The solution project type of an .asmproj: Visual Studio's generic MSBuild project type
+      ("Common Project System"), which Visual Studio and Rider load like any SDK-style project.
+      "dotnet sln add" reads this property, as it reads the C# targets' own
+      DefaultProjectTypeGuid for a .csproj, and writes the type into the solution: without it,
+      it refused an .asmproj with "has an unknown project type" and still exited 0 (measured
+      2026-11-23, .NET SDK 11.0.100), and a .slnx entry without the type fails every solution
+      build with MSB4025. Set only when empty, so a project may still name another type.
+    -->
+    <DefaultProjectTypeGuid Condition="'$(DefaultProjectTypeGuid)' == ''">{13B669BE-BB05-4DDF-9536-439F39A36129}</DefaultProjectTypeGuid>
+
     <!-- The .NET publish switches, made local by TreatAsLocalProperty above: an asm project
          builds native code either way, and these would only make Microsoft.NET.Sdk check (and
          reject) its netstandard framework. A project body that sets one again gets what it
@@ -63,10 +74,10 @@
       $(TargetFramework) empty unless the project or the command line set it globally.
     -->
 
-    <!-- Item globs of the managed SDK (Compile, EmbeddedResource, None) are not wanted:
-         AsmFoundation.Build.targets declares the asm items (AsmSource, AsmInclude) and a None
-         glob of its own for every other file. The managed None glob cannot be reused: with
-         no language source extension it removes every file it just included. -->
+    <!-- Item globs of the managed SDK (Compile, EmbeddedResource, None) are not wanted: with
+         no language source extension, its Compile glob is "**/*" and its None glob removes
+         every file it just included. The globs below declare the same item types the asm way:
+         Compile for the sources, None for every other file (include files among them). -->
     <EnableDefaultItems>false</EnableDefaultItems>
     <!-- No NETStandard.Library reference, no reference assemblies, no assembly info. -->
     <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
@@ -126,20 +137,24 @@
   <!--
     The default items, here before the project body, where .NET declares its own (in
     Microsoft.NET.Sdk.DefaultItems.props): a project can then Update or Remove them, as in a
-    .csproj (<None Update="data.txt" CopyToOutputDirectory="PreserveNewest" />, <AsmSource
+    .csproj (<None Update="data.txt" CopyToOutputDirectory="PreserveNewest" />, <Compile
     Remove="old/**" />). Declared in AsmFoundation.Build.targets, after the body, as before, an
     Update matched nothing and was silently ignored (measured: a None item's
     CopyToOutputDirectory never arrived). The conditions still see the project's settings:
-    MSBuild evaluates every property before any item, so EnableDefaultAsmItems=false in the body
-    turns the globs off, and DefaultItemExcludes holds its final value (bin/ and obj/).
+    MSBuild evaluates every property before any item, so EnableDefaultCompileItems=false in the
+    body turns the glob off, and DefaultItemExcludes holds its final value (bin/ and obj/).
+
+    The sources are Compile items, .NET's name for the files a project compiles (the owner's
+    choice after 0.3.0, whose AsmSource items are now ASM0110). Measured before the change
+    (2026-11-23): Rider's engine (ReSharper InspectCode 2026.3) never analyzed a .asm or .s
+    Compile item as C#, though it did a .cs one in the same project, and Visual Studio's C#
+    language service attaches only to projects with the CSharp and Managed capabilities, which
+    an .asmproj does not have.
   -->
-  <ItemGroup Condition="'$(EnableDefaultAsmItems)' == 'true'">
+  <ItemGroup Condition="'$(EnableDefaultCompileItems)' != 'false'">
     <!-- DefaultItemExcludes keeps bin/ and obj/ out, as for a .csproj. Every source of either
-         language is an item; AsmPrepare picks, per RID, the ones that build it.
-         EnableDefaultAsmItems defaults to true in AsmFoundation.Properties.targets, imported
-         after the body: the condition sees that default, properties being evaluated first. -->
-    <AsmSource Include="**/*.asm;**/*.s" Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)" />
-    <AsmInclude Include="**/*.inc" Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)" />
+         language is an item; AsmPrepare picks, per RID, the ones that build it. -->
+    <Compile Include="**/*.asm;**/*.s" Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)" />
   </ItemGroup>
 
   <!--
@@ -151,12 +166,13 @@
     Why not Microsoft.NET.Sdk's own None glob (EnableDefaultItems stays false above): it removes
     "**/*$(DefaultLanguageSourceExtension)" from None right after including "**/*", and an
     .asmproj has no language extension, so that Remove is "**/*" and takes every file away
-    again. The asm items are taken out of None, so each file is one item: a .asm file is an
-    AsmSource, never also a None (AsmFoundation.Build.targets repeats the Remove after the
-    body, for the asm files a project lists itself).
+    again. The sources are taken out of None, so each file is one item: a .asm file is a
+    Compile item, never also a None (AsmFoundation.Build.targets repeats the Remove after the
+    body, for the sources a project lists itself). Include files (.inc) stay None items, and
+    the SDK reads them from there as dependencies of every source (see AsmPrepare).
   -->
   <ItemGroup Condition="'$(EnableDefaultNoneItems)' != 'false'">
     <None Include="**/*" Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)" />
-    <None Remove="@(AsmSource);@(AsmInclude)" />
+    <None Remove="@(Compile)" />
   </ItemGroup>
 </Project>

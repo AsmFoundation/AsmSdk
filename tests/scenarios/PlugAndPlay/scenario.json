@@ -1,0 +1,112 @@
+{
+  "$schema": "../scenario.schema.json",
+  "description": "Plug and play, as a .NET developer starts: the dotnet new templates make a solution of a C# app, an asm library and xunit tests that builds without warnings, runs and tests with no RID, global.json pin or hand-written entry. dotnet sln add takes a new .asmproj, dotnet add reference still refuses one (a .NET CLI limit with target framework aliases, written by hand instead), and what leaves the machine says so: a portable publish and a pack warn ASM0013, a publish for one RID does not. The folder's own global.json, Directory.Build.props and Directory.Packages.props stand for a user's fresh folder (empty, but for NuGet's audit, which is off): the projects name their SDK version inline, and nothing of tests/scenarios' settings reaches them.",
+  "steps": [
+    {
+      "run": "dotnet new install AsmFoundation.Templates@{version}",
+      "description": "Installs the templates under test from the local feed, into this scenario's own CLI home.",
+      "stdout": ["asmnet", "asmlib", "asmexe", "asmstatic"]
+    },
+    {
+      "run": "dotnet new asmnet -n Demo",
+      "description": "A solution: Demo.App (C#), Demo.Native (asm) and Demo.Tests (xunit v3 on Microsoft.Testing.Platform, which the template sets in the folder's global.json). Its restore post action restores all three.",
+      "stdout": ["Successfully modified global.json"],
+      "absent": ["Post action failed", "Restore failed"],
+      "files": [
+        "Demo/Demo.slnx",
+        "Demo/Demo.App/Demo.App.csproj",
+        "Demo/Demo.Native/Demo.Native.asmproj",
+        "Demo/Demo.Native/add.asm",
+        "Demo/Demo.Native/add.s",
+        "Demo/Demo.Tests/Demo.Tests.csproj"
+      ]
+    },
+    {
+      "run": "dotnet build Demo/Demo.slnx",
+      "description": "The solution build builds the asm library for this machine (no RuntimeIdentifiers listed) and delivers it to the app.",
+      "stdout": ["Build succeeded.", " 0 Warning(s)"],
+      "files": [
+        "Demo/Demo.Native/bin/Debug/freestanding/{rid}/{lib:Demo.Native}",
+        "Demo/Demo.App/bin/Debug/net10.0/runtimes/{rid}/native/{lib:Demo.Native}"
+      ]
+    },
+    {
+      "run": "dotnet run --project Demo/Demo.App",
+      "description": "The app calls the asm function through [LibraryImport].",
+      "stdout": ["add_ints(40, 2) = 42"]
+    },
+    {
+      "run": "dotnet test --solution Demo/Demo.slnx",
+      "description": "The template's five tests of the asm function, through Microsoft.Testing.Platform.",
+      "stdout": ["Test run summary: Passed!", "succeeded: 5", "failed: 0"]
+    },
+    {
+      "run": "dotnet new asmlib -n Demo.Extra -o Demo/Demo.Extra",
+      "description": "A second asm library, into the solution's folder.",
+      "files": ["Demo/Demo.Extra/Demo.Extra.asmproj", "Demo/Demo.Extra/add.asm", "Demo/Demo.Extra/add.s"]
+    },
+    {
+      "run": "dotnet sln Demo/Demo.slnx add Demo/Demo.Extra/Demo.Extra.asmproj",
+      "description": "dotnet sln add takes an .asmproj: the SDK's DefaultProjectTypeGuid gives it the generic project type (0.3.0 printed an unknown project type and added nothing).",
+      "stdout": ["added to the solution"]
+    },
+    {
+      "run": "dotnet sln Demo/Demo.slnx list",
+      "stdout": ["Demo.Extra.asmproj", "Demo.Native.asmproj", "Demo.App.csproj", "Demo.Tests.csproj"]
+    },
+    {
+      "run": "dotnet build Demo/Demo.slnx",
+      "description": "The added project builds with the solution.",
+      "stdout": ["Build succeeded.", " 0 Warning(s)"],
+      "files": ["Demo/Demo.Extra/bin/Debug/freestanding/{rid}/{lib:Demo.Extra}"]
+    },
+    {
+      "run": "dotnet add Demo/Demo.App/Demo.App.csproj reference Demo/Demo.Extra/Demo.Extra.asmproj",
+      "description": "Still refused: the .NET CLI parses the referenced project's TargetFramework text, and freestanding is an alias it does not know (NuGet and the build accept it). The docs show the one-line ProjectReference instead; this step fails once the CLI accepts it, and the docs change then.",
+      "exitCode": 1,
+      "stderr": ["cannot be added due to incompatible targeted frameworks"]
+    },
+    {
+      "run": "dotnet publish Demo/Demo.App -c Release -o portable",
+      "description": "A portable publish carries the library of the one RID it was built for, and says so.",
+      "stdout": ["warning ASM0013"],
+      "files": ["portable/runtimes/{rid}/native/{lib:Demo.Native}"]
+    },
+    {
+      "run": "dotnet pack Demo/Demo.Native -c Release -o packages",
+      "description": "So does a pack of the RID-less library.",
+      "stdout": ["warning ASM0013"],
+      "files": ["packages/Demo.Native.1.0.0.nupkg"]
+    },
+    {
+      "run": "dotnet publish Demo/Demo.App -c Release -r {rid} -o out",
+      "description": "A publish for one RID asks for that RID's build: nothing to warn about.",
+      "absent": ["ASM0013"],
+      "files": ["out/{exe:Demo.App}", "out/{lib:Demo.Native}"]
+    },
+    {
+      "run": "out/Demo.App",
+      "description": "The published app runs on its own, the library next to it.",
+      "stdout": ["add_ints(40, 2) = 42"]
+    },
+    {
+      "run": "dotnet new asmexe -n Hello",
+      "files": ["Hello/Hello.asmproj", "Hello/main.asm", "Hello/main.s"]
+    },
+    {
+      "run": "dotnet run --project Hello",
+      "description": "dotnet run builds the asm program for this machine and runs it.",
+      "stdout": ["Hello from assembly!"]
+    },
+    {
+      "run": "dotnet new asmstatic -n Shared",
+      "files": ["Shared/Shared.asmproj", "Shared/include/Shared.inc", "Shared/mul.asm", "Shared/mul.s"]
+    },
+    {
+      "run": "dotnet build Shared",
+      "description": "The static library builds for this machine.",
+      "stdout": ["Build succeeded.", " 0 Warning(s)"],
+      "files": ["Shared/bin/Debug/freestanding/{rid}"]
+    }
+  ]
+}

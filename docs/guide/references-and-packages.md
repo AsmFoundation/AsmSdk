@@ -95,7 +95,7 @@ See [Where the binaries go](interop.md#where-the-binaries-go-binariescopypath) f
 | `native/<rid>/<tfm>/<name>.dll.lib` | a Windows DLL's import library | `Library`, Windows RIDs |
 | `runtimes/<rid>/native/` | the shared library, per RID: `<name>.dll`, `lib<name>.so`, `lib<name>.dylib` | `Library`, single target framework |
 | `runtimes/<rid>/nativeassets/<framework>/` | the shared library of each target framework | `Library`, `TargetFrameworks` |
-| `src/**` | `AsmSource` and `AsmInclude` items, with their relative paths | `AsmPackSources=true` |
+| `src/**` | `AsmSource` and `AsmInclude` items, with their relative paths (not released yet: the `.asm` and `.s` `Compile` items and the `None` items ending in `.inc`) | `AsmPackSources=true` |
 | `build/<framework>/<PackageId>.props`, `buildTransitive/<framework>/<PackageId>.props` | generated | one per target framework, always |
 | `build/<framework>/<PackageId>.targets`, `buildTransitive/<framework>/<PackageId>.targets` | generated, plain MSBuild: `BinariesCopyPath` for .NET consumers, and the fallback loader ([Where the binaries go](interop.md#where-the-binaries-go-binariescopypath)) | a shared library is packed under `runtimes/` |
 
@@ -170,15 +170,19 @@ it reads (comment shortened):
 - **Each RID of the consumer gets the package's nearest build,** by the RID graph's fallbacks
   at pack time: `linux-musl-x64` takes the `linux-x64` library here. A RID with no build is
   `ASM0060`, before anything is assembled.
+- **Not released yet: `NativeLibrary` items.** A package packed on the main branch adds its
+  libraries as `NativeLibrary` items, NativeAOT's name, instead of `AsmLinkLibrary`. A consumer
+  on that SDK stops with `ASM0109` on a package packed by 0.3.0, naming it: pack it again.
 
 - **`AsmPackageRoot_<id>`:** characters of the id that are not letters, digits or `_` become
   `_`. The property points at the package root, so a consumer can assemble packed sources
   itself:
-  `<AsmSource Include="$(AsmPackageRoot_Acme_Crc)src/crc_core.asm" />`. That needs
+  `<AsmSource Include="$(AsmPackageRoot_Acme_Crc)src/crc_core.asm" />` (not released yet:
+  `<Compile Include="..." />`). That needs
   `AsmPackSources=true` in the producer.
 - **The items exist only in asm projects** (`UsingAsmFoundationSdk`). A `.csproj` consumer
   gets just the `runtimes/` folder, through NuGet's normal handling.
-- **`AsmPackageLinkKind`** (in the producer) picks the `AsmLinkLibrary`:
+- **`AsmPackageLinkKind`** (in the producer) picks the `AsmLinkLibrary` (`NativeLibrary`, not released yet):
   - `Static`, the default, takes the static library when one is packed, otherwise the
     shared one (on Windows, the DLL's import library);
   - `Shared` takes the shared one when one is packed, otherwise the static one.
