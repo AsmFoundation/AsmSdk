@@ -197,12 +197,20 @@ are called, so the same `[LibraryImport("Calc")]` that loads `Calc.dll` and `lib
 elsewhere works here. A `PackageReference` to the asm project's package works the same way,
 through the package's props, with no AsmFoundation.Sdk in the app.
 
-What the app's build needs:
+What the app's build needs, for the app's own .NET version:
 
-- `browser-wasm`: the `wasm-tools` workload (`dotnet workload install wasm-tools`).
+- `browser-wasm`: the `wasm-tools` workload (`dotnet workload install wasm-tools`). A `net10.0`
+  app on a later SDK needs `wasm-tools-net10` instead: a workload serves its SDK's .NET unless
+  its name says otherwise.
 - `wasi-wasm`: the `wasi-experimental` workload, and the WASI SDK in `WASI_SDK_PATH`. .NET 10
-  needs WASI SDK 25.0 exactly. Run the app with `wasmtime run -S http`, because .NET's WASI
-  runtime imports WASI HTTP.
+  needs WASI SDK 25.0 exactly. Build a WASI app with the SDK of its own .NET (pin it in
+  `global.json`): .NET 11.0.100's WASI build gives a `net10.0` app no native build, whatever
+  is installed. Run the app with `wasmtime run -S http`, because .NET's WASI runtime imports
+  WASI HTTP.
+
+Without that native build, .NET builds the app as plain IL. It never links the asm code, and every
+call into the code would fail once the app runs. So an app that links asm projects, or an asm
+package, stops with **ASM0054**, which names the fix.
 
 An asm *program* (`Exe`) is not delivered to a WebAssembly app: nothing there could start it.
 
@@ -312,4 +320,5 @@ Each was measured with the bundled LLVM 23.1.5 and .NET 10.0.15:
 | `ASM0021` | A `.asm` file qualified for WebAssembly. | WebAssembly goes in `.s` files. |
 | `ASM0023` | A wasm RID with no source qualified for it. | Add `name.wasm.s`, or remove the RID. |
 | `ASM0030` | A pattern in a module's `ExportsFile`. | List exact names. |
+| `ASM0054` | A .NET WebAssembly app links asm projects or an asm package, and .NET has no native WebAssembly build for the app's .NET version: the app would build without the asm code. | The workload the message names (`wasm-tools`, `wasi-experimental`, or `wasm-tools-net10` for a `net10.0` app on a later SDK), or the SDK of the app's own .NET. |
 | `ASM0005` | `AsmToolchain=System` without `AsmLinkerCommand` for a linked wasm output. | `AsmLinkerCommand=wasm-ld`, with `AsmArchiverCommand=llvm-ar`. |

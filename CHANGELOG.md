@@ -59,6 +59,13 @@ Each SDK release names the one it was tested with.
     - `ASM0021` and `ASM0023` gained their WebAssembly forms.
     - `ASM0030` refuses a pattern in a module's exports file.
     - `ASM0005` stops a System toolchain without `AsmLinkerCommand` (`wasm-ld`).
+    - `ASM0054`: a .NET WebAssembly app links asm projects, or an asm package, and .NET has no
+      native WebAssembly build for the app's .NET version. The message names the fix. Without
+      that build .NET compiles the app as plain IL, ignores `NativeFileReference`, and says
+      nothing. Measured on GitHub's windows-2025 image: SDK 11.0.100 with Visual Studio's
+      `wasm-tools`, which serves `net11.0`, built a `net10.0` app with no `AppBundle`. Fixes:
+      - `wasm-tools-net10` for a browser app on a later SDK;
+      - the app's own SDK for a WASI app: .NET 11.0.100's WASI build serves only `net11.0`.
   - **Measured end to end** in `WebAssemblyTests`, with .NET 10.0.15, Node 22 and wasmtime 39:
     - the modules run in Node;
     - the WASI program runs in wasmtime and through `dotnet run`, and exits with its

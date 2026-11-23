@@ -113,6 +113,7 @@ See [Platforms and runtime identifiers](platforms.md) for how a project chooses 
 | `return_call* requires tail calls [--enable-tail-call]` from wasm-opt, in a .NET browser-wasm app's Release build | a hand-written `return_call` in code linked into .NET: .NET 10's wasm-opt validates without tail calls | `TAILCALL` (a call and a return) |
 | `Pointer not aligned to 4` from wasmtime | a WASI call got a misaligned pointer (an iovec, a result address); llvm-mc aligns no data by itself | `.p2align 2` before the data |
 | `DllNotFoundException` in a .NET WebAssembly app | the `[DllImport]` name is not the asm project's `AssemblyName`, or the asm project lists no RID for the app | use the `AssemblyName`; add `browser-wasm` or `wasi-wasm` to its `RuntimeIdentifiers` (ASM0040 says so for a project reference) |
+| `ASM0054: App links WasmLibrary into its browser-wasm runtime, which only .NET's native WebAssembly build does, and this .NET SDK (11.0.100) has none for net10.0` | the workload of the app's .NET version is missing, so .NET would build the app as plain IL, without the asm code. Measured: SDK 11.0.100 with Visual Studio's `wasm-tools`, which serves `net11.0`, built a `net10.0` app with no `AppBundle` and no warning | what the message names: `dotnet workload install wasm-tools` (`wasi-experimental` for WASI), `wasm-tools-net10` for a `net10.0` browser app on a later SDK, or the SDK of the app's own .NET in `global.json`, which a WASI app needs because .NET 11.0.100's WASI build serves only `net11.0` |
 
 ## Assembling (NASM)
 

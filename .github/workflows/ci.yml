@@ -43,7 +43,11 @@
 #      dotnet run. The Linux x64 runner also installs the wasm-tools and wasi-experimental
 #      workloads and the WASI SDK 25.0, which .NET 10's WASI build needs exactly, so that the
 #      .NET browser-wasm apps (projects and a package) and the wasi-wasm app link the asm
-#      outputs and run; elsewhere those three tests are skipped with the reason.
+#      outputs and run (ASMSDK_TEST_WASM_APPS=required: there they fail rather than skip).
+#      Elsewhere those three tests are skipped with the reason, by .NET's own verdict: the
+#      Windows image's SDK 11.0.100 has Visual Studio's wasm-tools, which serves net11.0, not
+#      the net10.0 test apps. Every runner checks ASM0054, which an app that links asm code
+#      gets when .NET's native WebAssembly build is missing.
 #   The only prerequisite is the .NET SDK: no Python since 0.2.0.
 #   3. The staged toolchain is kept as an artifact: release.yml packs all five from it.
 #
@@ -176,10 +180,14 @@ jobs:
           cat artifacts/toolchain/${{ matrix.rid }}/tools/VERSIONS.txt
 
       # global.json selects Microsoft.Testing.Platform, which `dotnet test --project` needs.
+      # ASMSDK_TEST_WASM_APPS=required on the runner that installs the WebAssembly workloads: its
+      # .NET app tests fail rather than skip if the apps cannot be linked there, so the only
+      # runner that proves the .NET path can never pass without proving it.
       - name: Pack the SDK, build the samples, check every output
         env:
           ASMSDK_TEST_RUN: ${{ matrix.run }}
           ASMSDK_TEST_DOTNET_RUN: ${{ matrix.run }}
+          ASMSDK_TEST_WASM_APPS: ${{ matrix.wasm-dotnet && 'required' || 'auto' }}
         run: dotnet test --project tests/AsmSdk.Tests/AsmSdk.Tests.csproj -c Release
 
       - name: Keep the staged toolchain for the release

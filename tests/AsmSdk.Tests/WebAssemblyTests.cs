@@ -72,17 +72,77 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
         }
     }
 
-    /// <summary>Skips the calling test unless the dotnet on PATH has a workload.</summary>
-    /// <param name="workload">wasm-tools or wasi-experimental.</param>
-    /// <exception cref="Exception">Xunit's skip exception.</exception>
-    private void RequireWorkload(string workload)
+    /// <summary>
+    /// How the .NET WebAssembly app tests treat a machine that cannot run them, from
+    /// <c>ASMSDK_TEST_WASM_APPS</c>: auto (the default: run, or skip with the reason), required
+    /// (fail instead of skipping: CI's Linux x64 runner installs the workloads, and there a skip
+    /// would hide that the apps were never linked), none (skip).
+    /// </summary>
+    /// <exception cref="InvalidOperationException">ASMSDK_TEST_WASM_APPS holds an unknown value (thrown by the initializer).</exception>
+    private static string WasmAppsMode { get; } = Environment.GetEnvironmentVariable("ASMSDK_TEST_WASM_APPS") switch
     {
-        // Asked once per run: the list does not change while the tests run.
-        CommandResult list = sdk.Once("dotnet workload list", () => sdk.DotnetCommand("workload", "list"));
-        if (!list.StdOut.Split('\n').Any(line => line.TrimStart().StartsWith(workload + " ", StringComparison.Ordinal)))
+        null or "auto" => "auto",
+        "required" => "required",
+        "none" => "none",
+        string other => throw new InvalidOperationException($"ASMSDK_TEST_WASM_APPS={other}: expected auto, required or none"),
+    };
+
+    /// <summary>
+    /// Lets a .NET WebAssembly app test go on when a prerequisite holds; otherwise skips it with
+    /// the reason, or fails it when the run is required (<see cref="WasmAppsMode"/>).
+    /// </summary>
+    /// <param name="holds">Whether the prerequisite is met.</param>
+    /// <param name="reason">What is missing, for the skip or failure message.</param>
+    /// <exception cref="Exception">Xunit's skip exception; an assertion failure when the run is required.</exception>
+    private static void RequireForWasmApps(bool holds, string reason)
+    {
+        if (WasmAppsMode == "none")
         {
-            Assert.Skip($"The dotnet on PATH has no {workload} workload (dotnet workload install {workload})");
+            Assert.Skip("ASMSDK_TEST_WASM_APPS=none");
         }
+
+        if (holds)
+        {
+            return;
+        }
+
+        if (WasmAppsMode == "required")
+        {
+            Assert.Fail(reason + " (ASMSDK_TEST_WASM_APPS=required)");
+        }
+
+        Assert.Skip(reason);
+    }
+
+    /// <summary>
+    /// Requires .NET's native WebAssembly build for a .NET app of tests/projects, as .NET itself
+    /// decides it for the app's target framework and RID (see <see cref="RequireForWasmApps"/>).
+    /// </summary>
+    /// <param name="app">The app's project name (tests/projects/&lt;app&gt;/&lt;app&gt;.csproj).</param>
+    /// <param name="property">UsingBrowserRuntimeWorkload (browser-wasm) or UsingWasiRuntimeWorkload (wasi-wasm).</param>
+    /// <exception cref="Exception">Xunit's skip exception; an assertion failure when the run is required.</exception>
+    /// <remarks>
+    /// The question is .NET's, not a workload list's. The workload a net10.0 app needs is
+    /// wasm-tools on SDK 10 but wasm-tools-net10 on SDK 11, and GitHub's windows-2025 image has
+    /// SDK 11.0.100 with Visual Studio's wasm-tools, which serves net11.0 only: a name check
+    /// passed there, and the app built without its AppBundle (CI run 45275929352). The property
+    /// is the switch .NET's own imports test, and the one the SDK's ASM0054 check reads, so these
+    /// tests run exactly where the apps can be linked. Evaluation only, once per app.
+    /// </remarks>
+    private void RequireWasmNativeBuild(string app, string property)
+    {
+        if (WasmAppsMode == "none")
+        {
+            Assert.Skip("ASMSDK_TEST_WASM_APPS=none");
+        }
+
+        string project = Repo.TestProjectPath(app, app + ".csproj");
+        CommandResult answer = sdk.Once($"{app} {property}", () => sdk.DotnetCommand("msbuild", project, $"-getProperty:{property}", "-nologo"));
+        CommandResult version = sdk.Once("dotnet --version", () => sdk.DotnetCommand("--version"));
+        RequireForWasmApps(answer.ExitCode == 0 && answer.StdOut.Trim() == "true",
+            $"The dotnet on PATH ({version.StdOut.Trim()}) has no native WebAssembly build for {app}: {property} is '{answer.StdOut.Trim()}' " +
+            $"(exit {answer.ExitCode}). It needs the wasm-tools workload for browser-wasm, or wasi-experimental and WASI_SDK_PATH for wasi-wasm, " +
+            "of the app's .NET version (net10.0: wasm-tools-net10 on a later SDK)");
     }
 
     /// <summary>
@@ -391,11 +451,14 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
     [Fact]
     public void A_browser_wasm_dotnet_app_links_asm_projects()
     {
-        RequireNode();
-        RequireWorkload("wasm-tools");
+        RequireForWasmApps(Command.OnPath("node"), "No Node on PATH to run the browser-wasm app here");
+        RequireWasmNativeBuild("WasmBrowserApp", "UsingBrowserRuntimeWorkload");
         CommandResult build = sdk.Dotnet("build", Repo.TestProjectPath("WasmBrowserApp", "WasmBrowserApp.csproj"), "-c", "Release");
         Assert.True(build.ExitCode == 0, build.Tail());
         string bundle = Repo.TestProjectPath("WasmBrowserApp", "bin", "Release", "net10.0", "browser-wasm", "AppBundle");
+        // Said here rather than by the process start ("The directory name is invalid"): a build
+        // without .NET's native WebAssembly build succeeds without a bundle.
+        Assert.True(Directory.Exists(bundle), $"No AppBundle after the build: {build.Tail()}");
         CommandResult run = Command.Run("node", ["main.mjs"], bundle);
         Assert.True(run.ExitCode == 0, run.Output);
         Assert.Contains("browser-wasm 42 42 111 42 42 42 42", run.StdOut.Split('\n').Select(line => line.TrimEnd('\r')));
@@ -410,13 +473,14 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
     [Fact]
     public void A_browser_wasm_dotnet_app_links_an_asm_package()
     {
-        RequireNode();
-        RequireWorkload("wasm-tools");
+        RequireForWasmApps(Command.OnPath("node"), "No Node on PATH to run the browser-wasm app here");
+        RequireWasmNativeBuild("WasmBrowserPackageApp", "UsingBrowserRuntimeWorkload");
         CommandResult pack = PackWasmLibrary();
         Assert.True(pack.ExitCode == 0, pack.Tail());
         CommandResult build = sdk.Dotnet("build", Repo.TestProjectPath("WasmBrowserPackageApp", "WasmBrowserPackageApp.csproj"), "-c", "Release");
         Assert.True(build.ExitCode == 0, build.Tail());
         string bundle = Repo.TestProjectPath("WasmBrowserPackageApp", "bin", "Release", "net10.0", "browser-wasm", "AppBundle");
+        Assert.True(Directory.Exists(bundle), $"No AppBundle after the build: {build.Tail()}");
         CommandResult run = Command.Run("node", ["main.mjs"], bundle);
         Assert.True(run.ExitCode == 0, run.Output);
         Assert.Contains("browser-wasm 42 42 111 42 42 42", run.StdOut.Split('\n').Select(line => line.TrimEnd('\r')));
@@ -430,19 +494,65 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
     [Fact]
     public void A_wasi_dotnet_app_links_asm_projects()
     {
-        RequireWasmtime();
-        RequireWorkload("wasi-experimental");
+        RequireForWasmApps(Command.OnPath("wasmtime"), "No wasmtime on PATH to run the WASI app here (https://wasmtime.dev)");
+        RequireWasmNativeBuild("WasiApp", "UsingWasiRuntimeWorkload");
         string? wasiSdk = Environment.GetEnvironmentVariable("WASI_SDK_PATH");
-        if (string.IsNullOrEmpty(wasiSdk) || !Directory.Exists(wasiSdk))
-        {
-            Assert.Skip("No WASI SDK in WASI_SDK_PATH (.NET 10's WASI build needs wasi-sdk 25.0)");
-        }
+        RequireForWasmApps(!string.IsNullOrEmpty(wasiSdk) && Directory.Exists(wasiSdk),
+            "No WASI SDK in WASI_SDK_PATH (.NET 10's WASI build needs wasi-sdk 25.0)");
 
         CommandResult build = sdk.Dotnet("build", Repo.TestProjectPath("WasiApp", "WasiApp.csproj"), "-c", "Release");
         Assert.True(build.ExitCode == 0, build.Tail());
         string bundle = Repo.TestProjectPath("WasiApp", "bin", "Release", "net10.0", "wasi-wasm", "AppBundle");
+        Assert.True(Directory.Exists(bundle), $"No AppBundle after the build: {build.Tail()}");
         CommandResult run = Command.Run("wasmtime", ["run", "-S", "http", "--dir", ".", "WasiApp.wasm"], bundle);
         Assert.True(run.ExitCode == 0, run.Output);
         Assert.Contains("wasi-wasm 42 42 112 42 42 42 42", run.StdOut.Split('\n').Select(line => line.TrimEnd('\r')));
+    }
+
+    /// <summary>
+    /// Without .NET's native WebAssembly build for the app's target framework, a .NET app that
+    /// links asm code stops with ASM0054 and the fix, from project references (the consumer
+    /// targets) and from a package (the package's props), instead of building without the asm
+    /// code: .NET imports none of its WebAssembly build targets then, ignores NativeFileReference,
+    /// and the app would fail at its first call (measured on GitHub's windows-2025 image, CI run
+    /// 45275929352). The test turns .NET's native build off with the very switch its imports
+    /// test, so it runs on every machine, with the workloads or without; the fix the error names
+    /// depends on the SDK running it.
+    /// </summary>
+    /// <param name="app">The app (tests/projects/&lt;app&gt;/&lt;app&gt;.csproj).</param>
+    /// <param name="importSwitch">.NET's import switch for the app's runtime: UsingBrowserRuntimeWorkload or UsingWasiRuntimeWorkload.</param>
+    /// <param name="workload">The workload of the SDK's own .NET for that runtime.</param>
+    /// <remarks>
+    /// Not .NET's -p:WasmNativeWorkload=false: it turns WasmNativeWorkloadAvailable off, but an
+    /// AppBundle app such as WasmBrowserApp is one .NET marks as needing the native build
+    /// (_WasmNativeWorkloadNeeded, from WasmGenerateAppBundle, which the installed workload's
+    /// props set), and then UsingBrowserRuntimeWorkload stays true and Emscripten still links
+    /// (measured with SDK 10.0.404 and wasm-tools: the build succeeded). The import switch as a
+    /// global property is what a machine without the workload has: .NET imports none of its
+    /// WebAssembly build targets.
+    /// </remarks>
+    [Theory]
+    [InlineData("WasmBrowserApp", "UsingBrowserRuntimeWorkload", "wasm-tools")]
+    [InlineData("WasmBrowserPackageApp", "UsingBrowserRuntimeWorkload", "wasm-tools")]
+    [InlineData("WasiApp", "UsingWasiRuntimeWorkload", "wasi-experimental")]
+    public void A_wasm_dotnet_app_without_the_native_build_stops_with_ASM0054(string app, string importSwitch, string workload)
+    {
+        if (app == "WasmBrowserPackageApp")
+        {
+            CommandResult pack = PackWasmLibrary();
+            Assert.True(pack.ExitCode == 0, pack.Tail());
+        }
+
+        CommandResult build = sdk.Dotnet("build", Repo.TestProjectPath(app, app + ".csproj"), "-c", "Release", $"-p:{importSwitch}=false");
+        Assert.True(build.ExitCode != 0, $"{app} built without .NET's native WebAssembly build: {build.Tail()}");
+        Assert.Contains("ASM0054", build.Output);
+        // The fix by SDK: the app is net10.0, so SDK 10 names the workload itself, and a later SDK
+        // the -net10 workload (browser) or a .NET 10 SDK (WASI, whose later-SDK build serves only
+        // its own .NET).
+        string sdkVersion = sdk.Once("dotnet --version", () => sdk.DotnetCommand("--version")).StdOut.Trim();
+        string fix = sdkVersion.StartsWith("10.", StringComparison.Ordinal) ? $"dotnet workload install {workload}"
+            : workload == "wasm-tools" ? $"dotnet workload install {workload}-net10"
+            : $"build it with a .NET 10 SDK (global.json) and its {workload} workload";
+        Assert.Contains(fix, build.Output);
     }
 }

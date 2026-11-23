@@ -38,8 +38,11 @@ namespace AsmFoundation.Sdk.Tasks;
 /// props add NativeFileReference items, without the file-named P/Invoke module (ScanForPInvokes
 /// false) and with the library's own (<see cref="ImportName"/>, in .NET's _WasmPInvokeModules),
 /// as the SDK's consumer targets do for a ProjectReference; a package must work without the
-/// SDK. Paths are relative to the props file, so the package works from any NuGet cache
-/// location. Error: ASM0061 (the props cannot be written or the graph read).
+/// SDK. Such an app also gets the consumer targets' check: ASM0054 from a target the props
+/// define, when .NET's native WebAssembly build is missing for the app's target framework (the
+/// app would otherwise build without the package's code). Paths are relative to the props
+/// file, so the package works from any NuGet cache location. Error: ASM0061 (the props cannot
+/// be written or the graph read).
 /// </para>
 /// </remarks>
 public sealed class AsmWritePackageProps : Task
@@ -234,6 +237,19 @@ public sealed class AsmWritePackageProps : Task
             project.Add(wasmItems);
         }
 
+        // The same check the SDK's consumer targets make for a ProjectReference (_AsmCheckWasmNativeBuild,
+        // ASM0054): without .NET's native WebAssembly build for the app's target framework, .NET
+        // imports none of its WebAssembly build targets, ignores NativeFileReference, and the app
+        // builds without the package's code (measured: SDK 11.0.100 with only the net11.0
+        // wasm-tools built a net10.0 app with no AppBundle and no warning). One clause per wasm RID
+        // the package has: a package without one adds nothing here.
+        string[] wasmRids = LinkLibraries.Select(l => l.GetMetadata("RuntimeIdentifier")).Where(IsWasmRid)
+            .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(r => r, StringComparer.Ordinal).ToArray();
+        if (wasmRids.Length != 0)
+        {
+            project.Add(WasmNativeBuildCheck(id, IsAsm, wasmRids));
+        }
+
         project.Add(new XElement("Target",
             new XAttribute("Name", $"_AsmCheckPackage_{id}"),
             new XAttribute("BeforeTargets", "AsmPrepare"),
@@ -253,6 +269,76 @@ public sealed class AsmWritePackageProps : Task
         }
 
         return output.ToString() + "\n";
+    }
+
+    /// <summary>
+    /// The target that stops a .NET WebAssembly app with ASM0054 when .NET's native WebAssembly
+    /// build, the only one that links the package's archive, is missing for the app's target
+    /// framework, naming the workload to install.
+    /// </summary>
+    /// <param name="id">The property-name-safe package id, which keeps the target's name and its properties apart from other packages' checks.</param>
+    /// <param name="isAsm">The condition that is true in an asm project (which links the package itself and needs no .NET workload).</param>
+    /// <param name="wasmRids">The WebAssembly RIDs the package was packed for (at least one).</param>
+    /// <returns>The Target element.</returns>
+    /// <remarks>
+    /// <para>
+    /// The test is the one .NET's own imports make: UsingBrowserRuntimeWorkload (browser-wasm) and
+    /// UsingWasiRuntimeWorkload (wasi-wasm) decide whether its WebAssembly build targets are
+    /// imported. .NET's workload manifests set them from its verdicts for the app's target
+    /// framework (WasmNativeWorkloadAvailable, WasiNativeWorkloadAvailable, computed from the
+    /// installed workload packs), and a browser app .NET marks as needing the native build gets
+    /// UsingBrowserRuntimeWorkload true regardless, so the switch is the test. When one is true
+    /// and the workload is missing, .NET stops the build itself.
+    /// </para>
+    /// <para>
+    /// The fix is named as the SDK's consumer targets name it (_AsmCheckWasmNativeBuild, where
+    /// the measurements are): wasm-tools or wasi-experimental for an app of the SDK's own .NET;
+    /// on a later SDK, wasm-tools-net&lt;major&gt; or that .NET's SDK for a browser app, and that
+    /// .NET's SDK for a WASI app, whose later-SDK build serves only its own .NET.
+    /// </para>
+    /// <para>
+    /// BeforeTargets PrepareForBuild, one of a build's first steps, so that nothing is compiled
+    /// for an app that cannot work. A Target element in a props file is fine: MSBuild collects
+    /// targets from every import before it runs any.
+    /// </para>
+    /// </remarks>
+    private XElement WasmNativeBuildCheck(string id, string isAsm, IReadOnlyList<string> wasmRids)
+    {
+        // One clause per packed wasm RID, each with the import switch of its runtime.
+        string missing = string.Join(" or ", wasmRids.Select(rid =>
+            $"('$(RuntimeIdentifier)' == '{rid}' and '$({(rid.StartsWith("wasi", StringComparison.OrdinalIgnoreCase) ? "UsingWasiRuntimeWorkload" : "UsingBrowserRuntimeWorkload")})' != 'true')"));
+        string workload = $"_AsmPackageWasmWorkload_{id}";
+        string fix = $"_AsmPackageWasmFix_{id}";
+        string appMajor = $"_AsmPackageWasmAppMajor_{id}";
+        string sdkMajor = $"_AsmPackageWasmSdkMajor_{id}";
+        // The app targets an earlier .NET than the SDK's (net10.0 on SDK 11). Compared through
+        // properties: a property function with a quoted argument inside a quoted condition
+        // string is MSB4092 ("An unexpected token"), measured in a package's props.
+        string earlier = $"'$({appMajor})' != '$({sdkMajor})'";
+        return new XElement("Target",
+            new XAttribute("Name", $"_AsmCheckWasmNativeBuild_{id}"),
+            new XAttribute("BeforeTargets", "PrepareForBuild"),
+            new XAttribute("Condition", $"!({isAsm}) and ({missing})"),
+            new XElement("PropertyGroup",
+                new XElement(workload, new XAttribute("Condition", "'$(RuntimeIdentifier)' == 'browser-wasm'"), "wasm-tools"),
+                new XElement(workload, new XAttribute("Condition", "'$(RuntimeIdentifier)' == 'wasi-wasm'"), "wasi-experimental"),
+                // The app's .NET major version (10 for net10.0) and the SDK's (11 for 11.0.100,
+                // and for a preview such as 11.0.100-preview.6).
+                new XElement(appMajor, "$([MSBuild]::GetTargetFrameworkVersion('$(TargetFramework)', 1))"),
+                new XElement(sdkMajor, "$(NETCoreSdkVersion.Split('.')[0])"),
+                new XElement(fix, $"dotnet workload install $({workload})"),
+                new XElement(fix,
+                    new XAttribute("Condition", $"{earlier} and '$(RuntimeIdentifier)' == 'browser-wasm'"),
+                    $"dotnet workload install $({workload})-net$({appMajor}), or build with a .NET $({appMajor}) SDK (global.json) and its $({workload}) workload"),
+                new XElement(fix,
+                    new XAttribute("Condition", $"{earlier} and '$(RuntimeIdentifier)' == 'wasi-wasm'"),
+                    $"build it with a .NET $({appMajor}) SDK (global.json) and its $({workload}) workload, since a later SDK's WASI build serves only its own .NET")),
+            new XElement("Error",
+                new XAttribute("Code", "ASM0054"),
+                new XAttribute("Text",
+                    $"$(MSBuildProjectName) links the package {PackageId} {PackageVersion} into its $(RuntimeIdentifier) runtime, which only .NET's native WebAssembly build does, " +
+                    $"and this .NET SDK ($(NETCoreSdkVersion)) has none for $(TargetFramework): $({fix}). " +
+                    "Without it the app would build without the package's asm code, and every call into it would fail when the app runs.")));
     }
 
     /// <summary>Whether a packed RID is one of the WebAssembly RIDs, whose archives a .NET app links.</summary>

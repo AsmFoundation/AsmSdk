@@ -347,6 +347,62 @@
   </Target>
 
   <!--
+    _AsmCheckWasmNativeBuild: a .NET WebAssembly app that links asm projects needs .NET's native
+    WebAssembly build (Emscripten for browser-wasm, the WASI SDK's clang for wasi-wasm), and that
+    build is a workload of the app's TARGET FRAMEWORK, not of the SDK: wasm-tools and
+    wasi-experimental serve the SDK's own .NET version, wasm-tools-net10 and
+    wasi-experimental-net10 serve a net10.0 app on a later SDK (the workload IDs of .NET's
+    manifests, 10.0.100 and 11.0.100 bands). Without it .NET imports none of its WebAssembly build
+    targets, so the app builds as plain IL: NativeFileReference is ignored (.NET only warns, and
+    only for items it already has, while _AsmAddWasmNativeFileReferences, which adds them before
+    that build's first step, never runs), and every P/Invoke into the asm code fails when the app
+    runs. Measured on GitHub's windows-2025 image: SDK 11.0.100 with Visual Studio's wasm-tools,
+    which serves net11.0, built a net10.0 app that links WasmLibrary with no AppBundle and no
+    warning. So a missing native build is an error here (ASM0054), naming the fix.
+    The test is the one .NET's own imports make: UsingBrowserRuntimeWorkload (browser-wasm) and
+    UsingWasiRuntimeWorkload (wasi-wasm) decide whether its WebAssembly build targets are
+    imported at all. .NET's workload manifests set them from WasmNativeWorkloadAvailable and
+    WasiNativeWorkloadAvailable, its verdicts for the app's target framework, computed from the
+    installed workload packs; a browser app that .NET marks as needing the native build
+    (_WasmNativeWorkloadNeeded: an AppBundle app, WasmBuildNative, AOT) gets
+    UsingBrowserRuntimeWorkload true whatever the verdict, so the switch, not the verdict, says
+    whether the targets come (measured: on SDK 10.0.404 with wasm-tools, -p:WasmNativeWorkload=false
+    left the switch true and Emscripten linked; on SDK 11.0.100 without the net10.0 workloads
+    both switches evaluate false for the test apps). When one is true and the
+    workload is still missing, .NET stops the build itself (its workload resolver names the
+    workload), so nothing is said twice. The tests reach this error on a machine that has the
+    workloads by setting the switch false, which is what a machine without them evaluates.
+    The fix differs by runtime. A later SDK names the browser workload of an earlier .NET with a
+    -net<major> suffix (wasm-tools-net10 on SDK 11). Its WASI targets serve only the SDK's own
+    .NET: .NET 11.0.100's WorkloadManifest.Wasi.targets computes WasiNativeWorkloadAvailable for
+    TargetsCurrent and TargetsNet9 only, so a net10.0 WASI app gets no native build there even
+    with wasi-experimental-net10 installed; the SDK of the app's own .NET (global.json) does it.
+    Right after the references are configured, before any is built: the asm projects would be
+    built for nothing. A package reference makes the same check through the package's props
+    (AsmWritePackageProps), because a package works without these targets.
+  -->
+  <Target Name="_AsmCheckWasmNativeBuild"
+          AfterTargets="_AsmConfigureAsmProjectReferences"
+          Condition="'$(UsingAsmFoundationSdk)' != 'true' and '$(_AsmConsumerIsWasm)' == 'true' and '@(_AsmWasmLinkedLibrary)' != ''">
+    <PropertyGroup>
+      <_AsmWasmNativeBuild Condition="'$(RuntimeIdentifier)' == 'browser-wasm'">$(UsingBrowserRuntimeWorkload)</_AsmWasmNativeBuild>
+      <_AsmWasmNativeBuild Condition="'$(RuntimeIdentifier)' == 'wasi-wasm'">$(UsingWasiRuntimeWorkload)</_AsmWasmNativeBuild>
+      <_AsmWasmWorkload Condition="'$(RuntimeIdentifier)' == 'browser-wasm'">wasm-tools</_AsmWasmWorkload>
+      <_AsmWasmWorkload Condition="'$(RuntimeIdentifier)' == 'wasi-wasm'">wasi-experimental</_AsmWasmWorkload>
+      <!-- The app's .NET major version (10 for net10.0) against the SDK's (11 for 11.0.100, and
+           for a preview such as 11.0.100-preview.6). -->
+      <_AsmWasmAppDotnetMajor>$([MSBuild]::GetTargetFrameworkVersion('$(TargetFramework)', 1))</_AsmWasmAppDotnetMajor>
+      <_AsmWasmSdkMajor>$(NETCoreSdkVersion.Split('.')[0])</_AsmWasmSdkMajor>
+      <_AsmWasmFix>dotnet workload install $(_AsmWasmWorkload)</_AsmWasmFix>
+      <_AsmWasmFix Condition="'$(_AsmWasmAppDotnetMajor)' != '$(_AsmWasmSdkMajor)' and '$(RuntimeIdentifier)' == 'browser-wasm'">dotnet workload install $(_AsmWasmWorkload)-net$(_AsmWasmAppDotnetMajor), or build with a .NET $(_AsmWasmAppDotnetMajor) SDK (global.json) and its $(_AsmWasmWorkload) workload</_AsmWasmFix>
+      <_AsmWasmFix Condition="'$(_AsmWasmAppDotnetMajor)' != '$(_AsmWasmSdkMajor)' and '$(RuntimeIdentifier)' == 'wasi-wasm'">build it with a .NET $(_AsmWasmAppDotnetMajor) SDK (global.json) and its $(_AsmWasmWorkload) workload, since a later SDK's WASI build serves only its own .NET</_AsmWasmFix>
+    </PropertyGroup>
+    <Error Code="ASM0054"
+           Condition="'$(_AsmWasmNativeBuild)' != 'true'"
+           Text="$(MSBuildProjectName) links @(_AsmWasmLinkedLibrary->'%(Filename)', ', ') into its $(RuntimeIdentifier) runtime, which only .NET's native WebAssembly build does, and this .NET SDK ($(NETCoreSdkVersion)) has none for $(TargetFramework): $(_AsmWasmFix). Without it the app would build without the asm code, and every call into it would fail when the app runs." />
+  </Target>
+
+  <!--
     _AsmAddWasmNativeFileReferences: a .NET WebAssembly app links its asm references into its own
     runtime. Each linked reference's link inputs (GetAsmLinkInputs: the archive, or the object
     files) become NativeFileReference items, the .NET WebAssembly build's input for native code
