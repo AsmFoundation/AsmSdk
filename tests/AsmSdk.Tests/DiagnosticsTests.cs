@@ -33,9 +33,10 @@ public sealed class DiagnosticsTests(SdkUnderTest sdk)
     /// <summary>
     /// A GNU-syntax error is an MSBuild error at the source's own file, line and column,
     /// "…/GnuError/gnuerror.s(4,5): error …: unrecognized instruction mnemonic", although
-    /// ImplicitUsings has llvm-mc assemble the source through a wrapper in obj/ that includes it
-    /// (llvm-mc reports an error in an included file at that file's line); then ASM0007.
-    /// Measured 2026-11-23 before the test.
+    /// ImplicitUsings has llvm-mc assemble the source through a wrapper in obj/: the wrapper
+    /// holds the source's text behind a line marker with its full path, which llvm-mc reports
+    /// errors at (as it did when the wrapper included the source); then ASM0007. Measured
+    /// 2026-11-23 before the test, and again with the line-marker wrapper.
     /// </summary>
     [Fact]
     public void A_gnu_syntax_error_is_an_msbuild_error_at_its_line()

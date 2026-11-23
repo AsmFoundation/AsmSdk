@@ -1,0 +1,13 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A WebAssembly module whose exports file decides its exports (WebAssemblyTests): both functions
+    are FUNCTIONs, global and visible, but exports.map lists we_exported alone, so the module
+    exports it and its memory (wasm-ld's own), not we_internal. Without an ExportsFile the module
+    would export both (export-dynamic, as WasmLibrary shows).
+  -->
+  <PropertyGroup>
+    <AssemblyName>wasmexports</AssemblyName>
+    <RuntimeIdentifiers>wasi-wasm</RuntimeIdentifiers>
+    <ExportsFile>exports.map</ExportsFile>
+  </PropertyGroup>
+</Project>

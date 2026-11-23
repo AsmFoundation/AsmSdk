@@ -1,0 +1,15 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A small WebAssembly library that builds as it is, and that WebAssemblyTests builds with one
+    setting changed on the command line to see each WebAssembly rule stop it:
+      -p:TargetFramework=libc                ASM0016  a linked wasm output with libc
+      -p:OutputType=Exe -r browser-wasm      ASM0017  a program for the browser
+      -p:DefineConstants=LEVEL=3             ASM0018  a define with a value
+      -p:ExportsFile=wild.map                ASM0030  a pattern in a wasm module's exports
+    Kept apart from WasmLibrary so that those builds never touch the outputs other tests read.
+  -->
+  <PropertyGroup>
+    <AssemblyName>wasmrules</AssemblyName>
+    <RuntimeIdentifiers>browser-wasm;wasi-wasm</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

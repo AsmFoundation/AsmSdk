@@ -1,0 +1,7 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!-- Expected to FAIL with ASM0021: kernel.wasm.asm is a NASM file qualified for WebAssembly
+       only, and NASM assembles x86-64 only; WebAssembly is .s files for llvm-mc. -->
+  <PropertyGroup>
+    <RuntimeIdentifiers>browser-wasm</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

@@ -37,6 +37,7 @@
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmSelectRunTarget" AssemblyFile="$(_AsmTasksAssembly)" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmReadApi" AssemblyFile="$(_AsmTasksAssembly)" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmMergeApi" AssemblyFile="$(_AsmTasksAssembly)" />
+  <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmWriteSourceWrappers" AssemblyFile="$(_AsmTasksAssembly)" />
 
   <!-- ===================================================================================== -->
   <!-- Items                                                                                  -->
@@ -86,10 +87,13 @@
   -->
   <ItemGroup Condition="'$(_AsmRid)' == '' and '$(TargetFramework)' != '' and '$(_AsmOutputKind)' != 'Objects'">
     <_AsmRidOutput Include="$(_AsmBuildRuntimeIdentifiers)">
-      <OutputPrefix Condition="!$([System.String]::Copy('%(Identity)').StartsWith('win-'))">lib</OutputPrefix>
+      <!-- WebAssembly names carry no lib prefix (see Properties.targets: .NET matches the
+           archive's file name against [DllImport]). -->
+      <OutputPrefix Condition="!$([System.String]::Copy('%(Identity)').StartsWith('win-')) and !$([System.String]::Copy('%(Identity)').EndsWith('-wasm'))">lib</OutputPrefix>
       <OutputExtension Condition="'$(_AsmOutputKind)' == 'SharedLibrary' and $([System.String]::Copy('%(Identity)').StartsWith('win-'))">.dll</OutputExtension>
       <OutputExtension Condition="'$(_AsmOutputKind)' == 'SharedLibrary' and $([System.String]::Copy('%(Identity)').StartsWith('osx-'))">.dylib</OutputExtension>
       <OutputExtension Condition="'$(_AsmOutputKind)' == 'SharedLibrary' and $([System.String]::Copy('%(Identity)').StartsWith('linux-'))">.so</OutputExtension>
+      <OutputExtension Condition="'$(_AsmOutputKind)' != 'StaticLibrary' and $([System.String]::Copy('%(Identity)').EndsWith('-wasm'))">.wasm</OutputExtension>
       <OutputExtension Condition="'$(_AsmOutputKind)' == 'StaticLibrary' and $([System.String]::Copy('%(Identity)').StartsWith('win-'))">.lib</OutputExtension>
       <OutputExtension Condition="'$(_AsmOutputKind)' == 'StaticLibrary' and !$([System.String]::Copy('%(Identity)').StartsWith('win-'))">.a</OutputExtension>
       <OutputExtension Condition="'$(_AsmOutputKind)' == 'Executable' and $([System.String]::Copy('%(Identity)').StartsWith('win-'))">.exe</OutputExtension>
@@ -153,7 +157,10 @@
       mainCRTStartup on Windows. macOS needs none: dyld calls main through LC_MAIN.
     -->
     <_AsmIsLinked Condition="'$(_AsmRid)' != '' and ('$(_AsmOutputKind)' == 'SharedLibrary' or '$(_AsmOutputKind)' == 'Executable')">true</_AsmIsLinked>
-    <_AsmUsesLibc Condition="'$(_AsmIsLinked)' == 'true' and '$(_AsmRuntime)' == 'Libc'">true</_AsmUsesLibc>
+    <!-- WebAssembly links no C library of the SDK's: there is no stand-in for one (a linked wasm
+         output with libc is ASM0016), and an archive's libc calls are resolved by the .NET
+         WebAssembly app's own link, which brings Emscripten's C library or wasi-libc. -->
+    <_AsmUsesLibc Condition="'$(_AsmIsLinked)' == 'true' and '$(_AsmRuntime)' == 'Libc' and '$(_AsmArch)' != 'wasm'">true</_AsmUsesLibc>
     <_AsmUsesCrt Condition="'$(_AsmUsesLibc)' == 'true' and '$(_AsmOutputKind)' == 'Executable' and '$(StartupObject)' == '' and '$(_AsmOs)' != 'MacOS'">true</_AsmUsesCrt>
     <_AsmLibcStubName Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmMusl)' == 'true' and '$(_AsmArch)' == 'arm64'">libc.musl-aarch64.so.1</_AsmLibcStubName>
     <_AsmLibcStubName Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmMusl)' == 'true' and '$(_AsmArch)' == 'x64'">libc.musl-x86_64.so.1</_AsmLibcStubName>
@@ -183,17 +190,19 @@
     _AsmResolveToolchain: sets _AsmNasm, _AsmLlvmMc, _AsmLinker and _AsmArchiver to complete
     command prefixes and fails early, with the fix, when a tool is missing.
     lld is one binary for every linker: "-flavor gnu" is ld.lld (ELF, Linux), "-flavor link" is
-    lld-link (PE/COFF, Windows) and "-flavor darwin" is ld64.lld (Mach-O, macOS); the RID being
-    built picks the flavor. llvm-mc assembles GNU-syntax sources (.s), the language of ARM64
-    code; it is checked only when such a source builds this RID (see AsmAssemble), so a
-    toolchain package older than llvm-mc still builds NASM-only projects.
+    lld-link (PE/COFF, Windows), "-flavor darwin" is ld64.lld (Mach-O, macOS) and "-flavor wasm"
+    is wasm-ld (WebAssembly, browser-wasm and wasi-wasm); the RID being built picks the flavor.
+    llvm-mc assembles GNU-syntax sources (.s), the language of ARM64 code and of WebAssembly;
+    it is checked only when such a source builds this RID (see AsmAssemble), so a toolchain
+    package older than llvm-mc still builds NASM-only projects.
     Errors: ASM0001 (bundled toolchain not restored), ASM0002 (unknown AsmToolchain value),
-    ASM0005 (the System toolchain asked to link Windows or macOS output with GNU ld).
+    ASM0005 (the System toolchain asked to link Windows, macOS or WebAssembly output with GNU ld).
   -->
   <Target Name="_AsmResolveToolchain">
     <PropertyGroup>
       <_AsmLinkerFlavor Condition="'$(_AsmOs)' == 'Windows'">link</_AsmLinkerFlavor>
       <_AsmLinkerFlavor Condition="'$(_AsmOs)' == 'MacOS'">darwin</_AsmLinkerFlavor>
+      <_AsmLinkerFlavor Condition="'$(_AsmArch)' == 'wasm'">wasm</_AsmLinkerFlavor>
       <_AsmLinkerFlavor Condition="'$(_AsmLinkerFlavor)' == ''">gnu</_AsmLinkerFlavor>
     </PropertyGroup>
     <PropertyGroup Condition="'$(AsmToolchain)' == 'Bundled'">
@@ -234,6 +243,12 @@
          files never run the linker. -->
     <Error Code="ASM0005" Condition="'$(AsmToolchain)' == 'System' and '$(_AsmIsLinked)' == 'true' and '$(_AsmOs)' == 'Linux' and '$(_AsmSdkArch)' != '' and '$(_AsmArch)' != '$(_AsmSdkArch)' and '$(AsmLinkerCommand)' == ''"
            Text="AsmToolchain=System links $(_AsmRid) with the command in AsmLinkerCommand, and its default, ld, is this machine's GNU ld, which links $(_AsmSdkArch) ELF files only. Set AsmLinkerCommand to ld.lld (it links every architecture) or a cross linker for $(_AsmArch) (such as aarch64-linux-gnu-ld), or build $(_AsmRid) with the bundled toolchain." />
+    <!-- WebAssembly links with wasm-ld's command line, which no GNU ld understands. Archives
+         need an archiver that indexes wasm objects' symbols, which GNU ar does not either:
+         AsmArchiverCommand=llvm-ar (the docs say so; an archive without an index fails only at
+         a consumer's link). Only for a linked output, as above. -->
+    <Error Code="ASM0005" Condition="'$(AsmToolchain)' == 'System' and '$(_AsmIsLinked)' == 'true' and '$(_AsmArch)' == 'wasm' and '$(AsmLinkerCommand)' == ''"
+           Text="AsmToolchain=System links $(_AsmRid) with the command in AsmLinkerCommand, and its default, ld, is GNU ld, which links no WebAssembly. Set AsmLinkerCommand to wasm-ld (LLVM's WebAssembly linker; also AsmArchiverCommand to llvm-ar, which indexes wasm objects), or build $(_AsmRid) with the bundled toolchain." />
 
     <!--
       NuGet does not keep the Unix execute bit when it extracts a package, so the tools come
@@ -261,11 +276,12 @@
   <Target Name="AsmPrepare" DependsOnTargets="_AsmCheckRuntimeIdentifiers;_AsmResolveToolchain;_AsmResolveProjectReferences">
     <!--
       The sources of this RID: AsmSelectSources reads each file's qualifier and language
-      (crc32c.asm for every x64 RID, crc32c.linux.asm for Linux only, crc32c.s for ARM64; the
-      most specific file of a name wins) and adds AsmLanguage (Nasm or Gnu). The RID outer
-      build assembles nothing, so it selects nothing. The task's errors: ASM0020 (two files of
-      one name tie), ASM0021 (a .asm qualified for ARM64 only), ASM0022 (a RID it does not
-      know), ASM0024 (a file listed twice).
+      (crc32c.asm for every x64 RID, crc32c.linux.asm for Linux only, crc32c.s for ARM64,
+      crc32c.wasm.s for both WebAssembly RIDs; the most specific file of a name wins) and adds
+      AsmLanguage (Nasm or Gnu). The RID outer build assembles nothing, so it selects nothing.
+      The task's errors: ASM0020 (two files of one name tie), ASM0021 (a .asm qualified for
+      ARM64 or WebAssembly only), ASM0022 (a RID it does not know), ASM0024 (a file listed
+      twice).
     -->
     <!-- The Compile items that are asm sources: _AsmCheckProject has already refused one of
          another kind the project listed (ASM0025), so this only keeps out what a target of
@@ -273,6 +289,14 @@
          the target framework attribute file stays out of an .asmproj, which has no language). -->
     <ItemGroup>
       <_AsmSourceItem Include="@(Compile)" Condition="'%(Extension)' == '.asm' or '%(Extension)' == '.s'" />
+      <!-- RecursiveDir (the folder a ** glob matched, src/ for src/x.s) is MSBuild's own
+           metadata, which the items a task returns do not have: AsmSelectSources' output had it
+           empty, so every object went to obj/x.o, and a/x.s and b/x.s overwrote each other's
+           (measured: src/wasmlib.wasm.s assembled to obj/wasmlib.wasm.o). Kept as custom
+           metadata, which the task copies. -->
+      <_AsmSourceItem>
+        <AsmRecursiveDir>%(RecursiveDir)</AsmRecursiveDir>
+      </_AsmSourceItem>
     </ItemGroup>
     <AsmSelectSources Condition="'$(_AsmRid)' != '' and '@(_AsmSourceItem)' != ''" Sources="@(_AsmSourceItem)" RuntimeIdentifier="$(_AsmRid)">
       <Output TaskParameter="Selected" ItemName="_AsmSelectedSource" />
@@ -280,8 +304,37 @@
     <!-- A project with sources, none of which builds this RID, would otherwise link an empty
          library for it: typically NASM-only code built for an ARM64 RID. -->
     <Error Code="ASM0023"
-           Condition="'$(_AsmRid)' != '' and '@(_AsmSourceItem)' != '' and '@(_AsmSelectedSource)' == ''"
+           Condition="'$(_AsmRid)' != '' and '$(_AsmArch)' != 'wasm' and '@(_AsmSourceItem)' != '' and '@(_AsmSelectedSource)' == ''"
            Text="No source of this project builds $(_AsmRid). NASM files (.asm) build the x64 RIDs; ARM64 needs GNU-syntax files (.s). Add a source for $(_AsmRid) (for example name.$(_AsmRid).s), or remove $(_AsmRid) from RuntimeIdentifiers." />
+    <!-- The same for WebAssembly, whose sources are always qualified: a project that adds
+         browser-wasm to a list of native RIDs has none yet, and its unqualified .s files are
+         ARM64 code that llvm-mc's wasm parser could never read. -->
+    <Error Code="ASM0023"
+           Condition="'$(_AsmRid)' != '' and '$(_AsmArch)' == 'wasm' and '@(_AsmSourceItem)' != '' and '@(_AsmSelectedSource)' == ''"
+           Text="No source of this project builds $(_AsmRid). WebAssembly is LLVM's WebAssembly assembly in .s files qualified for it: name.wasm.s (browser-wasm and wasi-wasm), name.$(_AsmOs.ToLowerInvariant()).s or name.$(_AsmRid).s. Unqualified .s files are ARM64 code. Add one, or remove $(_AsmRid) from RuntimeIdentifiers." />
+
+    <!--
+      What WebAssembly cannot build, before anything is assembled:
+        ASM0016  a linked output (a module, or a WASI program) with TargetFramework libc. The
+                 bundled wasm-ld links no C library: there is no stand-in for one, as there is for
+                 glibc or the UCRT, and the browser has none at all. A libc library for .NET
+                 WebAssembly apps is a StaticLibrary (or Objects): the app's build links it with
+                 its own C library (Emscripten's, or wasi-libc from the WASI SDK).
+        ASM0017  a program for browser-wasm. The browser starts no programs: JavaScript
+                 instantiates a module and calls its exports (OutputType Library), and WASI is the
+                 WebAssembly that runs programs.
+    -->
+    <PropertyGroup>
+      <!-- The word the WebAssembly messages use for this project's output. -->
+      <_AsmWasmOutputWord Condition="'$(_AsmOutputKind)' == 'Executable'">program</_AsmWasmOutputWord>
+      <_AsmWasmOutputWord Condition="'$(_AsmOutputKind)' != 'Executable'">module</_AsmWasmOutputWord>
+    </PropertyGroup>
+    <Error Code="ASM0016"
+           Condition="'$(_AsmArch)' == 'wasm' and '$(_AsmIsLinked)' == 'true' and '$(_AsmRuntime)' == 'Libc'"
+           Text="$(MSBuildProjectName) links a WebAssembly $(_AsmWasmOutputWord) for $(_AsmRid) with TargetFramework libc, but the bundled wasm-ld links no C library. Build it freestanding (the default), calling WASI or JavaScript imports directly; or, for a .NET WebAssembly app, build &lt;OutputType&gt;StaticLibrary&lt;/OutputType&gt;: the app's own build links its C library (Emscripten's, or wasi-libc)." />
+    <Error Code="ASM0017"
+           Condition="'$(_AsmOs)' == 'Browser' and '$(_AsmOutputKind)' == 'Executable'"
+           Text="$(MSBuildProjectName) is a program (OutputType Exe), and browser-wasm has none: JavaScript instantiates a module and calls its exports. Build &lt;OutputType&gt;Library&lt;/OutputType&gt; for the browser (a module with exports, and an archive for .NET WebAssembly apps), or build the program for wasi-wasm, which wasmtime and other WASI hosts run." />
 
     <!--
       ExportsFile: the linker version script, under NativeAOT's name for the same file (the
@@ -294,9 +347,11 @@
     </PropertyGroup>
     <ItemGroup>
       <!-- Each source's object keeps the source's subfolder, so a/x.asm and b/x.asm do not
-           collide, and its qualifier, so x.linux.asm and x.asm never share an object. -->
+           collide, and its qualifier, so x.linux.asm and x.asm never share an object. The
+           subfolder is AsmRecursiveDir (see _AsmSourceItem above): RecursiveDir itself is empty
+           on the task's output. -->
       <_AsmSelectedSource>
-        <ObjectFile>$(AsmIntermediateDirectory)obj/%(RecursiveDir)%(Filename).o</ObjectFile>
+        <ObjectFile>$(AsmIntermediateDirectory)obj/%(AsmRecursiveDir)%(Filename).o</ObjectFile>
       </_AsmSelectedSource>
       <_AsmSelectedSource>
         <ObjectToolPath>$([System.IO.Path]::GetFullPath('%(ObjectFile)').Replace('\','/'))</ObjectToolPath>
@@ -309,15 +364,16 @@
              MakeRelative leaves a path on another drive absolute, which still assembles. -->
         <SourceRelativeToolPath>$([MSBuild]::MakeRelative('$(MSBuildProjectDirectory)/', '%(FullPath)').Replace('\','/'))</SourceRelativeToolPath>
         <!-- With ImplicitUsings, a GNU source is assembled through a generated file that
-             includes the platform layer first (see _AsmWriteImplicitUsingsWrappers); its path is
-             relative too, for the same reason. -->
-        <ImplicitUsingsWrapper Condition="'$(_AsmImplicitUsings)' == 'true' and '%(_AsmSelectedSource.AsmLanguage)' == 'Gnu'">$(AsmIntermediateDirectory)implicit/%(RecursiveDir)%(Filename)%(Extension)</ImplicitUsingsWrapper>
+             includes the platform layer first, and a WebAssembly source always is, because the
+             file also carries the defines (see _AsmWriteSourceWrappers); its path is relative
+             too, for the same reason. -->
+        <SourceWrapper Condition="('$(_AsmImplicitUsings)' == 'true' or '$(_AsmArch)' == 'wasm') and '%(_AsmSelectedSource.AsmLanguage)' == 'Gnu'">$(AsmIntermediateDirectory)implicit/%(AsmRecursiveDir)%(Filename)%(Extension)</SourceWrapper>
       </_AsmSelectedSource>
       <!-- Qualified metadata below: only GNU sources define the wrapper, and an unqualified
            %(...) over items that lack it stops the build with MSB4096 (measured). -->
       <_AsmSelectedSource>
         <AssembledToolPath>%(_AsmSelectedSource.SourceRelativeToolPath)</AssembledToolPath>
-        <AssembledToolPath Condition="'%(_AsmSelectedSource.ImplicitUsingsWrapper)' != ''">$([MSBuild]::MakeRelative('$(MSBuildProjectDirectory)/', $([System.IO.Path]::GetFullPath('%(_AsmSelectedSource.ImplicitUsingsWrapper)'))).Replace('\','/'))</AssembledToolPath>
+        <AssembledToolPath Condition="'%(_AsmSelectedSource.SourceWrapper)' != ''">$([MSBuild]::MakeRelative('$(MSBuildProjectDirectory)/', $([System.IO.Path]::GetFullPath('%(_AsmSelectedSource.SourceWrapper)'))).Replace('\','/'))</AssembledToolPath>
       </_AsmSelectedSource>
       <_AsmObject Include="@(_AsmSelectedSource->'%(ObjectToolPath)')" />
 
@@ -531,6 +587,26 @@
       <_AsmLlvmMcTriple Condition="'$(_AsmOs)' == 'MacOS'">$(_AsmLlvmMcCpu)-apple-macos$(AsmMacOSMinimumVersion)</_AsmLlvmMcTriple>
       <_AsmLlvmMcTriple Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmMusl)' == 'true'">$(_AsmLlvmMcCpu)-linux-musl</_AsmLlvmMcTriple>
       <_AsmLlvmMcTriple Condition="'$(_AsmOs)' == 'Linux' and '$(_AsmMusl)' != 'true'">$(_AsmLlvmMcCpu)-linux-gnu</_AsmLlvmMcTriple>
+      <!--
+        WebAssembly: 32-bit wasm, with Emscripten's triple for the browser (what .NET's
+        browser-wasm build links with) and WASI's for wasi-wasm. The objects are the same wasm
+        object format either way; llvm-mc records no triple in them (measured: the three
+        triples' objects have the same sections).
+        Features: LLVM 23's generic wasm CPU already accepts bulk memory, multivalue, mutable
+        globals, non-trapping float-to-int, reference types and sign extension; SIMD128 and
+        tail calls (return_call) are refused without -mattr ("instruction requires: simd128",
+        measured). Both are standard WebAssembly that today's browsers, Node and wasmtime run,
+        and .NET's WebAssembly runtime is built with SIMD (since .NET 8). Accepting them costs
+        nothing: llvm-mc writes no target_features section (measured), so a module needs them
+        at run time only if its code uses them. One trap, measured with .NET 10.0.15: the
+        browser build's wasm-opt validates dotnet.native.wasm with SIMD but without tail calls,
+        so a return_call in code linked into a .NET app fails that app's Release link; that is
+        why asmsdk-wasm.inc's TAILCALL is a call and a return. AsmLlvmMcFlags comes later on the
+        line, so -mattr=-simd128 there takes SIMD away again, and -mattr=+relaxed-simd adds more.
+      -->
+      <_AsmLlvmMcTriple Condition="'$(_AsmOs)' == 'Browser'">wasm32-unknown-emscripten</_AsmLlvmMcTriple>
+      <_AsmLlvmMcTriple Condition="'$(_AsmOs)' == 'Wasi'">wasm32-unknown-wasi</_AsmLlvmMcTriple>
+      <_AsmLlvmMcFeatureArguments Condition="'$(_AsmArch)' == 'wasm'">-mattr=+simd128,+tail-call</_AsmLlvmMcFeatureArguments>
       <!-- llvm-mc writes DWARF only (it has no CodeView option for assembly sources). Windows
            debuggers read PDBs, and lld-link copied the DWARF sections into the DLL with a
            warning per section (".debug_info is longer than 8 characters", measured on
@@ -539,9 +615,17 @@
       <_AsmLlvmMcDebugArguments Condition="'$(_AsmDebugSymbols)' == 'true' and '$(_AsmOs)' != 'Windows'">-g</_AsmLlvmMcDebugArguments>
       <_AsmLlvmMcIncludeArguments>@(_AsmIncludeDirectoryOrdered->'-I &quot;%(ToolPath)&quot;', ' ')</_AsmLlvmMcIncludeArguments>
     </PropertyGroup>
-    <ItemGroup>
+    <!-- WebAssembly takes no defsym: each one is a constant symbol, and llvm-mc's wasm object
+         writer stops on any ("WASM: absolute addressing not supported!", measured with LLVM
+         23.1.5; its WasmObjectWriter has no way to write a symbol that is not in a section).
+         The defines become labels in the generated wrapper instead (AsmWriteSourceWrappers),
+         which also refuses a define with a value (ASM0018). -->
+    <ItemGroup Condition="'$(_AsmArch)' != 'wasm'">
       <_AsmLlvmMcDefine Include="@(_AsmDefine)" Condition="$([System.String]::Copy('%(Identity)').Contains('='))" />
       <_AsmLlvmMcDefine Include="@(_AsmDefine->'%(Identity)=1')" Condition="!$([System.String]::Copy('%(Identity)').Contains('='))" />
+    </ItemGroup>
+    <ItemGroup Condition="'$(_AsmArch)' == 'wasm'">
+      <_AsmWasmDefineLabel Include="@(_AsmDefine)" />
     </ItemGroup>
     <PropertyGroup>
       <_AsmLlvmMcDefineArguments>@(_AsmLlvmMcDefine->'--defsym=%(Identity)', ' ')</_AsmLlvmMcDefineArguments>
@@ -560,9 +644,25 @@
                     AllowWildcards="$([System.String]::Equals('$(_AsmOs)', 'MacOS'))">
       <Output TaskParameter="Names" ItemName="_AsmExportedName" />
     </AsmReadExports>
+    <!--
+      WebAssembly (wasm-ld) takes the names too, one exact name per export option, no wildcards.
+      Without an ExportsFile, a module exports every global symbol that is not hidden
+      (export-dynamic): what asmsdk-wasm.inc's FUNCTION declares, never a HIDDEN_FUNCTION. With
+      one, exactly the names it lists, plus what wasm-ld always exports (the memory, and a
+      WASI program's _start). A listed name the module does not define is wasm-ld's error, as
+      an undefined export is for the other linkers.
+    -->
+    <AsmReadExports Condition="'$(_AsmExportsFilePath)' != '' and '$(_AsmArch)' == 'wasm'"
+                    ExportsFile="$(_AsmExportsFilePath)"
+                    AllowWildcards="false"
+                    ExactNamesTarget="WebAssembly modules">
+      <Output TaskParameter="Names" ItemName="_AsmExportedName" />
+    </AsmReadExports>
     <PropertyGroup>
       <_AsmExportsFileArgument Condition="'$(_AsmOs)' == 'Windows' and '@(_AsmExportedName)' != ''">@(_AsmExportedName->'-export:%(Identity)', ' ')</_AsmExportsFileArgument>
       <_AsmExportsFileArgument Condition="'$(_AsmOs)' == 'MacOS' and '@(_AsmExportedName)' != ''">@(_AsmExportedName->'-exported_symbol _%(Identity)', ' ')</_AsmExportsFileArgument>
+      <_AsmExportsFileArgument Condition="'$(_AsmArch)' == 'wasm' and '@(_AsmExportedName)' != ''">@(_AsmExportedName->'--export=%(Identity)', ' ')</_AsmExportsFileArgument>
+      <_AsmExportsFileArgument Condition="'$(_AsmArch)' == 'wasm' and '$(_AsmExportsFilePath)' == '' and '$(_AsmOutputKind)' == 'SharedLibrary'">--export-dynamic</_AsmExportsFileArgument>
 
       <!--
         A Windows program's import library. lld-link writes one beside any image that exports
@@ -583,37 +683,44 @@
   <!-- ===================================================================================== -->
 
   <!--
-    _AsmWriteImplicitUsingsWrappers: with ImplicitUsings, writes for each GNU-syntax source the
-    file that llvm-mc assembles in its place, obj/.../asm/implicit/<the source's path>:
-      .include "asmsdk-gnu-implicit.inc"
-      .include "<the source, absolute>"
-    llvm-mc has no pre-include option (NASM's -P does this for .asm files). Diagnostics still
-    name the source and its own lines: llvm-mc reports an error in an included file at that
-    file's line. The object keeps the generated file's relative path as its name, the same on
-    every machine, so a Release build stays reproducible. WriteOnlyWhenDifferent leaves a file
-    alone when nothing changed; the object's own inputs (the source, the include files, the
-    project) still decide whether it is assembled again.
-    The conditions guard the empty case: batching over an empty list still runs a task once with
-    an empty %(Identity) (measured with MSBuild 18).
+    _AsmWriteSourceWrappers: writes, for each GNU-syntax source that needs one, the file that
+    llvm-mc assembles in its place, obj/.../asm/implicit/<the source's path>:
+      the defines, as labels               WebAssembly only (llvm-mc's wasm objects hold no
+                                           constant symbols, so no defsym; ASM0018)
+      .include "asmsdk-gnu-implicit.inc"   with ImplicitUsings (llvm-mc has no pre-include
+                                           option, which NASM's -P is for .asm files)
+      # 1 "<the source's full path>"       a line marker, then the source's own text
+    Every WebAssembly source gets one, and every GNU source of an ImplicitUsings build. The
+    marker keeps diagnostics and DWARF lines on the source and its own line numbers (an
+    .include of the source, AsmSdk's first wrapper, put the wrapper's name in every DWARF row:
+    see AsmWriteSourceWrappers for the measurement). The object keeps the generated file's
+    relative path as its name, the same on every machine, so a Release build stays
+    reproducible. A wrapper is rewritten only when its text changes; the object's own inputs
+    (the source, the include files, the project, the options) still decide whether it is
+    assembled again.
+    Runs on every build (no Inputs): a wrapper holds the source's text, so it must follow every
+    edit, and comparing a few files costs less than the up-to-date check would.
   -->
-  <Target Name="_AsmWriteImplicitUsingsWrappers"
+  <Target Name="_AsmWriteSourceWrappers"
           DependsOnTargets="AsmPrepare"
-          Condition="'$(_AsmImplicitUsings)' == 'true'">
-    <ItemGroup>
-      <_AsmImplicitUsingsWrapper Include="@(_AsmSelectedSource->'%(ImplicitUsingsWrapper)')"
-                                 Condition="'%(_AsmSelectedSource.ImplicitUsingsWrapper)' != ''"
-                                 SourceToolPath="%(_AsmSelectedSource.SourceToolPath)" />
-    </ItemGroup>
-    <MakeDir Condition="'@(_AsmImplicitUsingsWrapper)' != ''"
-             Directories="@(_AsmImplicitUsingsWrapper->'%(RootDir)%(Directory)')" />
-    <WriteLinesToFile Condition="'@(_AsmImplicitUsingsWrapper)' != ''"
-                      File="%(_AsmImplicitUsingsWrapper.Identity)"
-                      Lines=".include &quot;asmsdk-gnu-implicit.inc&quot;;.include &quot;%(_AsmImplicitUsingsWrapper.SourceToolPath)&quot;"
-                      Overwrite="true"
-                      WriteOnlyWhenDifferent="true" />
-    <ItemGroup>
-      <FileWrites Include="@(_AsmImplicitUsingsWrapper)" />
-    </ItemGroup>
+          Condition="'$(_AsmImplicitUsings)' == 'true' or '$(_AsmArch)' == 'wasm'">
+    <PropertyGroup>
+      <!-- Found through llvm-mc's include path, where the SDK's include folder comes last, so a
+           project's own file of that name would shadow it, as for any other include. A
+           WebAssembly build includes its layer directly: asmsdk-gnu.inc reaches it only when
+           WASM is defined, and DisableImplicitFrameworkDefines=true takes WASM away, which
+           would send the wrapper down the native branch and into its .set guard, a constant
+           the wasm writer stops on. -->
+      <_AsmImplicitIncludeName Condition="'$(_AsmImplicitUsings)' == 'true' and '$(_AsmArch)' != 'wasm'">asmsdk-gnu-implicit.inc</_AsmImplicitIncludeName>
+      <_AsmImplicitIncludeName Condition="'$(_AsmImplicitUsings)' == 'true' and '$(_AsmArch)' == 'wasm'">asmsdk-wasm.inc</_AsmImplicitIncludeName>
+    </PropertyGroup>
+    <AsmWriteSourceWrappers Condition="'@(_AsmSelectedSource)' != ''"
+                            Sources="@(_AsmSelectedSource)"
+                            DefineLabels="@(_AsmWasmDefineLabel)"
+                            ImplicitInclude="$(_AsmImplicitIncludeName)"
+                            ProjectDirectory="$(MSBuildProjectDirectory)">
+      <Output TaskParameter="Wrappers" ItemName="FileWrites" />
+    </AsmWriteSourceWrappers>
   </Target>
 
   <!--
@@ -636,7 +743,10 @@
          the transform below makes each line one item with that text. -->
     <ItemGroup>
       <_AsmAssembleOptionsLine Include="nasm" Options="$(_AsmNasmMessageArguments) $(_AsmNasmFormatArguments) $(_AsmDebugArguments) $(_AsmWarningArguments) $(_AsmNasmReproducibleArgument) $(AsmFlags) $(_AsmIncludeArguments) $(_AsmDefineArguments) $(_AsmNasmImplicitUsingsArgument)" />
-      <_AsmAssembleOptionsLine Include="llvm-mc" Options="--triple=$(_AsmLlvmMcTriple) $(_AsmLlvmMcDebugArguments) $(AsmLlvmMcFlags) $(_AsmLlvmMcIncludeArguments) $(_AsmLlvmMcDefineArguments) implicit-usings=$(_AsmImplicitUsings)" />
+      <!-- WebAssembly's defines are in the wrappers, not on the command line: listed here too,
+           so that a changed define assembles again (a wrapper's new text alone would not, its
+           object being an output of the source, not of the wrapper). -->
+      <_AsmAssembleOptionsLine Include="llvm-mc" Options="--triple=$(_AsmLlvmMcTriple) $(_AsmLlvmMcFeatureArguments) $(_AsmLlvmMcDebugArguments) $(AsmLlvmMcFlags) $(_AsmLlvmMcIncludeArguments) $(_AsmLlvmMcDefineArguments) wasm-defines=@(_AsmWasmDefineLabel, ',') implicit-usings=$(_AsmImplicitUsings)" />
     </ItemGroup>
     <MakeDir Directories="$(AsmIntermediateDirectory)" />
     <WriteLinesToFile File="$(_AsmAssembleOptionsFile)"
@@ -656,16 +766,27 @@
     may change the arguments) and the assemblers' options (_AsmWriteAssembleOptions: an option
     changed outside the project file). AsmFlags are NASM's extra arguments, AsmLlvmMcFlags llvm-mc's.
     Errors: ASM0004 (a .s source builds this RID, and the toolchain package has no llvm-mc),
-    ASM0007 (an assembler run failed; after the assembler's own messages).
+    ASM0007 (an assembler run failed; after the assembler's own messages), ASM0019 (llvm-mc's
+    WebAssembly object writer stopped on what a wasm object cannot hold; before ASM0007).
 
     A failed run deletes its object. An assembler that crashes rather than reports an error
     (NASM 3.02 did, with CodeView, before the .rodata mapping above) leaves a truncated object
     behind, newer than its source: the next build would skip the source and fail at link time
     with "unknown file type" (measured). ErrorAndContinue keeps the error and the failed build,
     and lets the Delete run.
+
+    WebAssembly's crashes are llvm-mc's report_fatal_error: its wasm object writer stops the
+    process, with "LLVM ERROR: <what>", a request to file a bug and a stack dump, on what the
+    format cannot express, for which its parser has no ordinary error (measured with LLVM
+    23.1.5, exit code 74, or the illegal-instruction status on Windows). The three a hand
+    writer meets: a constant symbol (.set, .equ, = or a defsym: "NAME: absolute addressing not
+    supported!"), a data label without .size ("data symbols must have a size set with .size"),
+    and two functions in one section ("section already has a defining function", after a bare
+    .text, which llvm-mc's wasm parser ignores). The output is captured (ConsoleToMSBuild,
+    which still logs it as before) so that ASM0019 can name the source and the rule.
   -->
   <Target Name="AsmAssemble"
-          DependsOnTargets="AsmPrepare;_AsmWriteImplicitUsingsWrappers;_AsmWriteAssembleOptions"
+          DependsOnTargets="AsmPrepare;_AsmWriteSourceWrappers;_AsmWriteAssembleOptions"
           Inputs="@(_AsmSelectedSource);@(_AsmDependency);$(MSBuildProjectFullPath);$(MSBuildThisFileFullPath);$(_AsmAssembleOptionsFile)"
           Outputs="%(_AsmSelectedSource.ObjectFile)">
     <Error Code="ASM0004"
@@ -683,11 +804,25 @@
       <Output TaskParameter="ExitCode" PropertyName="_AsmAssemblerExitCode" />
     </Exec>
     <Exec Condition="'%(_AsmSelectedSource.AsmLanguage)' == 'Gnu'"
-          Command="$(_AsmLlvmMc) --triple=$(_AsmLlvmMcTriple) --filetype=obj $(_AsmLlvmMcDebugArguments) $(AsmLlvmMcFlags) $(_AsmLlvmMcIncludeArguments) $(_AsmLlvmMcDefineArguments) -o &quot;%(_AsmSelectedSource.ObjectToolPath)&quot; &quot;%(_AsmSelectedSource.AssembledToolPath)&quot;"
+          Command="$(_AsmLlvmMc) --triple=$(_AsmLlvmMcTriple) --filetype=obj $(_AsmLlvmMcFeatureArguments) $(_AsmLlvmMcDebugArguments) $(AsmLlvmMcFlags) $(_AsmLlvmMcIncludeArguments) $(_AsmLlvmMcDefineArguments) -o &quot;%(_AsmSelectedSource.ObjectToolPath)&quot; &quot;%(_AsmSelectedSource.AssembledToolPath)&quot;"
           WorkingDirectory="$(MSBuildProjectDirectory)"
+          ConsoleToMSBuild="$([System.String]::Equals('$(_AsmArch)', 'wasm'))"
           ContinueOnError="ErrorAndContinue">
       <Output TaskParameter="ExitCode" PropertyName="_AsmAssemblerExitCode" />
+      <Output TaskParameter="ConsoleOutput" ItemName="_AsmAssemblerOutput" />
     </Exec>
+    <!-- The fatal line of a wasm object writer crash, if this run had one (first one only:
+         llvm-mc stops at it). The items are this batch's own: removed again below. -->
+    <ItemGroup Condition="'$(_AsmAssemblerExitCode)' != '0' and '$(_AsmArch)' == 'wasm'">
+      <_AsmWasmFatalLine Include="@(_AsmAssemblerOutput)" Condition="$([System.String]::Copy('%(Identity)').StartsWith('LLVM ERROR:'))" />
+    </ItemGroup>
+    <Error Code="ASM0019"
+           Condition="'@(_AsmWasmFatalLine)' != ''"
+           Text="%(_AsmSelectedSource.Identity): llvm-mc's WebAssembly object writer stopped (@(_AsmWasmFatalLine->'%(Identity)', ' ')): the source holds something a wasm object cannot express. The usual three: an assembler constant (.set, .equ or =; use the number itself, or a macro), a data label without a size (follow it with ENDDATA name, or .size name, . - name), or a function that is not in a section of its own (start each with FUNCTION; a bare .text does nothing in llvm-mc's wasm parser). The WebAssembly guide lists the rest." />
+    <ItemGroup>
+      <_AsmAssemblerOutput Remove="@(_AsmAssemblerOutput)" />
+      <_AsmWasmFatalLine Remove="@(_AsmWasmFatalLine)" />
+    </ItemGroup>
     <Delete Condition="'$(_AsmAssemblerExitCode)' != '0'" Files="%(_AsmSelectedSource.ObjectFile)" />
     <Error Code="ASM0007"
            Condition="'$(_AsmAssemblerExitCode)' != '0'"
@@ -1048,6 +1183,21 @@
            names another C symbol (Mach-O adds the underscore). -->
       <_AsmEntryArgument Condition="'$(_AsmOs)' == 'MacOS' and '$(StartupObject)' != ''">-e _$(StartupObject)</_AsmEntryArgument>
 
+      <!--
+        WebAssembly (wasm-ld): the exports (_AsmExportsFileArgument: export-dynamic, or the
+        ExportsFile's names) and the LinkerArg items. Nothing else is needed for a deterministic
+        module: wasm-ld writes no time stamp or build id, and its name section (the functions'
+        names, for stack traces) comes from the objects. Its defaults stay: a linear memory of
+        its own, exported as "memory", with a 64 KiB stack below the data; garbage collection
+        of unreferenced functions and data (the define labels' empty segment included); an
+        undefined function is an error unless it was declared an import (IMPORT_FUNCTION).
+        LinkerArg changes any of it: initial-memory, -z stack-size, import-memory, allow-undefined.
+        A WASI program enters at _start, WASI's own entry name (or StartupObject's symbol), and
+        exports it and the memory, as a WASI host expects of a command.
+      -->
+      <_AsmCommonLinkArguments Condition="'$(_AsmArch)' == 'wasm'">$(_AsmExportsFileArgument) $(_AsmLinkerArgArguments)</_AsmCommonLinkArguments>
+      <_AsmEntryArgument Condition="'$(_AsmArch)' == 'wasm'">--entry=$(_AsmEntrySymbol)</_AsmEntryArgument>
+
       <!-- Static archives in each OS's own format: COFF archives for lld-link, Darwin archives
            (BSD with a sorted symbol table) for ld64.lld, GNU archives for ld.lld. The format
            is named for the bundled llvm-ar only: GNU ar (the System toolchain's default) has
@@ -1093,6 +1243,16 @@
     <Exec Condition="'$(_AsmOs)' == 'MacOS' and '$(_AsmOutputKind)' == 'Executable'"
           Command="$(_AsmLinker) -execute $(_AsmEntryArgument) -o $(_AsmTargetPathArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmLibcArguments) $(_AsmRunPathArguments) $(_AsmCommonLinkArguments)" />
 
+    <!-- WebAssembly (wasm-ld). A library is a module without an entry point (no-entry: a
+         reactor, which JavaScript or a host calls through its exports); its archive for .NET
+         WebAssembly apps and other asm projects is written below, like any static library. A
+         program is a WASI command (wasi-wasm only; browser-wasm is ASM0017). Link inputs are
+         archives and objects (a wasm module cannot be linked against). -->
+    <Exec Condition="'$(_AsmArch)' == 'wasm' and '$(_AsmOutputKind)' == 'SharedLibrary'"
+          Command="$(_AsmLinker) --no-entry -o $(_AsmTargetPathArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmCommonLinkArguments)" />
+    <Exec Condition="'$(_AsmArch)' == 'wasm' and '$(_AsmOutputKind)' == 'Executable'"
+          Command="$(_AsmLinker) $(_AsmEntryArgument) -o $(_AsmTargetPathArgument) $(_AsmObjectArguments) $(_AsmLinkInputArguments) $(_AsmCommonLinkArguments)" />
+
     <!--
       The fixups the loader must apply, checked where the linker does not (AsmCheckImage):
       ASM0080 for a 32-bit absolute address in a 64-bit Windows image, which lld-link links
@@ -1109,13 +1269,54 @@
     <Delete Condition="'$(_AsmIsLinked)' == 'true' and ('$(_AsmOs)' == 'Windows' or '$(_AsmOs)' == 'MacOS') and '$(MSBuildLastTaskResult)' == 'false'"
             Files="$(TargetPath)" />
 
+    <!--
+      A WebAssembly library's archive holds what its module holds: the library's objects AND the
+      static libraries and object files it links, the way a native shared library contains the
+      static libraries linked into it. The archive is what a .NET WebAssembly app links in place
+      of the module, and a shared library's references to static libraries are private (see
+      _AsmMakeStaticLibraryReferencesPrivate in References.targets), so without their members
+      the app's link would miss their symbols. llvm-ar's MRI script mode adds another archive's
+      members whole (ADDLIB), keeping two members of one name apart, which extracting them would
+      not; the result is deterministic and carries the symbol index (measured: an archive merged
+      this way links alone, and next to the original static library in either order, with no
+      duplicate symbol, because wasm-ld takes a member only for a symbol still undefined). Each
+      path is quoted: MRI takes the rest of a line as the argument, and ';' or '*' would start a
+      comment there. Only a library's archive: a static library's users link what it links, as
+      on every other platform.
+    -->
+    <!-- Qualified metadata throughout: an unqualified %(...) in an element that adds to
+         _AsmMergedArchiveLine would batch over that list too, whose CREATE line has no ToolPath
+         (MSB4096, measured). -->
+    <ItemGroup Condition="'$(_AsmArch)' == 'wasm' and '$(_AsmOutputKind)' == 'SharedLibrary' and '$(AsmStaticLibraryPath)' != ''">
+      <_AsmMergedArchiveLine Include="CREATE" Text="CREATE &quot;$(AsmStaticLibraryPath.Replace('\','/'))&quot;" />
+      <_AsmMergedArchiveLine Include="@(_AsmObject->'ADDMOD %(Identity)')" Text="ADDMOD &quot;%(_AsmObject.Identity)&quot;" />
+      <_AsmMergedArchiveLine Include="@(_AsmLinkInput->'ADDMOD %(ToolPath)')" Condition="'%(_AsmLinkInput.Extension)' != '.a'" Text="ADDMOD &quot;%(_AsmLinkInput.ToolPath)&quot;" />
+      <_AsmMergedArchiveLine Include="@(_AsmLinkInput->'ADDLIB %(ToolPath)')" Condition="'%(_AsmLinkInput.Extension)' == '.a'" Text="ADDLIB &quot;%(_AsmLinkInput.ToolPath)&quot;" />
+      <_AsmMergedArchiveLine Include="SAVE" Text="SAVE" />
+      <_AsmMergedArchiveLine Include="END" Text="END" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_AsmMergeArchive Condition="'$(_AsmArch)' == 'wasm' and '$(_AsmOutputKind)' == 'SharedLibrary' and '$(AsmStaticLibraryPath)' != '' and '@(_AsmLinkInput)' != ''">true</_AsmMergeArchive>
+      <_AsmMergedArchiveScript>$(AsmIntermediateDirectory)archive.mri</_AsmMergedArchiveScript>
+    </PropertyGroup>
+    <WriteLinesToFile Condition="'$(_AsmMergeArchive)' == 'true'"
+                      File="$(_AsmMergedArchiveScript)"
+                      Lines="@(_AsmMergedArchiveLine->'%(Text)')"
+                      Overwrite="true" />
+
     <Delete Condition="'$(AsmStaticLibraryPath)' != ''" Files="$(AsmStaticLibraryPath)" />
-    <Exec Condition="'$(AsmStaticLibraryPath)' != ''"
+    <Exec Condition="'$(AsmStaticLibraryPath)' != '' and '$(_AsmMergeArchive)' != 'true'"
           Command="$(_AsmArchiver) rcsD $(_AsmArchiveFormatArgument) &quot;$(AsmStaticLibraryPath.Replace('\','/'))&quot; $(_AsmObjectArguments)" />
+    <Exec Condition="'$(_AsmMergeArchive)' == 'true'"
+          Command="$(_AsmArchiver) $(_AsmArchiveFormatArgument) -M &lt; &quot;$([System.IO.Path]::GetFullPath('$(_AsmMergedArchiveScript)').Replace('\','/'))&quot;" />
+    <ItemGroup>
+      <_AsmMergedArchiveLine Remove="@(_AsmMergedArchiveLine)" />
+    </ItemGroup>
 
     <ItemGroup>
       <FileWrites Include="$(TargetPath)" />
       <FileWrites Include="$(AsmStaticLibraryPath)" Condition="'$(AsmStaticLibraryPath)' != ''" />
+      <FileWrites Include="$(_AsmMergedArchiveScript)" Condition="'$(_AsmMergeArchive)' == 'true'" />
       <FileWrites Include="$(AsmImportLibraryPath)" Condition="'$(AsmImportLibraryPath)' != ''" />
       <FileWrites Include="$(_AsmProgramImportLibraryPath)" Condition="'$(_AsmProgramImportLibraryPath)' != ''" />
       <!-- lld-link's PDB (link -debug), named after the output: without this, dotnet clean
@@ -1363,15 +1564,27 @@
     so OutDir and OutputPath are final here (this file is imported after Microsoft.NET.Sdk's
     targets, which set OutDir).
   -->
+  <!--
+    The three folders as directories, with their trailing separator, before a RID is appended:
+    the .NET SDK 10.0.404 CLI passes -o without one (PublishDir=K:\out, OutputPath=K:\out;
+    11.0.100 writes K:\out\), as a global property the common targets cannot normalize, and
+    "$(PublishDir)%(Identity)/" made K:\outlinux-x64/, a folder next to the one asked for
+    (measured: ProgramTests' publish -o under 10.0.404). For the same reason the OutDir check
+    compares the normalized folders: under 10.0.404, OutDir (derived, K:\out\) and OutputPath
+    (global, K:\out) differed by the separator alone, which read as an OutDir set by hand.
+  -->
   <PropertyGroup Condition="'$(_AsmRid)' == ''">
     <_AsmSharedOutputFramework Condition="$(TargetFrameworks.Contains(';'))">$(TargetFramework)/</_AsmSharedOutputFramework>
+    <_AsmOutputPathFolder Condition="'$(OutputPath)' != ''">$([MSBuild]::EnsureTrailingSlash('$(OutputPath)'))</_AsmOutputPathFolder>
+    <_AsmOutDirFolder Condition="'$(OutDir)' != ''">$([MSBuild]::EnsureTrailingSlash('$(OutDir)'))</_AsmOutDirFolder>
+    <_AsmPublishDirFolder Condition="'$(PublishDir)' != ''">$([MSBuild]::EnsureTrailingSlash('$(PublishDir)'))</_AsmPublishDirFolder>
   </PropertyGroup>
   <ItemGroup Condition="'$(_AsmRid)' == '' and '$(_AsmBuildRuntimeIdentifiers)' != ''">
     <_AsmInnerBuild Include="$(_AsmBuildRuntimeIdentifiers)">
       <AdditionalProperties>RuntimeIdentifier=%(Identity)</AdditionalProperties>
-      <AdditionalProperties Condition="'$(_CommandLineDefinedOutputPath)' == 'true'">%(AdditionalProperties);OutputPath=$(OutputPath)$(_AsmSharedOutputFramework)%(Identity)/</AdditionalProperties>
-      <AdditionalProperties Condition="'$(OutDir)' != '$(OutputPath)'">%(AdditionalProperties);OutDir=$(OutDir)$(_AsmSharedOutputFramework)%(Identity)/</AdditionalProperties>
-      <AdditionalProperties Condition="'$(_IsPublishing)' == 'true'">%(AdditionalProperties);PublishDir=$(PublishDir)%(Identity)/</AdditionalProperties>
+      <AdditionalProperties Condition="'$(_CommandLineDefinedOutputPath)' == 'true'">%(AdditionalProperties);OutputPath=$(_AsmOutputPathFolder)$(_AsmSharedOutputFramework)%(Identity)/</AdditionalProperties>
+      <AdditionalProperties Condition="'$(_AsmOutDirFolder)' != '$(_AsmOutputPathFolder)'">%(AdditionalProperties);OutDir=$(_AsmOutDirFolder)$(_AsmSharedOutputFramework)%(Identity)/</AdditionalProperties>
+      <AdditionalProperties Condition="'$(_IsPublishing)' == 'true'">%(AdditionalProperties);PublishDir=$(_AsmPublishDirFolder)%(Identity)/</AdditionalProperties>
     </_AsmInnerBuild>
   </ItemGroup>
 
@@ -1409,9 +1622,10 @@
     replace, and computes its own defaults at evaluation only for a .NETCoreApp executable, which
     an .asmproj never is: dotnet run refused every asm program with "The current OutputType is
     'Library'" (measured with SDK 11.0.100).
-    Which build runs, and how (this machine, its emulation, WSL or Docker): AsmSelectRunTarget.
+    Which build runs, and how (this machine, its emulation, wasmtime for a wasi-wasm program, WSL
+    or Docker): AsmSelectRunTarget.
     Settings:
-      AsmRunIn               Auto (default), Host, Wsl or Docker
+      AsmRunIn               Auto (default), Host, Wasi, Wsl or Docker
       AsmRunWslDistribution  a WSL distribution other than the default one
       AsmRunDockerImage      an image other than debian:stable-slim (glibc) / alpine:3 (musl)
       RunArguments           the program's default arguments, as in .NET (StartArguments too)
@@ -1519,7 +1733,7 @@
       </_AsmRidPublishProject>
       <!-- Without _IsPublishing the inner builds have no folder yet: give each its own. -->
       <_AsmRidPublishProject Condition="'$(_IsPublishing)' != 'true'">
-        <AdditionalProperties>%(AdditionalProperties);PublishDir=$(PublishDir)%(AsmRid)/</AdditionalProperties>
+        <AdditionalProperties>%(AdditionalProperties);PublishDir=$([MSBuild]::EnsureTrailingSlash('$(PublishDir)'))%(AsmRid)/</AdditionalProperties>
       </_AsmRidPublishProject>
     </ItemGroup>
     <MSBuild Condition="'@(_AsmRidPublishProject)' != ''" Projects="@(_AsmRidPublishProject)" Targets="Publish" BuildInParallel="$(BuildInParallel)" />

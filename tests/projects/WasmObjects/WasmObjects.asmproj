@@ -1,0 +1,14 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    WebAssembly object files only (WebAssemblyTests): sub.wasm.o for browser-wasm and wasi-wasm,
+    no archive, no module. wo_sub(a, b) = a - b. The .NET WebAssembly apps link the object
+    itself (NativeFileReference) and still call it as [LibraryImport("wasmobjects")], the
+    AssemblyName: the consumer targets name the P/Invoke module after the project, not after the
+    object file ("sub.wasm"), which is what makes an Objects project usable from C# at all.
+  -->
+  <PropertyGroup>
+    <OutputType>Objects</OutputType>
+    <AssemblyName>wasmobjects</AssemblyName>
+    <RuntimeIdentifiers>browser-wasm;wasi-wasm</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

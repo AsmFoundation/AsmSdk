@@ -82,6 +82,8 @@ See [Platforms and runtime identifiers](platforms.md) for how a project chooses 
 | `ASM0023: No source of this project builds linux-arm64` | an ARM64 RID in a project of `.asm` files only: NASM assembles x86-64 alone | add a `.s` file (GNU syntax) for ARM64, or remove the ARM64 RIDs |
 | `ASM0021: x.arm64.asm is a NASM file (.asm) qualified for 'arm64'` | a `.asm` file named for ARM64 targets only | write ARM64 code in a `.s` file |
 | `ASM0020: For win-x64, x.win.asm and x.win.s apply equally` | two files of one name, equally specific for a RID | keep one, or qualify one more narrowly (`x.win-x64.asm`) |
+| `ASM0023: No source of this project builds browser-wasm. WebAssembly is LLVM's WebAssembly assembly in .s files qualified for it` (not released yet) | a wasm RID in a project with no source qualified for WebAssembly: unqualified `.s` files are ARM64 code | add `name.wasm.s` (both wasm RIDs), `name.browser.s` or `name.wasi.s`, or remove the RID |
+| `ASM0021: x.wasm.asm is a NASM file (.asm) qualified for 'wasm'` (not released yet) | a `.asm` file named for WebAssembly | write WebAssembly in a `.s` file (`x.wasm.s`) |
 | `ASM0025: x.c cannot be compiled by an .asmproj` (not released yet) | a `Compile` item that is not `.asm` or `.s` | make it a `None` item; build C or C# in a project of its own |
 | `ASM0110`, `ASM0111`, `ASM0112: AsmSource items were replaced after AsmFoundation.Sdk 0.3.0 by Compile items` (and `AsmInclude` by `None`, `EnableDefaultAsmItems` by `EnableDefaultCompileItems`), not released yet | the project names a 0.3.0 item or switch | the line the error shows |
 | `ASM0024: Duplicate AsmSource items: x.asm` | a source the default `**/*.asm;**/*.s` glob includes is listed again | remove the explicit item, or `EnableDefaultAsmItems=false` and list every source |
@@ -91,6 +93,26 @@ See [Platforms and runtime identifiers](platforms.md) for how a project chooses 
 | `error: symbol '..plt' not defined` or `'..got' not defined` (Windows, macOS) | `wrt ..plt` and `wrt ..got` are ELF-only | `call f PLT` (empty off Linux); `wrt ..gotpcrel` on macOS |
 | `error: Mach-O 64-bit format does not support 32-bit absolute addresses` | a memory operand without `default rel` | `default rel` |
 | `error: unrecognised symbol type 'hidden'` or `'private_extern'` | each format's visibility keyword in another format's file | `HIDDEN_FUNCTION f` from `asmsdk.inc` |
+
+## WebAssembly (not released yet)
+
+| Message | Cause | Fix |
+|---|---|---|
+| `ASM0019: x.wasm.s: llvm-mc's WebAssembly object writer stopped (LLVM ERROR: LIMIT: absolute addressing not supported!)` | an assembler constant (`.set`, `.equ`, `=`): llvm-mc's wasm objects hold no constant symbols, and its writer crashes on one | write the number itself, or a macro that expands to `i32.const 4096` |
+| `ASM0019: … (LLVM ERROR: data symbols must have a size set with .size: table)` | a data label without a size | `ENDDATA table` after its last byte (`.size table, . - table`); a `.L` label needs none |
+| `ASM0019: … (LLVM ERROR: section already has a defining function: .data)` | code after `DATA` (or `RODATA`, `BSS`) and a bare `.text`, which llvm-mc's wasm parser ignores, so the function landed in the data section | start each function with `FUNCTION`, which switches to its own section |
+| `ASM0018: The define 'LEVEL=3' has a value, and a WebAssembly source cannot receive one` | `DefineConstants` with a value, which a WebAssembly source receives as a label | define the name alone and write the value in the source |
+| `ASM0017: X is a program (OutputType Exe), and browser-wasm has none` | an `Exe` for the browser | a `Library` (a module with exports), or the program for `wasi-wasm` |
+| `ASM0016: X links a WebAssembly module for wasi-wasm with TargetFramework libc` | the bundled wasm-ld links no C library | `freestanding` (calling WASI or JavaScript imports), or a `StaticLibrary` for a .NET WebAssembly app, whose build brings its C library |
+| `ASM0030: x.map exports 'f_*', a pattern; WebAssembly modules export exact names only` | a pattern in a wasm module's `ExportsFile` | list each name |
+| `error: symbol f: missing .functype` | a call to a function whose type llvm-mc has not seen: defined in another file, or further down | `EXTERN_FUNCTION f, (i32) -> (i32)` before the call |
+| `error: Expected EOL, instead got: ,` on `.int32 1, 2` | the wasm parser's `.int8` to `.int64` take one value | `.int 1, 2` (or `.byte`, `.short`, `.quad`) |
+| `error: unknown directive` on `.bss` or `.rodata` | llvm-mc's wasm parser knows neither bare directive | `BSS` and `RODATA` from `asmsdk-wasm.inc`, or `.section .bss,"",@` |
+| `error: instruction requires: …` | an instruction of a feature the SDK does not enable (the SDK enables SIMD128 and tail calls) | `<AsmLlvmMcFlags>-mattr=+<feature></AsmLlvmMcFlags>` |
+| `undefined symbol: f` from wasm-ld | a function nobody defines; WebAssembly links no host function implicitly | `IMPORT_FUNCTION env, f, (…) -> (…)` for a host function, or add the source or reference that defines it |
+| `return_call* requires tail calls [--enable-tail-call]` from wasm-opt, in a .NET browser-wasm app's Release build | a hand-written `return_call` in code linked into .NET: .NET 10's wasm-opt validates without tail calls | `TAILCALL` (a call and a return) |
+| `Pointer not aligned to 4` from wasmtime | a WASI call got a misaligned pointer (an iovec, a result address); llvm-mc aligns no data by itself | `.p2align 2` before the data |
+| `DllNotFoundException` in a .NET WebAssembly app | the `[DllImport]` name is not the asm project's `AssemblyName`, or the asm project lists no RID for the app | use the `AssemblyName`; add `browser-wasm` or `wasi-wasm` to its `RuntimeIdentifiers` (ASM0040 says so for a project reference) |
 
 ## Assembling (NASM)
 

@@ -20,6 +20,11 @@
       Portable build (no RuntimeIdentifier): each asm reference builds every RID it lists, or
         the RIDs of the ProjectReference's RuntimeIdentifiers metadata
         (<ProjectReference Include="..." RuntimeIdentifiers="linux-x64;win-x64" />).
+      WebAssembly app (RuntimeIdentifier browser-wasm or wasi-wasm: Blazor WebAssembly, the
+        wasmbrowser and wasmconsole templates, a WASI app): each asm library, static library or
+        object-files project is built for that RID and LINKED into the app's runtime, as
+        NativeFileReference items (_AsmAddWasmNativeFileReferences); nothing is copied, laid out
+        or listed in deps.json, and [DllImport("<its AssemblyName>")] reaches its functions.
 
     Where their libraries go (BinariesCopyPath), for build and publish alike:
       <ProjectReference Include="../Calc/Calc.asmproj" BinariesCopyPath="native/{rid}" />
@@ -83,7 +88,11 @@
   <PropertyGroup Condition="'$(UsingAsmFoundationSdk)' != 'true'">
     <_AsmConsumerTasksAssembly>$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', '..', 'tasks', 'netstandard2.0', 'AsmFoundation.Sdk.Tasks.dll'))</_AsmConsumerTasksAssembly>
     <!-- Every RID AsmSdk builds: what a RID-less asm project can be built for. -->
-    <_AsmConsumerSupportedRuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</_AsmConsumerSupportedRuntimeIdentifiers>
+    <_AsmConsumerSupportedRuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64;browser-wasm;wasi-wasm</_AsmConsumerSupportedRuntimeIdentifiers>
+    <!-- A .NET WebAssembly app (Blazor WebAssembly, a wasmbrowser or wasmconsole app, a WASI app):
+         it links its asm references into its own runtime instead of copying anything (see
+         _AsmAddWasmNativeFileReferences). -->
+    <_AsmConsumerIsWasm Condition="'$(RuntimeIdentifier)' == 'browser-wasm' or '$(RuntimeIdentifier)' == 'wasi-wasm'">true</_AsmConsumerIsWasm>
     <!-- The app's publish switches, and its output folder: OutputPath and
          _CommandLineDefinedOutputPath from dotnet build -o, OutDir from -p:OutDir. A global
          output folder made every RID of a portable asm build write into the app's folder, one
@@ -145,6 +154,7 @@
       <_AsmReferenceImportName />
       <_AsmReferenceDelivered />
       <_AsmReferenceLinked />
+      <_AsmReferenceWasmLinked />
       <_AsmReferenceUsed />
       <_AsmReferenceOptional />
       <_AsmReferenceOmitted />
@@ -178,15 +188,29 @@
       would stop with ASM0010 (measured: a .NET app referencing a library that links a RID-less
       static library).
     -->
+    <!--
+      A .NET WebAssembly app is the other way round: it loads nothing at run time (a wasm
+      runtime has no dynamic loader for native code) and starts no program, but it links native
+      code into its own runtime when it builds (dotnet.native.wasm, through Emscripten for
+      browser-wasm and the WASI SDK for wasi-wasm). So it LINKS a library, a static library or
+      object files (_AsmReferenceWasmLinked: their archive or objects become NativeFileReference
+      items, _AsmAddWasmNativeFileReferences), and leaves a program out like the others. A wasm
+      app is never a NativeAOT publish (its AOT is the wasm workload's own), so the two kinds of
+      linking never meet.
+    -->
     <PropertyGroup>
-      <_AsmReferenceDelivered Condition="'$(_AsmReferenceKind)' == 'SharedLibrary' or '$(_AsmReferenceKind)' == 'Executable'">true</_AsmReferenceDelivered>
-      <_AsmReferenceLinked Condition="'$(_AsmReferenceKind)' == 'StaticLibrary' and '$(PublishAot)' == 'true' and '$(RuntimeIdentifier)' != ''">true</_AsmReferenceLinked>
-      <_AsmReferenceUsed Condition="'$(_AsmReferenceDelivered)' == 'true' or '$(_AsmReferenceLinked)' == 'true'">true</_AsmReferenceUsed>
+      <_AsmReferenceDelivered Condition="'$(_AsmConsumerIsWasm)' != 'true' and ('$(_AsmReferenceKind)' == 'SharedLibrary' or '$(_AsmReferenceKind)' == 'Executable')">true</_AsmReferenceDelivered>
+      <_AsmReferenceLinked Condition="'$(_AsmConsumerIsWasm)' != 'true' and '$(_AsmReferenceKind)' == 'StaticLibrary' and '$(PublishAot)' == 'true' and '$(RuntimeIdentifier)' != ''">true</_AsmReferenceLinked>
+      <_AsmReferenceWasmLinked Condition="'$(_AsmConsumerIsWasm)' == 'true' and ('$(_AsmReferenceKind)' == 'SharedLibrary' or '$(_AsmReferenceKind)' == 'StaticLibrary' or '$(_AsmReferenceKind)' == 'Objects')">true</_AsmReferenceWasmLinked>
+      <_AsmReferenceUsed Condition="'$(_AsmReferenceDelivered)' == 'true' or '$(_AsmReferenceLinked)' == 'true' or '$(_AsmReferenceWasmLinked)' == 'true'">true</_AsmReferenceUsed>
       <_AsmReferenceProgramKind Condition="'$(_AsmReferenceKind)' == 'Executable'">Program</_AsmReferenceProgramKind>
     </PropertyGroup>
-    <Message Condition="'$(_AsmReferenceUsed)' != 'true'"
+    <Message Condition="'$(_AsmReferenceUsed)' != 'true' and '$(_AsmConsumerIsWasm)' != 'true'"
              Importance="normal"
              Text="%(_AsmProjectReference.Filename)%(_AsmProjectReference.Extension) produces a $(_AsmReferenceKind), nothing a .NET app loads or starts (only a NativeAOT publish links a static library in): not built or copied through $(MSBuildProjectName)." />
+    <Message Condition="'$(_AsmReferenceUsed)' != 'true' and '$(_AsmConsumerIsWasm)' == 'true'"
+             Importance="normal"
+             Text="%(_AsmProjectReference.Filename)%(_AsmProjectReference.Extension) produces a $(_AsmReferenceKind), and a .NET WebAssembly app ($(RuntimeIdentifier)) starts no programs: not built or linked through $(MSBuildProjectName)." />
     <ItemGroup Condition="'$(_AsmReferenceUsed)' != 'true'">
       <_MSBuildProjectReferenceExistent Remove="@(_AsmProjectReference)" />
     </ItemGroup>
@@ -209,7 +233,10 @@
       <_AsmReferenceDeclaredRid Include="$(_AsmConsumerSupportedRuntimeIdentifiers)" Condition="'$(_AsmReferenceRids)' == ''" />
     </ItemGroup>
     <!-- Optional: the asm project's OptionalOnUnlistedRuntimes. Then no serving RID is the
-         warning ASM0049 and an empty selection, instead of the error ASM0040. -->
+         warning ASM0049 and an empty selection, instead of the error ASM0040. For a WebAssembly
+         app too: the graph gives browser-wasm and wasi-wasm no fallback, so an asm project that
+         lists neither stops here with ASM0040 (or is left out, optional), rather than at the
+         app's link. -->
     <AsmSelectRuntimeIdentifier Condition="'$(_AsmReferenceUsed)' == 'true' and '$(RuntimeIdentifier)' != ''"
                                 RuntimeIdentifier="$(RuntimeIdentifier)"
                                 AvailableRuntimeIdentifiers="@(_AsmReferenceDeclaredRid)"
@@ -227,6 +254,7 @@
       <_AsmReferenceUsed />
       <_AsmReferenceDelivered />
       <_AsmReferenceLinked />
+      <_AsmReferenceWasmLinked />
     </PropertyGroup>
     <ItemGroup Condition="'$(_AsmReferenceOmitted)' == 'true'">
       <_MSBuildProjectReferenceExistent Remove="@(_AsmProjectReference)" />
@@ -275,6 +303,10 @@
            the library's AssemblyName, the one [LibraryImport] and [DllImport] use. -->
       <_AsmAotStaticLibrary Condition="'$(_AsmReferenceLinked)' == 'true'" Include="@(_AsmConfiguredReference)" AsmImportName="$(_AsmReferenceImportName)" />
       <DirectPInvoke Condition="'$(_AsmReferenceLinked)' == 'true'" Include="$(_AsmReferenceImportName)" />
+      <!-- WebAssembly: the configured reference too, for the same reason, for
+           _AsmAddWasmNativeFileReferences. It is no _AsmNativeLibrary: nothing to lay out, list
+           in deps.json or load; the app links it. -->
+      <_AsmWasmLinkedLibrary Condition="'$(_AsmReferenceWasmLinked)' == 'true'" Include="@(_AsmConfiguredReference)" AsmImportName="$(_AsmReferenceImportName)" />
     </ItemGroup>
     <ItemGroup>
       <_AsmConfiguredReference Remove="@(_AsmConfiguredReference)" />
@@ -312,6 +344,57 @@
       <_AsmAotLinkInput Remove="@(_AsmAotLinkInput)" />
     </ItemGroup>
     <Message Importance="normal" Text="NativeAOT links @(_AsmAotStaticLibrary->'%(Filename)', ', ') into $(MSBuildProjectName) (DirectPInvoke @(_AsmAotStaticLibrary->'%(AsmImportName)', ', '))." />
+  </Target>
+
+  <!--
+    _AsmAddWasmNativeFileReferences: a .NET WebAssembly app links its asm references into its own
+    runtime. Each linked reference's link inputs (GetAsmLinkInputs: the archive, or the object
+    files) become NativeFileReference items, the .NET WebAssembly build's input for native code
+    (Emscripten links them into dotnet.native.wasm for browser-wasm, the WASI SDK's clang into
+    the WASI app), and the reference's AssemblyName becomes a P/Invoke module, so that
+    [DllImport("calc")] finds calc's functions, as it does on every other platform:
+      ScanForPInvokes="false"  keeps the .NET build from naming a module after each FILE (it
+                               takes the file name without its extension, so calc.wasm.o would be
+                               a module "calc.wasm", and only that DllImport name would work)
+      _WasmPInvokeModules      the module names instead, one per library. On wasi-wasm also the
+                               fix for .NET 10's WASI build, which adds NativeFileReference to
+                               its link list only after it generated the P/Invoke table, so a
+                               WASI app got DllNotFoundException for every module (measured with
+                               .NET 10.0.15's WasiApp.targets).
+    Before _InitializeCommonProperties, the first step of WasmBuildApp (after Build, so the
+    references are built) and of the nested publish build, which sees NativeFileReference next:
+    it also turns WasmBuildNative on for any app with one, which the native link needs (the
+    wasm-tools workload for browser-wasm, wasi-experimental and WASI_SDK_PATH for wasi-wasm).
+    BeforeTargets, not a dependency of a later step: a BeforeTargets of WasmBuildApp itself would
+    run after its dependencies, too late. The references are _AsmWasmLinkedLibrary, the
+    configured ones (_AsmConfigureEachAsmProjectReference, which PrepareProjectReferences runs in
+    the nested publish build too), so the call reaches the builds that ResolveProjectReferences
+    ran, minus the nested publish's own global properties.
+  -->
+  <Target Name="_AsmAddWasmNativeFileReferences"
+          BeforeTargets="_InitializeCommonProperties"
+          DependsOnTargets="PrepareProjectReferences"
+          Condition="'$(UsingAsmFoundationSdk)' != 'true' and '$(_AsmConsumerIsWasm)' == 'true'">
+    <MSBuild Condition="'@(_AsmWasmLinkedLibrary)' != ''"
+             Projects="@(_AsmWasmLinkedLibrary)"
+             Targets="GetAsmLinkInputs"
+             BuildInParallel="$(BuildInParallel)"
+             Properties="%(_AsmWasmLinkedLibrary.SetConfiguration);%(_AsmWasmLinkedLibrary.SetPlatform);%(_AsmWasmLinkedLibrary.SetTargetFramework)"
+             RemoveProperties="%(_AsmWasmLinkedLibrary.GlobalPropertiesToRemove);$(_GlobalPropertiesToRemoveFromProjectReferences);_WasmInNestedPublish_UniqueProperty_XYZ;WasmBuildingForNestedPublish;_WasmIsPublishing;DeployOnBuild;ResolveAssemblyReferencesFindRelatedSatellites">
+      <Output TaskParameter="TargetOutputs" ItemName="_AsmWasmLinkInput" />
+    </MSBuild>
+    <ItemGroup>
+      <_AsmWasmLinkFile Include="@(_AsmWasmLinkInput)" Condition="'%(_AsmWasmLinkInput.AsmItemType)' == 'LinkInput'" />
+      <!-- Each file once: a library reached both directly and through another reference (NuGet's
+           transitive references) would otherwise be linked twice, which objects cannot be. -->
+      <NativeFileReference Include="@(_AsmWasmLinkFile->Distinct())" Exclude="@(NativeFileReference)" ScanForPInvokes="false" />
+      <_AsmWasmModuleName Include="@(_AsmWasmLinkFile->'%(AsmImportName)'->Distinct())" />
+      <_WasmPInvokeModules Include="@(_AsmWasmModuleName)" Exclude="@(_WasmPInvokeModules)" />
+      <_AsmWasmLinkInput Remove="@(_AsmWasmLinkInput)" />
+      <_AsmWasmLinkFile Remove="@(_AsmWasmLinkFile)" />
+      <_AsmWasmModuleName Remove="@(_AsmWasmModuleName)" />
+    </ItemGroup>
+    <Message Importance="normal" Text="$(MSBuildProjectName) links @(_AsmWasmLinkedLibrary->'%(Filename)', ', ') into its WebAssembly runtime (P/Invoke modules @(_AsmWasmLinkedLibrary->'%(AsmImportName)', ', '))." Condition="'@(_AsmWasmLinkedLibrary)' != ''" />
   </Target>
 
   <!--

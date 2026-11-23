@@ -193,9 +193,11 @@ the linker takes only the archive members it needs.
 >   before the first section directive as an undefined symbol, so a source that names no
 >   section, such as the `asmstatic` template's, would not link there (see
 >   [Writing NASM](writing-nasm.md#a-source-file-skeleton)).
-> - **GNU-syntax sources** get `asmsdk-gnu.inc` and the Linux note through a two-line file
->   the SDK writes in `obj/`, because llvm-mc has no pre-include option. Messages still name
->   your file and its lines.
+> - **GNU-syntax sources** get `asmsdk-gnu.inc` and the Linux note through a file the SDK
+>   writes in `obj/`, because llvm-mc has no pre-include option: the include, then your
+>   source's text behind a line marker. Messages and debug information (DWARF) still name your
+>   file and its lines. A WebAssembly source's file includes `asmsdk-wasm.inc` instead (see
+>   [WebAssembly](webassembly.md)).
 > - **Code that already writes them keeps building:** both include files have guards, and a
 >   repeated `default rel` or note changes nothing.
 > - **`<ImplicitUsings>disable</ImplicitUsings>`** gives raw NASM back: for code with macros of

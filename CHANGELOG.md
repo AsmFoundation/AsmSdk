@@ -12,6 +12,67 @@ Each SDK release names the one it was tested with.
 
 ### Added
 
+- **WebAssembly, the third supported target** (the owner's choice of 2026-11-23, from a measured
+  ranking of six candidates). Two new RIDs, under .NET's names: `browser-wasm` and `wasi-wasm`.
+  The code is LLVM's WebAssembly assembly in `.s` files qualified for it, and the bundled
+  `llvm-mc` and `wasm-ld` build it on every build machine.
+  - **Sources:** `name.wasm.s` (both RIDs), `name.browser.s`, `name.wasi.s`, or the RID itself.
+    No unqualified file builds WebAssembly. `unix` stays Linux and macOS.
+  - **Outputs:** a `Library` is a module (`name.wasm`, exporting its `FUNCTION`s or its
+    `ExportsFile`'s names, and its memory) plus an archive (`name.a`; `AsmProduceStaticLibrary`
+    is `true` by default there). A `StaticLibrary` is the archive. A `wasi-wasm` program is a
+    WASI command entered at `_start`. Names carry no `lib` prefix.
+  - **A library's archive holds what its module holds:** its objects, and the static libraries
+    and object files it links (llvm-ar's MRI `ADDLIB`). A native shared library contains them
+    the same way, which is why its static library references are private by default, and a .NET
+    app or a package consumer needs only the one archive. Measured: the merged archive links
+    alone, and next to the original static library in either order, without a duplicate symbol.
+  - **`asmsdk-wasm.inc`**, the WebAssembly platform layer, which ImplicitUsings and
+    `asmsdk-gnu.inc` bring:
+    - `FUNCTION name, (params) -> (results)`, `LOCAL_FUNCTION`, `HIDDEN_FUNCTION`, `ENDFUNCTION`;
+    - `IMPORT_FUNCTION module, name, sig`, `EXTERN_FUNCTION`;
+    - `CALL`, `TAILCALL` (a call and a return), `ADDRESS`;
+    - `RODATA`, `DATA`, `BSS`, `ENDDATA`.
+  - **Defines** `WASM`, `BROWSER` or `WASI` (and the usual ones) reach a wasm source as labels.
+    llvm-mc's wasm object writer stops on any constant symbol, `--defsym` included (measured:
+    "WASM: absolute addressing not supported!").
+  - **Features:** llvm-mc accepts SIMD128 and tail calls (`-mattr=+simd128,+tail-call`). It
+    writes no `target_features` section, so a module needs them only if its code uses them.
+  - **.NET WebAssembly apps link asm projects.** A `browser-wasm` app (Blazor WebAssembly,
+    `wasmbrowser`, `wasmconsole`) or a `wasi-wasm` app that references an asm library, static
+    library or object files project gets their archive or objects as `NativeFileReference`
+    items. Its build links them into its runtime (Emscripten, or the WASI SDK). The P/Invoke
+    module is the asm project's `AssemblyName`, so `[LibraryImport("calc")]` works as
+    elsewhere. For .NET 10's WASI build, the consumer targets also name the module, which that
+    build otherwise leaves out of its P/Invoke table (`DllNotFoundException`, measured with
+    10.0.15). A package of a wasm library does the same through its props, under
+    `native/<rid>/<tfm>/` (nothing under `runtimes/`).
+  - **`dotnet run` starts a `wasi-wasm` program in wasmtime** (from `PATH`) after the machine's
+    own builds. `AsmRunIn=Wasi` asks for that alone.
+  - **New diagnostics:**
+    - `ASM0016`: a `libc` module or WASI program; the bundled wasm-ld links no C library.
+    - `ASM0017`: a program for `browser-wasm`.
+    - `ASM0018`: a define with a value, which a label cannot carry.
+    - `ASM0019`: llvm-mc's wasm writer crashed. It names the source and the usual three causes:
+      a `.set` constant, a data label without a size, a function outside its own section.
+    - `ASM0026`: a source cannot be read for its wrapper.
+    - `ASM0021` and `ASM0023` gained their WebAssembly forms.
+    - `ASM0030` refuses a pattern in a module's exports file.
+    - `ASM0005` stops a System toolchain without `AsmLinkerCommand` (`wasm-ld`).
+  - **Measured end to end** in `WebAssemblyTests`, with .NET 10.0.15, Node 22 and wasmtime 39:
+    - the modules run in Node;
+    - the WASI program runs in wasmtime and through `dotnet run`, and exits with its
+      `proc_exit` code;
+    - a .NET browser-wasm app links a library, a static library and object files, from
+      projects and from a package, and runs in Node;
+    - a .NET wasi-wasm app links them and runs in wasmtime.
+
+    Traps found on the way, each documented in the WebAssembly guide:
+    - .NET's browser build runs wasm-opt without tail calls, so it refuses `return_call`;
+    - a bare `.text` does nothing in llvm-mc's wasm parser;
+    - `.bss` and `.rodata` are unknown directives;
+    - `.int32` takes one value;
+    - wasmtime refuses misaligned WASI pointers.
 - **Programs get the asm shared libraries they link.** A program that links an asm shared
   library (a `ProjectReference`, or a package) gets it in each RID's output folder, with the
   run path that finds it there:
@@ -260,6 +321,17 @@ Each SDK release names the one it was tested with.
   One change of meaning: after the bracket form `[section .foo]`, which does not redefine
   `__SECT__`, a function goes back to the last `section` line's section. Code sections written
   with `section .foo` are unaffected. The owner's choice (2026-11-23).
+- **A GNU-syntax source's generated wrapper holds the source's text behind a line marker**
+  (`# 1 "<full path>"`), no longer an `.include` of it. llvm-mc's `-g` writes its MAIN file into
+  every DWARF line row, with the line numbers of whatever buffer the instruction came from. It
+  also gives an included file's last statement the including file's line (measured with
+  llvm-dwarfdump on wasm32, AArch64 and x86-64). So Debug builds of ImplicitUsings sources
+  pointed debuggers at `obj/.../implicit/x.s`. Now every row names the source and its own
+  line. Errors are still reported at the source's full path, line and column. Release objects
+  carry no trace of the marker (measured). The wrapper target is `_AsmWriteSourceWrappers`
+  (the `AsmWriteSourceWrappers` task), which also writes WebAssembly's define labels.
+- **A file named `x.wasm.s`, `x.browser.s` or `x.wasi.s` is a WebAssembly source** (the new
+  qualifiers). Before, it was an unqualified ARM64 file named `x.wasm`.
 - **`NativeLibrary` replaces `AsmLinkLibrary`** (no compatibility, the owner's rule).
   `NativeLibrary` is NativeAOT's item for extra link inputs, as `LinkerArg` already was for
   linker arguments. Packages now write `NativeLibrary` items in their props.
@@ -290,6 +362,18 @@ Each SDK release names the one it was tested with.
 
 ### Fixed
 
+- **`dotnet publish -o <folder>` and `dotnet build -o <folder>` of an asm project without `-r`
+  write each RID to `<folder>/<rid>/` with every .NET SDK.** The .NET SDK 10.0.404 CLI passes the
+  folder without a trailing separator (11.0.100 adds one), as a global property the common
+  targets cannot normalize, and the RID outer build appended the RID straight to it:
+  `outlinux-x64/` next to `out/` (measured: ProgramTests' publish test failed under 10.0.404,
+  which the CI's WebAssembly runner now uses). The folders are made directories first, and the
+  "OutDir set by hand" check compares them as such.
+- **Objects keep their source's subfolder.** `src/x.s` assembles to `obj/.../asm/obj/src/x.o`,
+  as the targets always meant, so `a/x.asm` and `b/x.asm` no longer write one object over the
+  other. `RecursiveDir` is MSBuild's own metadata, which the items a task returns lack:
+  `AsmSelectSources`' output had it empty, and every object went to `obj/x.o` (measured with a
+  source in `src/`). The folder now travels as `AsmRecursiveDir`.
 - **A NASM source that names no section links on Windows.** `ImplicitUsings` now ends with
   `section .text` on every OS, not only after the Linux note. NASM's COFF output writes a label
   defined before the first section directive as an undefined symbol, although its code goes to

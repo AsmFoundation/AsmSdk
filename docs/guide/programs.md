@@ -50,15 +50,16 @@ arguments after `--` unchanged. It picks the build in this order:
 | 1 | this machine's own RID | `win-x64` on Windows x64 |
 | 2 | another build it runs natively: on Linux, one of its CPU whose loader exists here (a `freestanding` program needs none) | `linux-musl-x64` on a glibc machine that has musl installed |
 | 3 | one it emulates | `win-x64` on Windows on Arm, `osx-x64` on Apple silicon with Rosetta 2 |
-| 4 | on Windows, a Linux build of this machine's CPU, through WSL, when the distribution has the program's loader | `linux-x64` in WSL's Ubuntu |
-| 5 | a Linux build in a Docker container: `debian:stable-slim` for glibc, `alpine:3` for musl, another CPU under emulation | `linux-arm64` on an x64 machine with Docker Desktop |
+| 4 | the `wasi-wasm` build, a WASI command, in wasmtime (from `PATH`), with the current folder as the program's `.` | `wasi-wasm` anywhere wasmtime is installed (see [WebAssembly](webassembly.md#wasi-programs)) |
+| 5 | on Windows, a Linux build of this machine's CPU, through WSL, when the distribution has the program's loader | `linux-x64` in WSL's Ubuntu |
+| 6 | a Linux build in a Docker container: `debian:stable-slim` for glibc, `alpine:3` for musl, another CPU under emulation | `linux-arm64` on an x64 machine with Docker Desktop |
 
 `dotnet run -r <rid>` builds and runs that RID, by the same rules. When nothing here can run
 any build, `ASM0091` lists what it tried.
 
 | Property | Default | What it does |
 |---|---|---|
-| `AsmRunIn` | `Auto` | `Auto` (the order above), `Host` (steps 1 to 3), `Wsl` or `Docker` |
+| `AsmRunIn` | `Auto` | `Auto` (the order above), `Host` (steps 1 to 3), `Wasi` (step 4), `Wsl` or `Docker` |
 | `AsmRunWslDistribution` | WSL's default | a WSL distribution to run in: `dotnet run -r linux-x64 -p:AsmRunWslDistribution=Ubuntu-24.04` |
 | `AsmRunDockerImage` | `debian:stable-slim`, `alpine:3` | the image to run a Linux build in |
 | `RunArguments` | | the program's arguments when the command line gives none, as in .NET |
@@ -257,6 +258,6 @@ alone.
 | `ASM0052` | the tool settings file cannot be written | check the `obj/` folder |
 | `ASM0053` | `PackAsTool` on a project that is not a program, or that has several target frameworks | `OutputType=Exe` and one `TargetFramework` |
 | `ASM0090` | `dotnet run` of a library, static library or object files project | run a program (`OutputType=Exe`) |
-| `ASM0091` | no build this machine can run, with what was tried | build a RID it runs, install WSL, or start Docker |
+| `ASM0091` | no build this machine can run, with what was tried | build a RID it runs, install wasmtime for a `wasi-wasm` build, install WSL, or start Docker |
 | `ASM0092` | nothing built yet (`dotnet run --no-build`) | build first |
-| `ASM0093` | an `AsmRunIn` other than `Auto`, `Host`, `Wsl` or `Docker` | one of those |
+| `ASM0093` | an `AsmRunIn` other than `Auto`, `Host`, `Wasi`, `Wsl` or `Docker` | one of those |

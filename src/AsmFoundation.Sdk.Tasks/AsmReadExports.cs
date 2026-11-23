@@ -10,8 +10,8 @@ namespace AsmFoundation.Sdk.Tasks;
 
 /// <summary>
 /// Reads the names an exports file (a GNU linker version script) makes global, for the linkers
-/// that take a list of names instead: lld-link (Windows, <c>-export:</c>) and ld64.lld (macOS,
-/// <c>-exported_symbol</c>).
+/// that take a list of names instead: lld-link (Windows, <c>-export:</c>), ld64.lld (macOS,
+/// <c>-exported_symbol</c>) and wasm-ld (WebAssembly, <c>--export=</c>).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -35,9 +35,16 @@ public sealed class AsmReadExports : Task
 
     /// <summary>
     /// Whether wildcards may stay in the names: true for ld64.lld (macOS matches them itself),
-    /// false for lld-link (Windows needs exact names).
+    /// false for lld-link (Windows needs exact names) and wasm-ld (its <c>--export</c> takes one
+    /// exact name).
     /// </summary>
     public bool AllowWildcards { get; set; }
+
+    /// <summary>
+    /// What exports exact names only, as ASM0030 says it when a pattern is refused ("Windows DLLs",
+    /// the default, or "WebAssembly modules"), so that the message names the platform being built.
+    /// </summary>
+    public string ExactNamesTarget { get; set; } = "Windows DLLs";
 
     /// <summary>The global names, in file order, each once.</summary>
     [Output]
@@ -98,7 +105,7 @@ public sealed class AsmReadExports : Task
             if (!AllowWildcards && name.IndexOfAny(new[] { '*', '?', '[' }) >= 0)
             {
                 Log.LogError(null, "ASM0030", null, ExportsFile, 0, 0, 0, 0,
-                    "{0} exports '{1}', a pattern; Windows DLLs export exact names only. List each name.", ExportsFile, name);
+                    "{0} exports '{1}', a pattern; {2} export exact names only. List each name.", ExportsFile, name, ExactNamesTarget);
                 return false;
             }
 

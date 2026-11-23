@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A .NET browser-wasm app (WebAssemblyTests) that links three asm projects into its runtime,
+    one of each kind a WebAssembly app links: WasmLibrary (a library: its archive, wasmlib.a),
+    WasmStatic (a static library: wasmstatic.a) and WasmObjects (object files: sub.wasm.o). It has
+    no setup of its own: the consumer targets reach it through the asm projects' implicit
+    AsmFoundation.Sdk reference, and turn each into NativeFileReference items, which Emscripten
+    links into dotnet.native.wasm (the wasm-tools workload). ws_mul is then in two archives,
+    wasmstatic.a and wasmlib.a, which holds the static library WasmLibrary links: the link takes
+    the first member that defines it and no other, so the two coexist. main.mjs runs Main under
+    Node, from the build's AppBundle folder. It prints
+      "<RuntimeIdentifier> <wl_add(40, 2)> <wl_twice(21)> <wl_platform()> <wl_table_sum()> <wl_simd(21)> <ws_mul(6, 7)> <wo_sub(50, 8)>"
+    which a Release build answers "browser-wasm 42 42 111 42 42 42 42".
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <WasmMainJSPath>main.mjs</WasmMainJSPath>
+    <!-- A test program: tests/projects/Directory.Build.props sends packages to the local feed,
+         which this one never is. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../WasmLibrary/WasmLibrary.asmproj" />
+    <ProjectReference Include="../WasmStatic/WasmStatic.asmproj" />
+    <ProjectReference Include="../WasmObjects/WasmObjects.asmproj" />
+  </ItemGroup>
+</Project>

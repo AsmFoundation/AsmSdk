@@ -153,6 +153,17 @@
     <_AsmPackAsTool Condition="'$(PackAsTool)' == 'true'">true</_AsmPackAsTool>
     <PackAsTool Condition="'$(_AsmPackAsTool)' == 'true'">false</PackAsTool>
 
+    <!--
+      WebAssembly has no shared libraries that a program loads: a library's module (crc.wasm) is
+      for JavaScript, Node or wasmtime to instantiate, while a .NET WebAssembly app links native
+      code into its own runtime, statically, and another asm project links an archive too. So a
+      Library built for browser-wasm or wasi-wasm also archives its objects by default (the
+      archive is what GetAsmLinkInputs hands those consumers). Set AsmProduceStaticLibrary to
+      false to ship the module alone. RuntimeIdentifier, not _AsmArch: the RID's facts are
+      decomposed further down, and this default must come before the general one below.
+    -->
+    <AsmProduceStaticLibrary Condition="'$(AsmProduceStaticLibrary)' == '' and '$(_AsmOutputKind)' == 'SharedLibrary' and ('$(RuntimeIdentifier)' == 'browser-wasm' or '$(RuntimeIdentifier)' == 'wasi-wasm')">true</AsmProduceStaticLibrary>
+
     <!-- Also archive the objects into lib<name>.a next to a shared library, for a library
          that ships both: programs that load it (P/Invoke, dlopen) take the .so, and
          assembly consumers that link statically take the .a. -->
@@ -180,13 +191,18 @@
 
   <!--
     RuntimeIdentifiers and RuntimeIdentifier mean what they mean in .NET: the platforms to build
-    for, with .NET's names. AsmSdk builds these eight:
+    for, with .NET's names. AsmSdk builds these ten:
       win-x64, win-arm64          PE/COFF (lld-link): Windows PCs and servers
       linux-x64, linux-arm64      ELF (ld.lld), glibc: most servers and containers, Graviton
       linux-musl-x64,             ELF (ld.lld), musl: Alpine containers, on x64 and on ARM64
       linux-musl-arm64
       osx-x64, osx-arm64          Mach-O (ld64.lld): Intel and Apple silicon Macs
-    x86-64 code is NASM (.asm); ARM64 code is GNU syntax (.s) for the bundled llvm-mc.
+      browser-wasm                WebAssembly (wasm-ld): modules for JavaScript, and archives that
+                                  a .NET WebAssembly app (Blazor) links into its runtime
+      wasi-wasm                   WebAssembly with WASI (wasm-ld): commands for wasmtime and other
+                                  WASI hosts, modules, and archives for .NET's WASI apps
+    x86-64 code is NASM (.asm); ARM64 code is GNU syntax (.s) for the bundled llvm-mc, and so is
+    WebAssembly, in LLVM's WebAssembly assembly (.s files qualified for wasm: name.wasm.s).
 
     What a project builds, first match wins: the one given with -r; those a referencing project
     asks for on its ProjectReference (RuntimeIdentifiers metadata, which arrives here as the
@@ -215,14 +231,15 @@
     <_AsmBuildRuntimeIdentifiers Condition="'$(_AsmBuildRuntimeIdentifiers)' == ''">$(_AsmDeclaredRuntimeIdentifiers)</_AsmBuildRuntimeIdentifiers>
 
     <!-- Every RID AsmSdk supports, for messages and for restore. -->
-    <_AsmSupportedRuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</_AsmSupportedRuntimeIdentifiers>
+    <_AsmSupportedRuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64;browser-wasm;wasi-wasm</_AsmSupportedRuntimeIdentifiers>
 
     <!--
       Restore writes a target per RID into project.assets.json only for the RIDs listed in
       RuntimeIdentifiers, and an inner build with RuntimeIdentifier=<rid> fails with NETSDK1047
       when its target is missing. A project may name no RID and be built for whatever a
-      referencing project asks, so restore always lists all eight (it costs nothing: an .asmproj
-      has no runtime packs). The project's own list was captured above.
+      referencing project asks, so restore always lists all ten (it costs nothing: an .asmproj
+      has no runtime packs, the two WebAssembly RIDs included). The project's own list was
+      captured above.
     -->
     <RuntimeIdentifiers>$(_AsmSupportedRuntimeIdentifiers)</RuntimeIdentifiers>
 
@@ -243,28 +260,42 @@
   <PropertyGroup Condition="'$(_AsmRid)' == 'linux-musl-arm64'"><_AsmOs>Linux</_AsmOs><_AsmArch>arm64</_AsmArch><_AsmMusl>true</_AsmMusl></PropertyGroup>
   <PropertyGroup Condition="'$(_AsmRid)' == 'osx-x64'"><_AsmOs>MacOS</_AsmOs><_AsmArch>x64</_AsmArch></PropertyGroup>
   <PropertyGroup Condition="'$(_AsmRid)' == 'osx-arm64'"><_AsmOs>MacOS</_AsmOs><_AsmArch>arm64</_AsmArch></PropertyGroup>
+  <!-- WebAssembly: two "operating systems" on one virtual CPU. _AsmArch is wasm for both, the
+       switch every WebAssembly-specific step tests; _AsmOs tells the browser from WASI. -->
+  <PropertyGroup Condition="'$(_AsmRid)' == 'browser-wasm'"><_AsmOs>Browser</_AsmOs><_AsmArch>wasm</_AsmArch></PropertyGroup>
+  <PropertyGroup Condition="'$(_AsmRid)' == 'wasi-wasm'"><_AsmOs>Wasi</_AsmOs><_AsmArch>wasm</_AsmArch></PropertyGroup>
 
   <PropertyGroup>
     <!--
       File names per OS, from AssemblyName, the way a .csproj names foo.dll after it
       (Microsoft.NET.Sdk.props has already defaulted AssemblyName to the project name):
-        Windows  foo.dll (+ the import library foo.dll.lib), foo.lib, foo.exe
-        Linux    libfoo.so, libfoo.a, foo
-        macOS    libfoo.dylib, libfoo.a, foo
+        Windows      foo.dll (+ the import library foo.dll.lib), foo.lib, foo.exe
+        Linux        libfoo.so, libfoo.a, foo
+        macOS        libfoo.dylib, libfoo.a, foo
+        WebAssembly  foo.wasm (+ the archive foo.a), foo.a, foo.wasm (browser-wasm, wasi-wasm)
       Unix libraries get the lib prefix because "-lfoo" and .NET's [DllImport("foo")] look for
       it there; Windows looks for foo.dll. The import library of a DLL is foo.dll.lib, as Rust
       names it, so that a project producing both a DLL and a static library (foo.lib) never
       writes two files of one name. TargetFileName is set explicitly because an empty TargetExt
       would otherwise be filled with ".dll" by the common targets. The RID outer build has no
       OS: it gets the Linux names, which nothing there uses.
+      WebAssembly names carry no prefix, for .NET: a WebAssembly app's build names a P/Invoke
+      module after each NativeFileReference's file name without its extension (.NET 10's
+      WasmApp.Common.targets, _GenerateManagedToNative) and matches it against [DllImport] as
+      written, so a hand-wired foo.a serves the [DllImport("foo")] that loads foo.dll and
+      libfoo.so elsewhere, where libfoo.a would need [DllImport("libfoo")]. (The SDK's own
+      consumer targets name the module after AssemblyName whatever the file is called.) A
+      module is fetched by its own name (foo.wasm), so it has no prefix either.
     -->
-    <_AsmLibraryPrefix Condition="'$(_AsmOs)' != 'Windows'">lib</_AsmLibraryPrefix>
+    <_AsmLibraryPrefix Condition="'$(_AsmOs)' != 'Windows' and '$(_AsmArch)' != 'wasm'">lib</_AsmLibraryPrefix>
     <_AsmSharedExtension Condition="'$(_AsmOs)' == 'Windows'">.dll</_AsmSharedExtension>
     <_AsmSharedExtension Condition="'$(_AsmOs)' == 'MacOS'">.dylib</_AsmSharedExtension>
+    <_AsmSharedExtension Condition="'$(_AsmArch)' == 'wasm'">.wasm</_AsmSharedExtension>
     <_AsmSharedExtension Condition="'$(_AsmSharedExtension)' == ''">.so</_AsmSharedExtension>
     <_AsmStaticExtension Condition="'$(_AsmOs)' == 'Windows'">.lib</_AsmStaticExtension>
     <_AsmStaticExtension Condition="'$(_AsmStaticExtension)' == ''">.a</_AsmStaticExtension>
     <_AsmExecutableExtension Condition="'$(_AsmOs)' == 'Windows'">.exe</_AsmExecutableExtension>
+    <_AsmExecutableExtension Condition="'$(_AsmArch)' == 'wasm'">.wasm</_AsmExecutableExtension>
 
     <TargetName Condition="'$(TargetName)' == '' and ('$(_AsmOutputKind)' == 'SharedLibrary' or '$(_AsmOutputKind)' == 'StaticLibrary')">$(_AsmLibraryPrefix)$(AssemblyName)</TargetName>
     <TargetName Condition="'$(TargetName)' == ''">$(AssemblyName)</TargetName>
@@ -306,6 +337,10 @@
       MACOS, MUSL on linux-musl-x64 and linux-musl-arm64 (LINUX too), and X64 or ARM64. They are for what truly
       differs per platform (system calls, the C library's names); the calling convention has the
       SDK's macros instead (asmsdk.inc). The same switch as the framework symbol turns them off.
+      WebAssembly gets BROWSER or WASI, and WASM, the same way. They reach a WebAssembly source
+      as labels rather than llvm-mc's defsym constants (see AsmPrepare: llvm-mc's wasm object
+      writer stops on any constant symbol), so .ifdef WASI works there as everywhere, but a
+      define with a value cannot (ASM0018).
     -->
     <_AsmImplicitRuntimeDefines Condition="'$(DisableImplicitFrameworkDefines)' != 'true' and '$(_AsmOs)' != ''">$(_AsmOs.ToUpperInvariant());$(_AsmArch.ToUpperInvariant())</_AsmImplicitRuntimeDefines>
     <_AsmImplicitRuntimeDefines Condition="'$(_AsmImplicitRuntimeDefines)' != '' and '$(_AsmMusl)' == 'true'">$(_AsmImplicitRuntimeDefines);MUSL</_AsmImplicitRuntimeDefines>
@@ -342,7 +377,9 @@
                       .note.GNU-stack section that marks the stack non-executable
       GNU (.s)        include/asmsdk-gnu-implicit.inc, the same for llvm-mc, which has no
                       pre-include option: the SDK assembles a generated file in obj/ that includes
-                      it and then the source (see _AsmWriteImplicitUsingsWrappers)
+                      it and then the source (see _AsmWriteSourceWrappers). For WebAssembly the
+                      file includes asmsdk-wasm.inc instead (FUNCTION with a signature,
+                      IMPORT_FUNCTION, ...)
     disable (or false) gives raw sources back: nothing is added, and each file includes what
     it uses, as in 0.3.0 and before. That is the way out for a codebase whose own macros share
     a name with the layer's (FUNCTION, RETURN, ARG1, ...).
@@ -594,7 +631,7 @@
     </ItemGroup>
     <Error Code="ASM0025"
            Condition="'@(_AsmForeignCompileItem)' != ''"
-           Text="@(_AsmForeignCompileItem->'%(Identity)', ', ') cannot be compiled by an .asmproj: its Compile items are asm sources, .asm (NASM, x64) or .s (GNU syntax, ARM64 and x64). Keep another file in the project as a None item (&lt;None Include=&quot;...&quot; /&gt;), and build C or C# in a project of its own." />
+           Text="@(_AsmForeignCompileItem->'%(Identity)', ', ') cannot be compiled by an .asmproj: its Compile items are asm sources, .asm (NASM, x64) or .s (GNU syntax for llvm-mc: ARM64, x64, and WebAssembly in name.wasm.s files). Keep another file in the project as a None item (&lt;None Include=&quot;...&quot; /&gt;), and build C or C# in a project of its own." />
 
     <Error Code="ASM0100"
            ContinueOnError="ErrorAndContinue"

@@ -1,0 +1,37 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A WebAssembly library for both wasm RIDs (WebAssemblyTests): src/wasmlib.wasm.s, LLVM's
+    WebAssembly assembly through asmsdk-wasm.inc (ImplicitUsings brings it); in a subfolder so
+    that a Debug object's DWARF can show the source's own folder, which differs from the project
+    folder llvm-mc runs in (the debug test). Each RID's build
+    writes a module, wasmlib.wasm, that exports every FUNCTION (no ExportsFile: export-dynamic),
+    and an archive, wasmlib.a, for the .NET WebAssembly apps (WasmBrowserApp, WasiApp) and the
+    asm program (WasmProgram) that link it. Exports:
+      wl_add(a, b)      a + b
+      wl_twice(x)       2x, through a HIDDEN_FUNCTION that ends in TAILCALL wl_add
+      wl_platform()     what the SDK defined, as a sum: 1 BROWSER, 2 WASI, 10 RELEASE,
+                        100 FREESTANDING (a Release browser-wasm build answers 111)
+      wl_sum(ptr, n)    the sum of n 32-bit integers at ptr in linear memory (a loop)
+      wl_table_sum()    the sum of the module's own table in read-only data (ADDRESS, ENDDATA)
+      wl_simd(x)        x + x through i32x4 lanes (SIMD128, which the SDK enables)
+      wl_square(x)      x * x through WasmStatic's ws_mul, a function of the static library this
+                        library links (which the module also exports: export-dynamic exports
+                        every visible global it holds)
+    wl_hidden (HIDDEN_FUNCTION) and wl_local (LOCAL_FUNCTION) are exported by no module.
+    The reference to WasmStatic is private, as a shared library's static library references
+    are by default, so the archive must hold ws_mul itself: the SDK adds WasmStatic's members
+    to wasmlib.a. Packed as Test.WasmLibrary for the package consumer (WasmBrowserPackageApp),
+    which calls ws_mul through this package alone.
+  -->
+  <PropertyGroup>
+    <AssemblyName>wasmlib</AssemblyName>
+    <RuntimeIdentifiers>browser-wasm;wasi-wasm</RuntimeIdentifiers>
+    <PackageId>Test.WasmLibrary</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>AsmFoundation tests</Authors>
+    <Description>Test package: a WebAssembly library for browser-wasm and wasi-wasm.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../WasmStatic/WasmStatic.asmproj" />
+  </ItemGroup>
+</Project>

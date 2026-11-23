@@ -24,6 +24,13 @@
                                                package does not depend on AsmFoundation.Sdk
                                                (AsmWritePackageConsumerTargets)
       native/<rid>/<tfm>/libfoo.a, foo.lib     static library (Unix, Windows)
+      native/<rid>/<tfm>/foo.a, foo.wasm       WebAssembly (browser-wasm, wasi-wasm): the archive,
+                                               which a consuming .asmproj links and the props hand
+                                               a .NET WebAssembly app as NativeFileReference, and
+                                               a library's module, for JavaScript and WASI hosts.
+                                               Not under runtimes/: nothing loads a wasm module
+                                               the way a .NET app loads a shared library, so NuGet
+                                               must not copy it into an app's output
       native/<rid>/<tfm>/foo.dll.lib           the import library of a Windows DLL, for a
                                                consuming .asmproj that links the DLL
       runtimes/<rid>/native/libfoo.so, libfoo.dylib, foo.dll
@@ -252,13 +259,17 @@
     <PropertyGroup>
       <_AsmPackNativeFolder>native/$(RuntimeIdentifier)/$(_AsmTargetFrameworkName)/</_AsmPackNativeFolder>
       <_AsmPackStaticPath Condition="'$(AsmStaticLibraryPath)' != ''">$(_AsmPackNativeFolder)$([System.IO.Path]::GetFileName('$(AsmStaticLibraryPath)'))</_AsmPackStaticPath>
-      <_AsmPackSharedPath Condition="'$(AsmSharedLibraryPath)' != '' and '$(_AsmPackIsMultiTargeted)' != 'true'">runtimes/$(RuntimeIdentifier)/native/$(TargetFileName)</_AsmPackSharedPath>
-      <_AsmPackSharedPath Condition="'$(AsmSharedLibraryPath)' != '' and '$(_AsmPackIsMultiTargeted)' == 'true'">runtimes/$(RuntimeIdentifier)/nativeassets/$(_AsmNuGetFramework)/$(TargetFileName)</_AsmPackSharedPath>
+      <_AsmPackSharedPath Condition="'$(AsmSharedLibraryPath)' != '' and '$(_AsmArch)' != 'wasm' and '$(_AsmPackIsMultiTargeted)' != 'true'">runtimes/$(RuntimeIdentifier)/native/$(TargetFileName)</_AsmPackSharedPath>
+      <_AsmPackSharedPath Condition="'$(AsmSharedLibraryPath)' != '' and '$(_AsmArch)' != 'wasm' and '$(_AsmPackIsMultiTargeted)' == 'true'">runtimes/$(RuntimeIdentifier)/nativeassets/$(_AsmNuGetFramework)/$(TargetFileName)</_AsmPackSharedPath>
+      <!-- A WebAssembly module goes next to its archive (see the layout above): per framework
+           already, so no nativeassets/ folder is needed when the project multi-targets. -->
+      <_AsmPackSharedPath Condition="'$(AsmSharedLibraryPath)' != '' and '$(_AsmArch)' == 'wasm'">$(_AsmPackNativeFolder)$(TargetFileName)</_AsmPackSharedPath>
       <_AsmPackImportPath Condition="'$(AsmImportLibraryPath)' != ''">$(_AsmPackNativeFolder)$([System.IO.Path]::GetFileName('$(AsmImportLibraryPath)'))</_AsmPackImportPath>
 
       <!-- The file to link: what AsmPackageLinkKind asks for when the project produces it, else
-           the other one. -->
-      <_AsmPackSharedLink>$([MSBuild]::ValueOrDefault('$(_AsmPackImportPath)', '$(_AsmPackSharedPath)'))</_AsmPackSharedLink>
+           the other one. A WebAssembly module is never one: wasm-ld cannot link against it, so
+           a wasm package without an archive (AsmProduceStaticLibrary=false) links nothing. -->
+      <_AsmPackSharedLink Condition="'$(_AsmArch)' != 'wasm'">$([MSBuild]::ValueOrDefault('$(_AsmPackImportPath)', '$(_AsmPackSharedPath)'))</_AsmPackSharedLink>
       <_AsmPackLink Condition="'$(AsmPackageLinkKind)' == 'Static'">$([MSBuild]::ValueOrDefault('$(_AsmPackStaticPath)', '$(_AsmPackSharedLink)'))</_AsmPackLink>
       <_AsmPackLink Condition="'$(AsmPackageLinkKind)' != 'Static'">$([MSBuild]::ValueOrDefault('$(_AsmPackSharedLink)', '$(_AsmPackStaticPath)'))</_AsmPackLink>
       <!-- A consumer that links the shared library (or its import library) needs the library
@@ -322,6 +333,7 @@
                           TargetFrameworkName="$(_AsmTargetFrameworkName)"
                           NuGetFramework="$(_AsmNuGetFramework)"
                           HasIncludes="$(_AsmPackHasIncludes)"
+                          ImportName="$(AssemblyName)"
                           LinkLibraries="@(_AsmPackedLink)"
                           ProgramFiles="@(_AsmPackedProgram)"
                           SupportedRuntimeIdentifiers="@(_AsmSupportedRidItem)"

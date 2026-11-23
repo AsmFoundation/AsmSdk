@@ -1,0 +1,8 @@
+/* exports.map - the WasmExports test project's exports file: the module exports we_exported
+   only (wasm-ld's --export for each global name), though we_internal is a FUNCTION too. */
+WASMEXPORTS_1.0 {
+    global:
+        we_exported;
+    local:
+        *;
+};

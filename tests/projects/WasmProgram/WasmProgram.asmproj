@@ -1,0 +1,17 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A WASI program (WebAssemblyTests): a WebAssembly command for wasi-wasm, entered at _start,
+    that writes "hello from WebAssembly" to standard output with WASI's fd_write and exits with
+    wl_add(40, 2) = 42 through proc_exit. wl_add comes from WasmLibrary's archive (wasmlib.a),
+    which the ProjectReference links in: an asm project referencing another on WebAssembly gets
+    the archive, never the module. dotnet run starts it in wasmtime (AsmSelectRunTarget).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>wasmhello</AssemblyName>
+    <RuntimeIdentifiers>wasi-wasm</RuntimeIdentifiers>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../WasmLibrary/WasmLibrary.asmproj" />
+  </ItemGroup>
+</Project>

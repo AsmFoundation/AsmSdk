@@ -17,19 +17,22 @@ namespace AsmFoundation.Sdk.Tasks;
 /// </para>
 /// <list type="bullet">
 /// <item>The extension is the language. <c>.asm</c> is NASM, which assembles x86-64 only;
-/// <c>.s</c> is GNU syntax for llvm-mc, which assembles ARM64 (and x86-64 in AT&amp;T syntax).</item>
+/// <c>.s</c> is GNU syntax for llvm-mc, which assembles ARM64 (and x86-64 in AT&amp;T syntax,
+/// and WebAssembly in LLVM's WebAssembly assembly).</item>
 /// <item>An optional qualifier before the extension narrows the targets: a RID
-/// (<c>crc32c.linux-x64.asm</c>), an OS family (<c>win</c>, <c>linux</c>, <c>linux-musl</c>,
-/// <c>osx</c>), <c>unix</c>, or a CPU (<c>x64</c>, <c>arm64</c>).</item>
+/// (<c>crc32c.linux-x64.asm</c>, <c>crc32c.browser-wasm.s</c>), an OS family (<c>win</c>,
+/// <c>linux</c>, <c>linux-musl</c>, <c>osx</c>, <c>browser</c>, <c>wasi</c>), <c>unix</c>, or a
+/// CPU (<c>x64</c>, <c>arm64</c>, <c>wasm</c>).</item>
 /// <item>An unqualified <c>.asm</c> builds every x64 RID; an unqualified <c>.s</c> every ARM64
-/// RID (GNU syntax for x86-64 must say so with a qualifier).</item>
+/// RID (GNU syntax for x86-64 must say so with a qualifier, and WebAssembly too: no unqualified
+/// file ever builds browser-wasm or wasi-wasm, because no other CPU's code assembles as wasm).</item>
 /// <item>Files of the same name in the same folder replace each other per RID: the most specific
 /// qualifier that applies wins (see <see cref="RuntimeTarget.Specificity"/>), so a generic
 /// <c>crc32c.asm</c> can be overridden for one OS without excluding anything by hand.</item>
 /// </list>
 /// <para>Errors: ASM0020 (two files of one name tie for a RID), ASM0021 (a NASM file qualified
-/// only for ARM64 targets), ASM0022 (unsupported RID; the targets check it first), ASM0024 (the
-/// same file is a Compile item twice).</para>
+/// only for ARM64 targets, or only for WebAssembly ones), ASM0022 (unsupported RID; the targets
+/// check it first), ASM0024 (the same file is a Compile item twice).</para>
 /// </remarks>
 public sealed class AsmSelectSources : Task
 {
@@ -96,6 +99,17 @@ public sealed class AsmSelectSources : Task
                 return false;
             }
 
+            if (candidate.Language == "Nasm" && candidate.Qualifier.Length != 0 && QualifierIsWasmOnly(candidate.Qualifier))
+            {
+                // The same mistake for WebAssembly (crc32c.wasm.asm): NASM has no wasm output,
+                // and the file would be skipped on every RID. Same code as for ARM64: one rule,
+                // "a .asm file qualified for no x86-64 RID", with the fix that fits the CPU.
+                Log.LogError(null, "ASM0021", null, source.ItemSpec, 0, 0, 0, 0,
+                    "{0} is a NASM file (.asm) qualified for '{1}', but NASM assembles x86-64 only. Write WebAssembly in LLVM's WebAssembly assembly, in a .s file with a wasm qualifier (name.wasm.s, or name.browser.s / name.wasi.s for one of the two).",
+                    source.ItemSpec, candidate.Qualifier);
+                return false;
+            }
+
             int score = Score(candidate, target);
             if (score > 0)
             {
@@ -145,7 +159,9 @@ public sealed class AsmSelectSources : Task
 
         if (candidate.Qualifier.Length == 0)
         {
-            // Unqualified: .asm is x64's language, .s is ARM64's.
+            // Unqualified: .asm is x64's language, .s is ARM64's. Neither is WebAssembly's: a
+            // wasm RID takes qualified files only, so the ARM64 sources of a project that adds
+            // browser-wasm never reach llvm-mc's wasm parser (ASM0023 names the fix instead).
             bool nativeLanguage = candidate.Language == "Nasm"
                 ? target.Architecture == TargetArchitecture.X64
                 : target.Architecture == TargetArchitecture.Arm64;
@@ -162,6 +178,18 @@ public sealed class AsmSelectSources : Task
     {
         RuntimeTarget[] applies = RuntimeTarget.All.Values.Where(t => t.Specificity(qualifier) > 0).ToArray();
         return applies.Length != 0 && applies.All(t => t.Architecture == TargetArchitecture.Arm64);
+    }
+
+    /// <summary>
+    /// Whether a qualifier applies to WebAssembly targets only (wasm, browser, wasi, browser-wasm,
+    /// wasi-wasm), so that a NASM file carrying it can never build.
+    /// </summary>
+    /// <param name="qualifier">The qualifier.</param>
+    /// <returns>True when every supported RID it applies to is a wasm RID.</returns>
+    private static bool QualifierIsWasmOnly(string qualifier)
+    {
+        RuntimeTarget[] applies = RuntimeTarget.All.Values.Where(t => t.Specificity(qualifier) > 0).ToArray();
+        return applies.Length != 0 && applies.All(t => t.Architecture == TargetArchitecture.Wasm);
     }
 
     /// <summary>A source file split into the parts the rules look at.</summary>

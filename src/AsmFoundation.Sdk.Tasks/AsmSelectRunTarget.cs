@@ -25,15 +25,24 @@ namespace AsmFoundation.Sdk.Tasks;
 /// whose loader exists here (a static freestanding program needs none, so linux-x64 and
 /// linux-musl-x64 both run on either C library);</item>
 /// <item>one it emulates: win-x64 on Windows on Arm, osx-x64 on Apple silicon with Rosetta 2;</item>
+/// <item>the wasi-wasm build, a WASI command, in wasmtime (found on PATH), on any machine
+/// (added with WebAssembly support, after the builds the machine runs itself: a native build is
+/// what a project that also builds one means to run here);</item>
 /// <item>Windows only: a Linux build of this machine's CPU through WSL, when the default (or the
 /// named) distribution has the program's loader;</item>
 /// <item>a Linux build in a Docker container: debian:stable-slim for glibc, alpine:3 for musl,
 /// another CPU under the emulation Docker Desktop includes (QEMU).</item>
 /// </list>
 /// <para>
-/// AsmRunIn narrows the choice to one of Host (1 and 2), Wsl or Docker. The program's own
-/// arguments (RunArguments of the project, and what follows "--" on the command line, which the
-/// CLI appends) reach the program unchanged in every mode.
+/// AsmRunIn narrows the choice to one of Host (1 and 2), Wasi (3), Wsl or Docker. The program's
+/// own arguments (RunArguments of the project, and what follows "--" on the command line, which
+/// the CLI appends) reach the program unchanged in every mode.
+/// </para>
+/// <para>
+/// A WASI program gets the folder dotnet run was started in as its current directory ("."),
+/// so that it can open files there as a native program would; wasmtime grants a WASI program
+/// no file access at all otherwise. It gets no environment variables (wasmtime passes none
+/// unless told to with --env, which RunArguments can add).
 /// </para>
 /// <para>
 /// Footguns: a program run through Docker sees its own folder as /app and works there, not in
@@ -52,13 +61,14 @@ public sealed class AsmSelectRunTarget : Task
 {
     /// <summary>
     /// The program of each RID the project built: the item is the program's full path, with
-    /// RuntimeIdentifier, AsmOs (Windows, Linux, MacOS), AsmArch (x64, arm64), AsmMusl ("true" for
-    /// a musl RID) and AsmDynamicLinker (the loader of a Linux libc program; empty for a static one).
+    /// RuntimeIdentifier, AsmOs (Windows, Linux, MacOS, Wasi), AsmArch (x64, arm64, wasm),
+    /// AsmMusl ("true" for a musl RID) and AsmDynamicLinker (the loader of a Linux libc program;
+    /// empty for a static one).
     /// </summary>
     [Required]
     public ITaskItem[] Programs { get; set; } = Array.Empty<ITaskItem>();
 
-    /// <summary>Where to run: Auto (the order above, the default), Host, Wsl or Docker.</summary>
+    /// <summary>Where to run: Auto (the order above, the default), Host, Wasi, Wsl or Docker.</summary>
     public string RunIn { get; set; } = "";
 
     /// <summary>The WSL distribution to run in; empty for WSL's default one.</summary>
@@ -79,7 +89,7 @@ public sealed class AsmSelectRunTarget : Task
     /// <summary>The project file, for messages.</summary>
     public string ProjectFile { get; set; } = "";
 
-    /// <summary>The program to start: the program itself, wsl.exe or docker.</summary>
+    /// <summary>The program to start: the program itself, wasmtime, wsl.exe or docker.</summary>
     [Output]
     public string RunCommand { get; set; } = "";
 
@@ -91,7 +101,7 @@ public sealed class AsmSelectRunTarget : Task
     [Output]
     public string SelectedRuntimeIdentifier { get; set; } = "";
 
-    /// <summary>How it runs: Host, Emulation, Wsl or Docker.</summary>
+    /// <summary>How it runs: Host, Emulation, Wasi, Wsl or Docker.</summary>
     [Output]
     public string RunsIn { get; set; } = "";
 
@@ -103,12 +113,12 @@ public sealed class AsmSelectRunTarget : Task
     public override bool Execute()
     {
         string mode = RunIn.Trim();
-        string[] modes = { "Auto", "Host", "Wsl", "Docker" };
+        string[] modes = { "Auto", "Host", "Wasi", "Wsl", "Docker" };
         string? known = mode.Length == 0 ? "Auto" : modes.FirstOrDefault(m => string.Equals(m, mode, StringComparison.OrdinalIgnoreCase));
         if (known is null)
         {
             Log.LogError(null, "ASM0093", null, ProjectFile, 0, 0, 0, 0,
-                "AsmRunIn '{0}' is not a way to run a program. Use Auto (the default: this machine, then WSL, then Docker), Host, Wsl or Docker.", RunIn);
+                "AsmRunIn '{0}' is not a way to run a program. Use Auto (the default: this machine, then a WASI runtime, then WSL, then Docker), Host, Wasi, Wsl or Docker.", RunIn);
             return false;
         }
 
@@ -144,6 +154,14 @@ public sealed class AsmSelectRunTarget : Task
             }
         }
 
+        if (known == "Auto" || known == "Wasi")
+        {
+            if (TryWasi(built, tried))
+            {
+                return true;
+            }
+        }
+
         if ((known == "Auto" || known == "Wsl") && hostOs == "Windows")
         {
             if (TryWsl(built, hostArch, tried))
@@ -165,9 +183,47 @@ public sealed class AsmSelectRunTarget : Task
         }
 
         Log.LogError(null, "ASM0091", null, ProjectFile, 0, 0, 0, 0,
-            "This machine ({0}) cannot run any build of {1} ({2}): {3}. Build a RID this machine runs (dotnet run -r <rid>, with the RID in RuntimeIdentifiers), install WSL with a Linux distribution, or start Docker.",
+            "This machine ({0}) cannot run any build of {1} ({2}): {3}. Build a RID this machine runs (dotnet run -r <rid>, with the RID in RuntimeIdentifiers), install wasmtime for a wasi-wasm build, install WSL with a Linux distribution, or start Docker.",
             hostRid, ProjectName, string.Join(", ", built.Select(p => p.GetMetadata("RuntimeIdentifier"))), string.Join("; ", tried));
         return false;
+    }
+
+    /// <summary>Step 3: the wasi-wasm build, a WASI command, in wasmtime.</summary>
+    /// <param name="built">The builds that exist.</param>
+    /// <param name="tried">What was tried, for ASM0091 (appended to).</param>
+    /// <returns>True when it was selected.</returns>
+    /// <remarks>
+    /// wasmtime is the WASI runtime of the Bytecode Alliance, which also maintains WASI itself,
+    /// and the one .NET's own WASI target runs with; it starts a command at <c>_start</c> and
+    /// returns its <c>proc_exit</c> code as its own exit code (measured with wasmtime 39). Found
+    /// on PATH, as dotnet run finds nothing else: a WASI runtime is the user's to install, the
+    /// way Docker is. "--dir ." preopens the current folder (see the class remarks); the
+    /// program's path is quoted for the CLI's command line like every other argument here.
+    /// </remarks>
+    private bool TryWasi(List<ITaskItem> built, List<string> tried)
+    {
+        ITaskItem? program = built.FirstOrDefault(p => p.GetMetadata("AsmOs") == "Wasi");
+        if (program is null)
+        {
+            // Said only when the user asked for WASI: in Auto it would only add noise to a
+            // project that builds no WebAssembly at all.
+            if (RunIn.Trim().Equals("Wasi", StringComparison.OrdinalIgnoreCase))
+            {
+                tried.Add("AsmRunIn=Wasi runs the wasi-wasm build, and there is none");
+            }
+
+            return false;
+        }
+
+        string? wasmtime = FindOnPath("wasmtime");
+        if (wasmtime is null)
+        {
+            tried.Add("wasi-wasm needs a WASI runtime, and wasmtime is not on PATH (https://wasmtime.dev)");
+            return false;
+        }
+
+        Select(program, "Wasi", wasmtime, "run --dir . " + Quote(program.ItemSpec) + Append(Arguments));
+        return true;
     }
 
     /// <summary>Steps 1 and 2: a build this machine runs itself, natively or under its own emulation.</summary>
@@ -328,7 +384,7 @@ public sealed class AsmSelectRunTarget : Task
 
     /// <summary>Sets the outputs and says, at high importance, what runs and how.</summary>
     /// <param name="program">The selected build.</param>
-    /// <param name="how">Host, Emulation, Wsl or Docker.</param>
+    /// <param name="how">Host, Emulation, Wasi, Wsl or Docker.</param>
     /// <param name="command">RunCommand.</param>
     /// <param name="arguments">RunArguments.</param>
     private void Select(ITaskItem program, string how, string command, string arguments)
@@ -340,6 +396,7 @@ public sealed class AsmSelectRunTarget : Task
         string where = how switch
         {
             "Emulation" => " under this machine's x64 emulation",
+            "Wasi" => " in wasmtime",
             "Wsl" => " through WSL" + (WslDistribution.Trim().Length == 0 ? "" : " (" + WslDistribution.Trim() + ")"),
             "Docker" => " in a Docker container",
             _ => "",

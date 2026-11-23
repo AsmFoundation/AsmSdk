@@ -1,0 +1,8 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!-- Expected to FAIL with ASM0023 for browser-wasm only: answer.asm builds linux-x64, and no
+       source is qualified for WebAssembly (an unqualified .s file would be ARM64 code, which
+       llvm-mc's wasm parser could never read, so none is ever taken). -->
+  <PropertyGroup>
+    <RuntimeIdentifiers>linux-x64;browser-wasm</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

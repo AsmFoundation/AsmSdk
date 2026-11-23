@@ -37,6 +37,13 @@
 #      PlugAndPlay and PlugAndPlayVSTest install the dotnet new templates the suite packs
 #      (AsmFoundation.Templates) into a CLI home of their own and take what they create through
 #      build, run, test (Microsoft.Testing.Platform and VSTest), sln add, publish and pack.
+#      WebAssemblyTests (unreleased, on main) builds browser-wasm and wasi-wasm on every machine
+#      and reads the modules itself; Node (on every hosted runner) runs the modules, and
+#      wasmtime, installed below on every runner, runs the WASI program directly and through
+#      dotnet run. The Linux x64 runner also installs the wasm-tools and wasi-experimental
+#      workloads and the WASI SDK 25.0, which .NET 10's WASI build needs exactly, so that the
+#      .NET browser-wasm apps (projects and a package) and the wasi-wasm app link the asm
+#      outputs and run; elsewhere those three tests are skipped with the reason.
 #   The only prerequisite is the .NET SDK: no Python since 0.2.0.
 #   3. The staged toolchain is kept as an artifact: release.yml packs all five from it.
 #
@@ -66,21 +73,35 @@ jobs:
         include:
           # The samples are linux-x64 programs: only Ubuntu x64 runs them; every machine runs
           # its own RID's builds (CrossPlatformTests).
+          # wasmtime: the release asset for this runner and its SHA-256, as GitHub publishes it
+          # for the asset (wasmtime 39.0.1). wasm-dotnet: the runner that also links .NET
+          # WebAssembly apps (workloads and the WASI SDK, see below).
           - rid: win-x64
             os: windows-2025
             run: none
+            wasmtime: wasmtime-v39.0.1-x86_64-windows.zip
+            wasmtime-sha256: bccf64b4227d178c0d13f2856be68876eae3f2f657f3a85d46f076a5e1976198
           - rid: win-arm64
             os: windows-11-arm
             run: none
+            wasmtime: wasmtime-v39.0.1-aarch64-windows.zip
+            wasmtime-sha256: 6d0a455116003bc6325bc47bd65d4ec0b2dc82c25aa9db98d0c7873bc14804ef
           - rid: linux-x64
             os: ubuntu-24.04
             run: native
+            wasmtime: wasmtime-v39.0.1-x86_64-linux.tar.xz
+            wasmtime-sha256: b90a36125387b75db59a67a1c402f2ed9d120fa43670d218a559571e2423d925
+            wasm-dotnet: true
           - rid: linux-arm64
             os: ubuntu-24.04-arm
             run: none
+            wasmtime: wasmtime-v39.0.1-aarch64-linux.tar.xz
+            wasmtime-sha256: bff5ebd3e6781620f40e5586f1aa221f7da98128dacf0142bfb4b25d12242274
           - rid: osx-arm64
             os: macos-15
             run: none
+            wasmtime: wasmtime-v39.0.1-aarch64-macos.tar.xz
+            wasmtime-sha256: 3878fc98ab1fec191476ddec5d195e6d018d7fbe5376e54d2c23aedf38aa1bd2
     runs-on: ${{ matrix.os }}
     steps:
       - name: Check out
@@ -88,10 +109,53 @@ jobs:
         with:
           persist-credentials: false
 
+      # The runner that links .NET WebAssembly apps installs the SDK into a folder of its own:
+      # dotnet workload install writes into the SDK's folder, which is root's on Linux
+      # (/usr/share/dotnet). An empty value keeps setup-dotnet's default elsewhere.
       - name: .NET SDK
         uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        env:
+          DOTNET_INSTALL_DIR: ${{ matrix.wasm-dotnet && format('{0}/dotnet', runner.temp) || '' }}
         with:
           dotnet-version: "10.0.x"
+
+      # wasmtime, the WASI runtime: WebAssemblyTests runs the WASI program with it, and dotnet
+      # run of a wasi-wasm program starts it from PATH. The archive is checked against the
+      # digest GitHub publishes for the release asset before anything is extracted.
+      - name: wasmtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/wasmtime"
+          mkdir -p "$dir"
+          curl -sSfL -o "$dir/${{ matrix.wasmtime }}" "https://github.com/bytecodealliance/wasmtime/releases/download/v39.0.1/${{ matrix.wasmtime }}"
+          # sha256sum on Linux and in Git Bash, shasum on macOS (which has no sha256sum).
+          if command -v sha256sum >/dev/null; then check="sha256sum -c -"; else check="shasum -a 256 -c -"; fi
+          echo "${{ matrix.wasmtime-sha256 }}  $dir/${{ matrix.wasmtime }}" | $check
+          case "${{ matrix.wasmtime }}" in
+            *.zip) unzip -q "$dir/${{ matrix.wasmtime }}" -d "$dir" ;;
+            *) tar -xJf "$dir/${{ matrix.wasmtime }}" -C "$dir" ;;
+          esac
+          folder="$dir/$(basename "${{ matrix.wasmtime }}" | sed -E 's/\.(zip|tar\.xz)$//')"
+          echo "$folder" >> "$GITHUB_PATH"
+          "$folder/wasmtime" --version
+
+      # .NET's WebAssembly builds: wasm-tools (Emscripten, browser-wasm) and wasi-experimental
+      # (wasi-wasm), and the WASI SDK the latter links with: .NET 10 asks for 25.0 exactly
+      # (WASI_SDK_PATH). wasi-sdk publishes no digest for its 25.0 assets; this one was taken
+      # from the release download on 2026-11-23.
+      - name: .NET WebAssembly workloads and the WASI SDK
+        if: matrix.wasm-dotnet
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet workload install wasm-tools wasi-experimental
+          archive="$RUNNER_TEMP/wasi-sdk-25.0-x86_64-linux.tar.gz"
+          curl -sSfL -o "$archive" https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-25/wasi-sdk-25.0-x86_64-linux.tar.gz
+          echo "52640dde13599bf127a95499e61d6d640256119456d1af8897ab6725bcf3d89c  $archive" | sha256sum -c -
+          tar -xzf "$archive" -C "$RUNNER_TEMP"
+          echo "WASI_SDK_PATH=$RUNNER_TEMP/wasi-sdk-25.0-x86_64-linux" >> "$GITHUB_ENV"
+          dotnet workload list
 
       # The staged tools are a pure function of the pins and the program that stages them.
       - name: Cache the staged toolchain

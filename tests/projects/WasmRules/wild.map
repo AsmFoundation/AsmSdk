@@ -1,0 +1,8 @@
+/* wild.map - an exports file with a pattern, which wasm-ld cannot take (ASM0030 when the
+   WasmRules test project is built with -p:ExportsFile=wild.map). */
+WASMRULES_1.0 {
+    global:
+        wr_*;
+    local:
+        *;
+};

@@ -113,8 +113,12 @@ replaces `AsmLinkLibrary`, and Release builds are byte-identical in any folder.
 | `osx-x64`, `osx-arm64` | `lib<name>.dylib` | `lib<name>.a` | `<name>` (`libc` only) | libSystem |
 
 Not released yet: `main` also builds `linux-musl-arm64` (musl on ARM64, such as Alpine on
-Graviton). AsmFoundation.Sdk 0.3.0 on nuget.org builds the seven RIDs above; see the
-[changelog](CHANGELOG.md).
+Graviton), and **WebAssembly**: `browser-wasm` and `wasi-wasm`, from LLVM's WebAssembly
+assembly in `.s` files qualified for it (`name.wasm.s`). A library is a module, `<name>.wasm`,
+plus the archive `<name>.a`, which a .NET WebAssembly app (Blazor, WASI) links into its
+runtime. A `wasi-wasm` program is a WASI command that `dotnet run` starts in wasmtime (see
+[WebAssembly](docs/guide/webassembly.md)). AsmFoundation.Sdk 0.3.0 on nuget.org builds the
+seven RIDs above; see the [changelog](CHANGELOG.md).
 
 `OutputType` picks the kind: `Library` (the default), `StaticLibrary`, `Exe`, or `Objects`
 for object files another project links. Outputs go to `bin/<Configuration>/<tfm>/<rid>/`.

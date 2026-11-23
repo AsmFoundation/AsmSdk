@@ -1,0 +1,9 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!-- Expected to FAIL with ASM0019: limit.wasm.s defines an assembler constant (.set), which
+       llvm-mc's WebAssembly object writer cannot hold; llvm-mc stops with "LLVM ERROR: LIMIT:
+       absolute addressing not supported!", and the SDK says which source and why, before
+       ASM0007. -->
+  <PropertyGroup>
+    <RuntimeIdentifiers>wasi-wasm</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

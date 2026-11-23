@@ -31,10 +31,15 @@ namespace AsmFoundation.Sdk.Tasks;
 /// RID has no match: without it the link would fail later with undefined symbols.</item>
 /// </list>
 /// <para>
-/// Everything is conditioned on UsingAsmFoundationSdk: a .NET consumer of the package gets its
-/// runtimes/ folder from NuGet, and nothing from these props. Paths are relative to the props
-/// file, so the package works from any NuGet cache location. Error: ASM0061 (the props cannot
-/// be written or the graph read).
+/// Everything above is conditioned on UsingAsmFoundationSdk: a .NET consumer of the package gets
+/// its runtimes/ folder from NuGet, and nothing from those items. The one exception is a .NET
+/// WebAssembly app (RuntimeIdentifier browser-wasm or wasi-wasm), which links native code into
+/// its own runtime and finds nothing in runtimes/ to load: for the package's wasm archives the
+/// props add NativeFileReference items, without the file-named P/Invoke module (ScanForPInvokes
+/// false) and with the library's own (<see cref="ImportName"/>, in .NET's _WasmPInvokeModules),
+/// as the SDK's consumer targets do for a ProjectReference; a package must work without the
+/// SDK. Paths are relative to the props file, so the package works from any NuGet cache
+/// location. Error: ASM0061 (the props cannot be written or the graph read).
 /// </para>
 /// </remarks>
 public sealed class AsmWritePackageProps : Task
@@ -57,6 +62,14 @@ public sealed class AsmWritePackageProps : Task
 
     /// <summary>Whether the package has an include/ folder to add to the consumer's include path.</summary>
     public bool HasIncludes { get; set; }
+
+    /// <summary>
+    /// The library's name as [DllImport] spells it (the project's AssemblyName: calc for
+    /// calc.dll and libcalc.so): the P/Invoke module a .NET WebAssembly app gets for the
+    /// package's wasm archive. Empty writes no module name, and the app's build then names the
+    /// module after the archive's file instead.
+    /// </summary>
+    public string ImportName { get; set; } = "";
 
     /// <summary>
     /// The library a consumer links, one per packed RID: the item is the path inside the
@@ -193,6 +206,34 @@ public sealed class AsmWritePackageProps : Task
 
         project.Add(items);
 
+        // .NET WebAssembly apps: the archive of their RID, linked into the app's runtime. Exact
+        // RIDs only, no graph: browser-wasm and wasi-wasm fall back to nothing but each other's
+        // parents, and a WASI archive in a browser app (or the reverse) would link and then call
+        // imports the other host does not have. Evaluation-time items, like the ones above, so
+        // that the wasm build sees them when it counts NativeFileReference to turn its native
+        // link on (_SetWasmBuildNativeDefaults).
+        foreach (ITaskItem library in LinkLibraries
+                     .Where(l => IsWasmRid(l.GetMetadata("RuntimeIdentifier")))
+                     .OrderBy(l => l.GetMetadata("RuntimeIdentifier"), StringComparer.Ordinal))
+        {
+            string rid = library.GetMetadata("RuntimeIdentifier");
+            var wasmItems = new XElement("ItemGroup",
+                new XAttribute("Condition", $"!({IsAsm}) and '$(RuntimeIdentifier)' == '{rid}'"),
+                new XElement("NativeFileReference",
+                    new XAttribute("Include", "$(MSBuildThisFileDirectory)../../" + library.ItemSpec.Replace('\\', '/')),
+                    new XAttribute("ScanForPInvokes", "false"),
+                    new XAttribute("AsmPackage", PackageId)));
+            if (ImportName.Length != 0)
+            {
+                // Exclude: another package (or the consumer targets) may have named it already.
+                wasmItems.Add(new XElement("_WasmPInvokeModules",
+                    new XAttribute("Include", ImportName),
+                    new XAttribute("Exclude", "@(_WasmPInvokeModules)")));
+            }
+
+            project.Add(wasmItems);
+        }
+
         project.Add(new XElement("Target",
             new XAttribute("Name", $"_AsmCheckPackage_{id}"),
             new XAttribute("BeforeTargets", "AsmPrepare"),
@@ -213,4 +254,10 @@ public sealed class AsmWritePackageProps : Task
 
         return output.ToString() + "\n";
     }
+
+    /// <summary>Whether a packed RID is one of the WebAssembly RIDs, whose archives a .NET app links.</summary>
+    /// <param name="rid">The RID the library was packed for.</param>
+    /// <returns>True for browser-wasm and wasi-wasm.</returns>
+    private static bool IsWasmRid(string rid) =>
+        RuntimeTarget.All.TryGetValue(rid, out RuntimeTarget? target) && target.Architecture == TargetArchitecture.Wasm;
 }

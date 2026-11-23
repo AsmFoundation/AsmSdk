@@ -8,6 +8,8 @@
   href: platforms.md
 - name: Writing NASM for AsmSdk
   href: writing-nasm.md
+- name: WebAssembly
+  href: webassembly.md
 - name: Runtimes and linking
   href: runtimes-and-linking.md
 - name: References and packages

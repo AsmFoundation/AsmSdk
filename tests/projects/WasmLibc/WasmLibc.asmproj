@@ -1,0 +1,17 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    TargetFramework libc on WebAssembly (WebAssemblyTests):
+      as it is (a Library: a module)          Expected to FAIL with ASM0016: the bundled wasm-ld
+                                              links no C library, so no linked wasm output can be
+                                              libc
+      -p:OutputType=StaticLibrary              builds: an archive is linked later by a .NET
+                                              WebAssembly app, whose build brings its own C
+                                              library (Emscripten's, wasi-libc), and the source
+                                              sees LIBC defined
+  -->
+  <PropertyGroup>
+    <TargetFramework>libc</TargetFramework>
+    <AssemblyName>wasmlibc</AssemblyName>
+    <RuntimeIdentifiers>wasi-wasm</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

@@ -57,23 +57,33 @@
     as Program items (_AsmComputeProgramBundle below: the program, its PDB, and what it needs at
     run time, each with AsmBundlePath, its path relative to the program), which the referencing
     program copies where its BinariesCopyPath says, keeping their paths relative to each other.
+
+    WebAssembly: a module cannot be linked against (wasm-ld has no shared libraries without
+    PIC and a dynamic loader, which neither the browser nor WASI provide), so a wasm library's
+    link input is its archive (a Library builds one by default; see AsmProduceStaticLibrary),
+    and its objects when it has none. Every link input carries AsmImportName (AssemblyName): a
+    .NET WebAssembly app names its P/Invoke module after it (the consumer targets), whatever
+    the files are called.
   -->
   <Target Name="GetAsmLinkInputs" DependsOnTargets="AsmPrepare;_AsmComputeProgramBundle" Returns="@(_AsmExportedLinkInput)">
     <PropertyGroup>
-      <_AsmSharedLinkInput>$(AsmSharedLibraryPath)</_AsmSharedLinkInput>
+      <_AsmSharedLinkInput Condition="'$(_AsmArch)' != 'wasm'">$(AsmSharedLibraryPath)</_AsmSharedLinkInput>
       <_AsmSharedLinkInput Condition="'$(AsmImportLibraryPath)' != ''">$(AsmImportLibraryPath)</_AsmSharedLinkInput>
+      <!-- A wasm library whose archive was turned off (AsmProduceStaticLibrary=false) still has
+           its objects to hand over. -->
+      <_AsmObjectsAreLinkInput Condition="'$(_AsmOutputKind)' == 'Objects' or ('$(_AsmArch)' == 'wasm' and '$(_AsmOutputKind)' == 'SharedLibrary' and '$(AsmStaticLibraryPath)' == '')">true</_AsmObjectsAreLinkInput>
       <!-- Checked when a referencing project asks, after this project was built: the PDB exists
            only for a Windows link with debug information. -->
       <_AsmSharedLinkSymbols Condition="'$(_AsmOs)' == 'Windows' and '$(AsmSharedLibraryPath)' != '' and Exists('$(TargetDir)$(TargetName).pdb')">$(TargetDir)$(TargetName).pdb</_AsmSharedLinkSymbols>
     </PropertyGroup>
     <ItemGroup>
       <_AsmExportedLinkInput Include="@(AsmPublicIncludeDirectory->'%(FullPath)')" AsmItemType="IncludeDirectory" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" />
-      <_AsmExportedLinkInput Include="$(AsmStaticLibraryPath)" Condition="'$(AsmStaticLibraryPath)' != ''" AsmItemType="LinkInput" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" />
-      <_AsmExportedLinkInput Include="$(_AsmSharedLinkInput)" Condition="'$(AsmStaticLibraryPath)' == '' and '$(_AsmSharedLinkInput)' != ''" AsmItemType="LinkInput" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" AsmRuntimeFile="$(AsmSharedLibraryPath)" AsmRuntimeSymbols="$(_AsmSharedLinkSymbols)" />
+      <_AsmExportedLinkInput Include="$(AsmStaticLibraryPath)" Condition="'$(AsmStaticLibraryPath)' != ''" AsmItemType="LinkInput" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" AsmImportName="$(AssemblyName)" />
+      <_AsmExportedLinkInput Include="$(_AsmSharedLinkInput)" Condition="'$(AsmStaticLibraryPath)' == '' and '$(_AsmSharedLinkInput)' != ''" AsmItemType="LinkInput" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" AsmImportName="$(AssemblyName)" AsmRuntimeFile="$(AsmSharedLibraryPath)" AsmRuntimeSymbols="$(_AsmSharedLinkSymbols)" />
       <!-- ObjectToolPath, the absolute path: ObjectFile is relative to THIS project's folder,
            and a referencing project would look for it in its own (the 0.1.0 and 0.2.0 bug:
            "cannot open <referencing project>/obj/.../x.o"). -->
-      <_AsmExportedLinkInput Include="@(_AsmSelectedSource->'%(ObjectToolPath)')" Condition="'$(_AsmOutputKind)' == 'Objects'" AsmItemType="LinkInput" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" />
+      <_AsmExportedLinkInput Include="@(_AsmSelectedSource->'%(ObjectToolPath)')" Condition="'$(_AsmObjectsAreLinkInput)' == 'true'" AsmItemType="LinkInput" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" AsmImportName="$(AssemblyName)" />
       <_AsmExportedLinkInput Include="@(_AsmProgramBundleFile)" AsmItemType="Program" AsmOrigin="Project" AsmProject="$(MSBuildProjectName)" />
     </ItemGroup>
   </Target>
@@ -295,7 +305,10 @@
     and programs it needs), each file with AsmKind=Program and AsmBundlePath, its path relative
     to the program, which a consumer keeps under whatever folder it puts the program in (so the
     program's run paths keep finding its libraries). Nothing for a static library or object
-    files: nothing a .NET app can load or start.
+    files: nothing a .NET app can load or start. Nothing for WebAssembly either: a .NET app
+    cannot load a wasm module or start a WASI program, and a .NET WebAssembly app links the
+    library's archive instead (GetAsmLinkInputs, through the consumer targets), so a portable
+    .NET app that references a project which also lists browser-wasm copies no .wasm file.
   -->
   <Target Name="GetAsmNativeRuntimeAssets" DependsOnTargets="_AsmComputeProgramBundle" Returns="@(_AsmNativeRuntimeAsset)">
     <PropertyGroup>
@@ -303,11 +316,11 @@
       <_AsmNativeLibraryName>$([MSBuild]::ValueOrDefault('$(PackageId)', '$(AssemblyName)'))</_AsmNativeLibraryName>
       <_AsmNativeLibraryVersion>$([MSBuild]::ValueOrDefault('$(PackageVersion)', '$(Version)'))</_AsmNativeLibraryVersion>
     </PropertyGroup>
-    <ItemGroup Condition="'$(_AsmRid)' != '' and '$(AsmSharedLibraryPath)' != ''">
+    <ItemGroup Condition="'$(_AsmRid)' != '' and '$(_AsmArch)' != 'wasm' and '$(AsmSharedLibraryPath)' != ''">
       <_AsmNativeRuntimeAsset Include="$(AsmSharedLibraryPath)" RelativePath="runtimes/$(RuntimeIdentifier)/native/$(TargetFileName)" />
       <_AsmNativeRuntimeAsset Include="$(_AsmPdbPath)" Condition="'$(_AsmPdbPath)' != '' and Exists('$(_AsmPdbPath)')" RelativePath="runtimes/$(RuntimeIdentifier)/native/$(TargetName).pdb" AsmSymbols="true" />
     </ItemGroup>
-    <ItemGroup Condition="'$(_AsmRid)' != '' and '$(_AsmOutputKind)' == 'Executable'">
+    <ItemGroup Condition="'$(_AsmRid)' != '' and '$(_AsmArch)' != 'wasm' and '$(_AsmOutputKind)' == 'Executable'">
       <_AsmNativeRuntimeAsset Include="@(_AsmProgramBundleFile)" RelativePath="runtimes/$(RuntimeIdentifier)/native/%(_AsmProgramBundleFile.AsmBundlePath)" AsmKind="Program" />
     </ItemGroup>
     <ItemGroup Condition="'$(_AsmRid)' != ''">

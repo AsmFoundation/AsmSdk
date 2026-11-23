@@ -25,6 +25,19 @@ assembles. The two can live side by side in one project.
 > and the loader `/lib/ld-musl-aarch64.so.1`. AsmFoundation.Sdk 0.3.0 on nuget.org builds the
 > seven RIDs above. See the [changelog](changelog.md).
 
+> [!NOTE]
+> **Not released yet: WebAssembly.** The main branch also builds `browser-wasm` and
+> `wasi-wasm`, from LLVM's WebAssembly assembly in `.s` files qualified for it
+> (`name.wasm.s`), linked by the bundled `wasm-ld`:
+>
+> | RID | Object format, linker | Library | Static library | Executable | C library (`libc`) |
+> |---|---|---|---|---|---|
+> | `browser-wasm` | WebAssembly, wasm-ld | `name.wasm` (a module) + `name.a` | `name.a` | none | none (an app's own) |
+> | `wasi-wasm` | WebAssembly, wasm-ld | `name.wasm` (a module) + `name.a` | `name.a` | `name.wasm` (a WASI command) | none (an app's own) |
+>
+> The qualifiers `wasm` (both RIDs), `browser` and `wasi` join the list below, and `unix`
+> stays Linux and macOS. See [WebAssembly](webassembly.md).
+
 
 ## Choosing the RIDs
 
@@ -125,8 +138,10 @@ Objects keep the qualifier (`io.linux.o`), so variants never share an object. Th
 their own errors:
 
 - **ASM0020:** two files of one name apply equally to a RID (`x.linux.asm` and `x.linux.s`).
-- **ASM0021:** a `.asm` qualified for ARM64 only, which NASM cannot assemble.
-- **ASM0023:** a listed RID that no source builds (typically ARM64 with only `.asm` files).
+- **ASM0021:** a `.asm` qualified for ARM64 only, which NASM cannot assemble (not released
+  yet: or for WebAssembly only).
+- **ASM0023:** a listed RID that no source builds (typically ARM64 with only `.asm` files; not
+  released yet: a wasm RID, which takes `.s` files qualified for WebAssembly only).
 - **ASM0024:** one file listed twice as an `AsmSource` (the default glob plus an explicit
   item), as .NET reports `NETSDK1022` for `Compile` items. (Not released yet: the sources
   are `Compile` items themselves.)
@@ -148,7 +163,9 @@ Every assembler run receives:
 
 NASM gets them with `-D`, `llvm-mc` with `--defsym NAME=1`, so `%ifdef MACOS` in NASM and
 `.ifdef MACOS` in GNU syntax test the same thing. `DisableImplicitFrameworkDefines=true`
-turns off all but the configuration's, as in .NET.
+turns off all but the configuration's, as in .NET. (Not released yet: a WebAssembly build
+defines `BROWSER` or `WASI` and `WASM`, as labels instead of defsym constants, which llvm-mc's
+wasm writer refuses; see [WebAssembly](webassembly.md#defines).)
 
 ### x64: asmsdk.inc
 

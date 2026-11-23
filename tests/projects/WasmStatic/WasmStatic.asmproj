@@ -1,0 +1,12 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A WebAssembly static library (WebAssemblyTests): wasmstatic.a for browser-wasm and
+    wasi-wasm, and no module. ws_mul(a, b) = a * b. The .NET WebAssembly apps (WasmBrowserApp,
+    WasiApp) link it through NativeFileReference and call it as [LibraryImport("wasmstatic")].
+  -->
+  <PropertyGroup>
+    <OutputType>StaticLibrary</OutputType>
+    <AssemblyName>wasmstatic</AssemblyName>
+    <RuntimeIdentifiers>browser-wasm;wasi-wasm</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

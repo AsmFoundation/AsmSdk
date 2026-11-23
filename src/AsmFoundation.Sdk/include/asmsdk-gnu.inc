@@ -88,7 +88,17 @@
 //     a debugger or a crash dump cannot walk the stack through them.
 //   - llvm-mc keeps --defsym names as local absolute symbols in each object
 //     (LINUX, ARM64, ...): harmless, but they show in the symbol table.
+//
+// WebAssembly (browser-wasm, wasi-wasm) is a stack machine whose functions
+// need types, so its layer is a file of its own, asmsdk-wasm.inc; in a
+// WebAssembly build (WASM defined) this file includes that one instead, and
+// nothing below. The check comes before this file's guard because the guard is
+// a constant symbol (.set), which llvm-mc's wasm object writer refuses.
 // =============================================================================
+
+.ifdef WASM
+.include "asmsdk-wasm.inc"
+.else
 
 .ifndef ASMSDK_GNU_INC
 .set ASMSDK_GNU_INC, 1
@@ -305,4 +315,7 @@ _\name:
 .endif
 .endm
 
+.endif
+
+// The end of the native branch (.ifdef WASM above).
 .endif

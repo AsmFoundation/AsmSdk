@@ -82,6 +82,17 @@ jobs:
 - **Pre-release SDKs:** while a project uses an SDK version that is not on nuget.org, commit
   the folder feed, or download it in a step before the build, and keep a `nuget.config`
   mapping as in [References and packages](references-and-packages.md#feeds-and-publishing).
+- **WebAssembly (not released yet):** every runner builds `browser-wasm` and `wasi-wasm` with
+  the bundled tools. The outputs need a host to run in:
+  - Node runs the modules, and is on every hosted runner;
+  - wasmtime runs WASI programs: download its release archive for the runner and add it to
+    `PATH`, and then `dotnet run` uses it too;
+  - a .NET WebAssembly app's build needs `dotnet workload install wasm-tools` (browser) or
+    `wasi-experimental` with the WASI SDK 25.0 in `WASI_SDK_PATH` (WASI). On Linux, install the
+    .NET SDK into a folder the runner owns (`DOTNET_INSTALL_DIR` for `setup-dotnet`), because
+    a workload installs into the SDK's own folder.
+
+  AsmSdk's own CI does all three (see [WebAssembly](webassembly.md)).
 
 ## Versioning
 

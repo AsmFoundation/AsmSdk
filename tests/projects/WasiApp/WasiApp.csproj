@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A .NET wasi-wasm app (WebAssemblyTests): the same three asm projects as WasmBrowserApp,
+    linked into a WASI app by .NET's WASI build (the wasi-experimental workload, with the WASI
+    SDK 25.0 that WASI_SDK_PATH names). Run with wasmtime from the AppBundle folder; it prints
+    the line WasmBrowserApp prints, which a Release build answers
+      "wasi-wasm 42 42 112 42 42 42 42".
+    The consumer targets name each asm project's P/Invoke module for .NET's WASI build, which on
+    its own would leave them out of its P/Invoke table (DllNotFoundException, measured with
+    .NET 10.0.15).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>wasi-wasm</RuntimeIdentifier>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- One file, WasiApp.wasm, with the runtime, the app and its assemblies: what wasmtime runs. -->
+    <WasmSingleFileBundle>true</WasmSingleFileBundle>
+    <!-- A test program: tests/projects/Directory.Build.props sends packages to the local feed,
+         which this one never is. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../WasmLibrary/WasmLibrary.asmproj" />
+    <ProjectReference Include="../WasmStatic/WasmStatic.asmproj" />
+    <ProjectReference Include="../WasmObjects/WasmObjects.asmproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The P/Invoke declarations and the line it prints are WasmBrowserApp's. -->
+    <Compile Include="../WasmBrowserApp/Program.cs" Link="Program.cs" />
+  </ItemGroup>
+</Project>
