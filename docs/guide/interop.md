@@ -92,6 +92,70 @@ let .NET's own RID rules choose the library.
 - **A single solution builds both** with `dotnet build App.slnx`, as long as the
   `.asmproj` entry has its type GUID.
 
+### Generated bindings
+
+> [!NOTE]
+> **Not released yet.** On the main branch, the imports above can be generated. Declare each
+> function's C prototype beside it in the asm source (see
+> [Writing NASM](writing-nasm.md#proto-a-functions-c-prototype)):
+>
+> ```nasm
+> PROTO int32_t hello_add(int32_t a, int32_t b)
+> FUNCTION hello_add, 2
+> ```
+>
+> A C# project (.NET 7 or later) that references the asm project then calls it with no
+> `[LibraryImport]` written:
+>
+> ```csharp
+> int sum = Hello.Add.HelloAdd(40, 2);   // the library "hello", its source add.asm
+> ```
+>
+> - **The default class** is named after the library (its `AssemblyName` in PascalCase: `hello`
+>   gives `Hello`, `Demo.Native` gives `DemoNative`), in the project's `RootNamespace`, with one
+>   nested class per `.asm` file and folders as levels. A function named like its file
+>   (`answer` in `answer.asm`) is `Invoke` in its class, because C# forbids a member named like its
+>   type.
+> - **`[AsmLibrary]`** chooses where bindings go, on three levels, each written option overriding
+>   the level above:
+>
+>   ```csharp
+>   using AsmFoundation.Interop;
+>
+>   [assembly: AsmLibrary(Nesting = AsmNesting.Flat)]                       // every library
+>   [assembly: AsmLibrary("hello", ClassName = "Native", SpanOverloads = false)]  // one library
+>
+>   [AsmLibrary("hello", Files = ["simd/crc.asm"])]   // chosen files: a class of their own
+>   internal static partial class Crc { }
+>
+>   [AsmLibrary("hello", Folder = "simd", Visibility = AsmVisibility.Public)]
+>   public static partial class Simd { }
+>   ```
+>
+>   Options: `Nesting` (`Files`, the default; `Folders`; `Flat`, the default of a class that
+>   selects `Files` or a `Folder`), `SpanOverloads`, `Visibility` (`Internal` by default),
+>   `ClassName` (assembly level), `Files`, `Folder`, and `AliasBinding`. Each function is bound
+>   once: a class takes what it selects, and the default class keeps the rest. A second class
+>   that selects the same function is an error (`ASM0142`) unless it says `AliasBinding = true`,
+>   which makes a copy.
+> - **Types:** the fixed-width integers, `float`, `double` and pointers pass as they are (a
+>   blittable `[DllImport]`, no marshalling); `bool` is one byte; a `const char*` parameter is a
+>   `string` converted to UTF-8 (on the stack when short); a function pointer is a
+>   `delegate* unmanaged<...>`. A pointer followed by its length (a `size_t` named `len`,
+>   `length`, `size`, `count`, or the pointer's name plus `_len` or `_count`) also gets a
+>   `Span<T>` or `ReadOnlySpan<T>` overload, pinned for the call. `PROTO fast` adds
+>   `[SuppressGCTransition]`.
+> - **Why `[DllImport]` and not `[LibraryImport]`:** source generators never see each other's
+>   output, so .NET's LibraryImport generator would leave generated `[LibraryImport]` methods
+>   without a body (measured: CS8795). The bindings are complete instead: blittable externs, with
+>   the conversions LibraryImport would have written. They need unsafe code, so the SDK sets
+>   `AllowUnsafeBlocks` whenever bindings are generated.
+> - **Errors**, at the attribute: `ASM0140` (no such asm library), `ASM0141` (no such file or
+>   folder), `ASM0142` (bound twice), `ASM0143` (a class that is not `static partial`, or a name
+>   generated twice), `ASM0144` (an unreadable API file).
+> - **`<AsmGenerateBindings>false</AsmGenerateBindings>`** turns it off, for a project with its own
+>   imports whose class names would clash.
+
 ## Where the binaries go: BinariesCopyPath
 
 > [!NOTE]

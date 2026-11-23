@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A C# program that calls the asm library ApiProto through the generated bindings alone
+    (BindingsTests): no [LibraryImport] written by hand, and no AllowUnsafeBlocks either (the
+    consumer targets set it when bindings are generated). The default class is named after the
+    library (Apiproto), in this project's RootNamespace, one nested class per .asm file, folders
+    as levels; a function named like its file is Invoke. It prints one line per function:
+      add_ints 42 / answer 42 / halve 2.5 / name_length 5 / sum_bytes 10 / apply 42
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- A test program: tests/projects/Directory.Build.props sends packages to the local feed,
+         which this one never is. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../ApiProto/ApiProto.asmproj" />
+  </ItemGroup>
+</Project>

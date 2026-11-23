@@ -17,7 +17,10 @@
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <!-- CS2008: nothing to compile (the package is MSBuild files and stubs).
          NU5100: the tasks assembly sits under tasks/, not lib/, on purpose: MSBuild loads it
-         with UsingTask, and no project that uses the SDK may reference it. -->
+         with UsingTask, and no project that uses the SDK may reference it. The bindings
+         generator sits under bindings/ for the same reason: the consumer targets add it as an
+         Analyzer item, and NuGet's own analyzers/ folder would not reach a .NET consumer (the
+         implicit SDK reference keeps analyzers private). -->
     <NoWarn>$(NoWarn);NU5128;CS2008;NU5100</NoWarn>
     <Description>Enterprise-grade project, dependency and build management for assembly, on MSBuild and NuGet. The SDK behind .asmproj projects: x64 (NASM) and ARM64 (GNU syntax) assembly built into shared libraries, static libraries and programs for Windows, Linux and macOS with dotnet build, consumed through PackageReference and ProjectReference, and packed with dotnet pack. A C# project that references an .asmproj gets the binary of its platform by .NET's runtime identifier rules. Ships with a bundled NASM + LLVM toolchain, so no assembler or linker needs to be installed.</Description>
     <PackageTags>assembly;nasm;asm;asmproj;msbuild;sdk;native;x86-64;x64;arm64;aarch64;windows;linux;macos;cross-platform</PackageTags>
@@ -64,6 +67,23 @@
     </MSBuild>
     <ItemGroup>
       <None Include="@(_AsmSdkTasksAssembly)" Pack="true" PackagePath="tasks/netstandard2.0/" />
+    </ItemGroup>
+  </Target>
+
+  <!--
+    The C# bindings generator (AsmFoundation.Sdk.Bindings), built the same way and packed under
+    bindings/netstandard2.0/, where the consumer targets (buildTransitive) find it. Its
+    Microsoft.CodeAnalysis references are the compiler's own at run time: not packed.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="../AsmFoundation.Sdk.Bindings/AsmFoundation.Sdk.Bindings.csproj" ReferenceOutputAssembly="false" Private="false" />
+  </ItemGroup>
+  <Target Name="_PackSdkBindings" BeforeTargets="_GetPackageFiles;GenerateNuspec">
+    <MSBuild Projects="../AsmFoundation.Sdk.Bindings/AsmFoundation.Sdk.Bindings.csproj" Targets="GetTargetPath" Properties="Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs" ItemName="_AsmSdkBindingsAssembly" />
+    </MSBuild>
+    <ItemGroup>
+      <None Include="@(_AsmSdkBindingsAssembly)" Pack="true" PackagePath="bindings/netstandard2.0/" />
     </ItemGroup>
   </Target>
 

@@ -273,6 +273,29 @@ Each SDK release names the one it was tested with.
   depends on that file, as C#'s compile depends on `CoreCompileInputs.cache`. Before, a
   `DefineConstants`, `NoWarn` or `AsmFlags` set in `Directory.Build.props` or with `-p:`
   linked the objects assembled without it.
+- **Generated C# bindings.** A C# project (.NET 7 or later) that references an asm library with
+  `PROTO` lines calls it with nothing written by hand: the SDK package's Roslyn incremental
+  generator (`bindings/netstandard2.0/AsmFoundation.Sdk.Bindings.dll`, added by the consumer
+  targets with each reference's API file as an `AdditionalFiles` item) writes a class named
+  after the library (its `AssemblyName` in PascalCase) in the project's `RootNamespace`, one
+  nested class per `.asm` file with folders as levels; a function named like its file is
+  `Invoke`. `[AsmLibrary]` (generated into the project, `AsmFoundation.Interop`) sets options
+  for every library and per library on the assembly (`Nesting`, `SpanOverloads`, `Visibility`,
+  `ClassName`), and puts a library, chosen `Files` or a `Folder` into an app's `static partial`
+  class, overriding both; each function is bound once unless a class says `AliasBinding`. The
+  bindings are blittable `[DllImport]` externs (`ExactSpelling`, `[SuppressGCTransition]` for
+  `PROTO fast`) with generated conversions: a `bool` as one byte, a `const char*` parameter as a
+  UTF-8 `string` through `Utf8StringMarshaller`'s stack buffer, a function pointer as
+  `delegate* unmanaged<...>`, and a span overload for each pointer and length pair (`len`,
+  `length`, `size`, `count`, `<pointer>_len`, `<pointer>_count`). Not `[LibraryImport]`: source
+  generators never see each other's output, so .NET's LibraryImport generator left generated
+  `[LibraryImport]` methods without a body (measured: CS8795). The SDK sets `AllowUnsafeBlocks`
+  whenever bindings are generated (the .NET SDK defaults it to `false`, measured);
+  `AsmGenerateBindings=false` turns the bindings off. Errors at the attribute: **ASM0140** (no
+  such library), **ASM0141** (no such file or folder), **ASM0142** (bound twice), **ASM0143**
+  (not `static partial`, or a name generated twice), **ASM0144** (an unreadable API file). Phase 2
+  of the design; also fixed: `GetAsmApiFile` returns absolute paths (a referencing project read
+  relative ones against its own folder).
 - **`PROTO` lines and the API file, the first phase of generated C# bindings.** A
   `PROTO int32_t add_ints(int32_t a, int32_t b)` line beside a `FUNCTION` (NASM and GNU syntax
   alike; `PROTO fast ...` for a short function that never blocks) declares its C signature.

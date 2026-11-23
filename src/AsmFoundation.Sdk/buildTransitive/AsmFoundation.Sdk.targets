@@ -105,7 +105,9 @@
          reference pack itself as a tool (and rename its RID builds' PackageId, the library
          name deps.json gives its files). -->
 
-    <_AsmConsumerPropertiesToRemove>SelfContained;PublishAot;PublishTrimmed;PublishSingleFile;PublishReadyToRun;_IsPublishing;OutputPath;OutDir;_CommandLineDefinedOutputPath;BinariesCopyPath;AsmGenerateNativeLibraryLoader;PackAsTool</_AsmConsumerPropertiesToRemove>
+    <_AsmConsumerPropertiesToRemove>SelfContained;PublishAot;PublishTrimmed;PublishSingleFile;PublishReadyToRun;_IsPublishing;OutputPath;OutDir;_CommandLineDefinedOutputPath;BinariesCopyPath;AsmGenerateNativeLibraryLoader;AsmGenerateBindings;PackAsTool</_AsmConsumerPropertiesToRemove>
+    <!-- The C# bindings generator, packed beside the tasks (see the SDK project). -->
+    <_AsmBindingsGenerator>$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', '..', 'bindings', 'netstandard2.0', 'AsmFoundation.Sdk.Bindings.dll'))</_AsmBindingsGenerator>
     <!-- The generated fallback loader, in obj/. -->
     <_AsmNativeLibraryLoaderPath>$(IntermediateOutputPath)AsmNativeLibraryLoader.g.cs</_AsmNativeLibraryLoaderPath>
     <!-- Pack: asm references with PrivateAssets="all" go into this package. -->
@@ -302,6 +304,9 @@
            linker resolves them in the archive, instead of a dlopen at run time. The name is
            the library's AssemblyName, the one [LibraryImport] and [DllImport] use. -->
       <_AsmAotStaticLibrary Condition="'$(_AsmReferenceLinked)' == 'true'" Include="@(_AsmConfiguredReference)" AsmImportName="$(_AsmReferenceImportName)" />
+      <!-- Bindings: every library this project calls (loaded or linked in) may have PROTO lines;
+           _AsmAddBindings asks it for its API file once it is built. -->
+      <_AsmBindingReference Include="@(_AsmConfiguredReference)" />
       <DirectPInvoke Condition="'$(_AsmReferenceLinked)' == 'true'" Include="$(_AsmReferenceImportName)" />
       <!-- WebAssembly: the configured reference too, for the same reason, for
            _AsmAddWasmNativeFileReferences. It is no _AsmNativeLibrary: nothing to lay out, list
@@ -451,6 +456,48 @@
       <_AsmWasmModuleName Remove="@(_AsmWasmModuleName)" />
     </ItemGroup>
     <Message Importance="normal" Text="$(MSBuildProjectName) links @(_AsmWasmLinkedLibrary->'%(Filename)', ', ') into its WebAssembly runtime (P/Invoke modules @(_AsmWasmLinkedLibrary->'%(AsmImportName)', ', '))." Condition="'@(_AsmWasmLinkedLibrary)' != ''" />
+  </Target>
+
+  <!--
+    _AsmAddBindings: the generated C# bindings (catalog asmsdk/plans/csharp-bindings.md). After the
+    asm references are built, each is asked for its API file (GetAsmApiFile, from the very build
+    ResolveProjectReferences ran: the same global properties); a library with PROTO lines has
+    one. Each becomes an AdditionalFiles item with AsmApiFile="true", and the generator
+    (AsmFoundation.Sdk.Bindings, bindings/netstandard2.0/ in this package) an Analyzer item; the
+    generator writes blittable [DllImport] declarations from them (and the wrappers that convert
+    bools and strings). A library without PROTO lines adds nothing, so a project that writes its
+    own imports sees no change until its library declares PROTO lines; AsmGenerateBindings=false
+    turns the bindings off (a project whose own classes would clash with the generated names, or
+    that must not allow unsafe code).
+    C# only, .NET 7 or later: the generator is C#, and its string wrappers use
+    Utf8StringMarshaller and scoped locals (.NET 7, C# 11); an older target gets no bindings.
+    AllowUnsafeBlocks is set to true whenever bindings are
+    generated: their pointer parameters and the string wrappers' buffers are unsafe code. Not only
+    when the project leaves it unset: the .NET SDK sets it to false by default (measured: the
+    condition "unset" never held, and the bindings failed with CS0227). In a design-time build
+    the references are not built: the API files of their last build serve IntelliSense.
+  -->
+  <ItemGroup Condition="'$(UsingAsmFoundationSdk)' != 'true' and '$(Language)' == 'C#'">
+    <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="AsmApiFile" />
+    <CompilerVisibleProperty Include="RootNamespace" />
+  </ItemGroup>
+  <Target Name="_AsmAddBindings"
+          AfterTargets="ResolveProjectReferences"
+          Condition="'$(UsingAsmFoundationSdk)' != 'true' and '$(Language)' == 'C#' and '$(AsmGenerateBindings)' != 'false' and '@(_AsmBindingReference)' != '' and '$(TargetFrameworkIdentifier)' == '.NETCoreApp' and $([MSBuild]::VersionGreaterThanOrEquals('$(TargetFrameworkVersion.TrimStart(`vV`))', '7.0'))">
+    <MSBuild Projects="@(_AsmBindingReference)"
+             Targets="GetAsmApiFile"
+             BuildInParallel="$(BuildInParallel)"
+             Properties="%(_AsmBindingReference.SetConfiguration);%(_AsmBindingReference.SetPlatform);%(_AsmBindingReference.SetTargetFramework)"
+             RemoveProperties="%(_AsmBindingReference.GlobalPropertiesToRemove)$(_GlobalPropertiesToRemoveFromProjectReferences)">
+      <Output TaskParameter="TargetOutputs" ItemName="_AsmApiFileForBindings" />
+    </MSBuild>
+    <ItemGroup Condition="'@(_AsmApiFileForBindings)' != ''">
+      <AdditionalFiles Include="@(_AsmApiFileForBindings)" AsmApiFile="true" />
+      <Analyzer Include="$(_AsmBindingsGenerator)" />
+    </ItemGroup>
+    <PropertyGroup Condition="'@(_AsmApiFileForBindings)' != ''">
+      <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    </PropertyGroup>
   </Target>
 
   <!--

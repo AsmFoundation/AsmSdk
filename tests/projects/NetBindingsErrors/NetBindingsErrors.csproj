@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Wrong [AsmLibrary] attributes, one case per file under cases/, picked with
+    -p:BindingsCase=<name> (BindingsTests builds each in a configuration of its own). Each stops
+    the build with the generator's code at the attribute or class:
+      unknownlib   ASM0140  a library this project does not reference
+      unknownfile  ASM0141  a file the library does not have
+      twice        ASM0142  two classes take add.asm, the second without AliasBinding
+      notpartial   ASM0143  a class that is not partial
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="cases/**" />
+    <Compile Include="cases/$(BindingsCase).cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../ApiProto/ApiProto.asmproj" />
+  </ItemGroup>
+</Project>

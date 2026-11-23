@@ -1442,10 +1442,17 @@
     obj/ copy, which names each function's source for the comparison's messages; the outer
     build returns the merged file. Asks for nothing to be built: called after Build.
   -->
+  <!-- Absolute paths: a referencing project resolves a returned item's relative path against
+       its own folder (measured: a C# consumer was handed NetBindings\bin\...\apiproto.api.json).
+       The merge above only worked with relative ones because it runs in this same project. -->
+  <PropertyGroup>
+    <_AsmApiFileFullPath>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(_AsmApiIntermediateFile)'))</_AsmApiFileFullPath>
+    <_AsmApiMergedFullPath>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(OutDir)', '$(AssemblyName).api.json'))</_AsmApiMergedFullPath>
+  </PropertyGroup>
   <Target Name="GetAsmApiFile" Returns="@(_AsmApiFileItem)">
     <ItemGroup>
-      <_AsmApiFileItem Include="$(_AsmApiIntermediateFile)" Condition="'$(_AsmRid)' != '' and Exists('$(_AsmApiIntermediateFile)')" RuntimeIdentifier="$(_AsmRid)" />
-      <_AsmApiFileItem Include="$(OutDir)$(AssemblyName).api.json" Condition="'$(_AsmRid)' == '' and Exists('$(OutDir)$(AssemblyName).api.json')" RuntimeIdentifier="" />
+      <_AsmApiFileItem Include="$(_AsmApiFileFullPath)" Condition="'$(_AsmRid)' != '' and Exists('$(_AsmApiFileFullPath)')" RuntimeIdentifier="$(_AsmRid)" />
+      <_AsmApiFileItem Include="$(_AsmApiMergedFullPath)" Condition="'$(_AsmRid)' == '' and Exists('$(_AsmApiMergedFullPath)')" RuntimeIdentifier="" />
     </ItemGroup>
   </Target>
 

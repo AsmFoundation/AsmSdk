@@ -4,6 +4,7 @@
        consume the packed SDK like a user would, and the test project builds them that way. -->
   <Project Path="src/AsmFoundation.Sdk/AsmFoundation.Sdk.csproj" />
   <Project Path="src/AsmFoundation.Sdk.Tasks/AsmFoundation.Sdk.Tasks.csproj" />
+  <Project Path="src/AsmFoundation.Sdk.Bindings/AsmFoundation.Sdk.Bindings.csproj" />
   <Project Path="src/AsmFoundation.Templates/AsmFoundation.Templates.csproj" />
   <Project Path="toolchain/AsmFoundation.Toolchain.csproj" />
   <Folder Name="/tests/">

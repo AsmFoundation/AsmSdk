@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    AsmFoundation.Sdk.Bindings: the Roslyn incremental source generator of the C# bindings
+    (phase 2 of catalog asmsdk/plans/csharp-bindings.md). It reads the API files of a project's
+    asm references (AdditionalFiles with AsmApiFile="true", added by the SDK's consumer targets)
+    and the app's [AsmLibrary] attributes, and writes [LibraryImport] declarations.
+
+    netstandard2.0 and Microsoft.CodeAnalysis.CSharp 4.8.0: the oldest compiler the generator
+    must load in is the .NET 8 SDK's (Roslyn 4.8); ForAttributeWithMetadataName, the fast path
+    for attributed classes, exists since 4.3.1. The SDK package carries the assembly under
+    bindings/netstandard2.0/, a folder of no NuGet convention, and the consumer targets add it
+    as an Analyzer item to C# projects that reference an asm library with PROTO lines (NuGet's
+    own analyzers/ folder would not reach them: the implicit SDK reference keeps analyzers
+    private).
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <IsRoslynComponent>true</IsRoslynComponent>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The SDK tasks' JSON reader, shared as source: no System.Text.Json in an analyzer that
+         every compiler version must load. -->
+    <Compile Include="../AsmFoundation.Sdk.Tasks/Json.cs" Link="Json.cs" />
+    <!-- Records and init-only setters on netstandard2.0, as in the tasks project. -->
+    <Compile Include="../AsmFoundation.Sdk.Tasks/IsExternalInit.cs" Link="IsExternalInit.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Roslyn's release tracking of diagnostic IDs (RS2008 without it): every rule the generator
+         reports is listed, so a change of an ID or severity shows in review. -->
+    <AdditionalFiles Include="AnalyzerReleases.Shipped.md;AnalyzerReleases.Unshipped.md" />
+  </ItemGroup>
+</Project>
