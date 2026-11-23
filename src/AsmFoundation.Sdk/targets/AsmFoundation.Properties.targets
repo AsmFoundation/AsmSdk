@@ -302,6 +302,18 @@
     <_AsmImplicitRuntimeDefines Condition="'$(_AsmImplicitRuntimeDefines)' != '' and '$(_AsmMusl)' == 'true'">$(_AsmImplicitRuntimeDefines);MUSL</_AsmImplicitRuntimeDefines>
     <DefineConstants Condition="'$(_AsmImplicitRuntimeDefines)' != ''">$(DefineConstants);$(_AsmImplicitRuntimeDefines)</DefineConstants>
 
+    <!--
+      The SDK's own symbols, also kept apart from DefineConstants, for AsmPrepare to add to
+      whatever DefineConstants holds. A DefineConstants given on the command line
+      (-p:DefineConstants=X, or a CI script's global property) is read-only: MSBuild silently
+      ignores the appends above, and the assemblers got X alone. NASM's asmsdk.inc recognizes
+      the platform from the output format, but asmsdk-gnu.inc depends on WINDOWS and MACOS, and
+      took the ELF branch on Windows on Arm ("expected absolute expression" at .type, measured
+      on CI, 2026-11-23). C# has the same trap (DEBUG and TRACE are lost); for assembly it
+      breaks the platform layer, so the SDK keeps its symbols either way.
+    -->
+    <_AsmImplicitDefineConstants>$(ImplicitConfigurationDefine);$(_AsmImplicitFrameworkDefine);$(_AsmImplicitRuntimeDefines)</_AsmImplicitDefineConstants>
+
     <!-- Hidden from the managed SDK: its AddImplicitDefineConstants target would append
          NETSTANDARD;NETSTANDARD2_0;... to DefineConstants during the build, and NASM would
          receive every one of them as -D. -->

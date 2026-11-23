@@ -340,10 +340,16 @@
       <_AsmDependency Include="@(CustomAdditionalCompileInputs->'%(FullPath)')" />
       <_AsmDependency Include="%(_AsmIncludeDirectoryOrdered.FullPath)**/*.inc" Condition="'%(_AsmIncludeDirectoryOrdered.AsmOrigin)' != ''" />
 
-      <!-- One -D per DefineConstants entry (NAME or NAME=VALUE). Properties.targets has
-           already appended DEBUG or RELEASE and FREESTANDING or LIBC; an item Include splits
-           on ";" and drops the empty entries that a leading or doubled ";" leaves. -->
-      <_AsmDefine Include="$(DefineConstants)" />
+      <!-- One -D per DefineConstants entry (NAME or NAME=VALUE), then the SDK's own symbols
+           (DEBUG or RELEASE, FREESTANDING or LIBC, the platform's), in that order, once each.
+           Properties.targets appends them to DefineConstants too, but a DefineConstants given
+           on the command line is a global property that ignores the append, so they are added
+           here from _AsmImplicitDefineConstants as well, and taken out of the project's list
+           first so that a normal build does not pass them twice. An item Include splits on ";"
+           and drops the empty entries that a leading or doubled ";" leaves. -->
+      <_AsmImplicitDefine Include="$(_AsmImplicitDefineConstants)" />
+      <_AsmDefine Include="$(DefineConstants)" Exclude="@(_AsmImplicitDefine)" />
+      <_AsmDefine Include="@(_AsmImplicitDefine)" />
       <!-- The exports file decides what is exported: asmsdk.inc's FUNCTION then writes no
            Windows export directive of its own, which would export every FUNCTION whether the
            file lists it or not (lld-link cannot drop a directive). -->

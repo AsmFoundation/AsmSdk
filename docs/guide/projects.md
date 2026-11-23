@@ -234,7 +234,9 @@ Every build also defines its platform: `WINDOWS`, `LINUX` or `MACOS` (plus `MUSL
 
 - **The configuration and target framework symbols are never lost.** Like C#, the SDK
   appends them after reading your project, so `<DefineConstants>FAST_PATH</DefineConstants>`
-  keeps `DEBUG` too. `DisableImplicitConfigurationDefines=true` drops `DEBUG`/`RELEASE`, and
+  keeps `DEBUG` too. (Not released yet: a `DefineConstants` given on the command line,
+  `-p:DefineConstants=X`, keeps them as well. MSBuild ignores an append to a global property,
+  and in 0.3.0 the GNU-syntax platform layer then built the ELF way on Windows and macOS.) `DisableImplicitConfigurationDefines=true` drops `DEBUG`/`RELEASE`, and
   `DisableImplicitFrameworkDefines=true` drops `FREESTANDING`/`LIBC` and the platform
   symbols.
 - **Debug information follows `DebugSymbols`:** `<DebugSymbols>true</DebugSymbols>` adds it

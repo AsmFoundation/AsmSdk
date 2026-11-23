@@ -73,7 +73,7 @@ public sealed class IncrementalBuildTests(SdkUnderTest sdk)
     /// as .NET's CoreCompileInputs.cache recompiles C#. Before, such a change reused the objects
     /// assembled with the old options. Going back to the project's own options assembles again
     /// too. RidNone builds for this machine's RID, so the assembler is NASM on x64 machines and
-    /// llvm-mc on ARM64 ones.
+    /// llvm-mc on ARM64 ones. The SDK's own symbols survive the command line's DefineConstants.
     /// </summary>
     [Fact]
     public void An_option_set_outside_the_project_file_assembles_again()
@@ -91,6 +91,13 @@ public sealed class IncrementalBuildTests(SdkUnderTest sdk)
         Assert.True(defined.ExitCode == 0, defined.Tail());
         Assert.NotEmpty(AssemblerRun.Matches(defined.StdOut).Select(m => m.Value));
         Assert.Contains("OPTION_FROM_THE_COMMAND_LINE", defined.StdOut);
+        // A DefineConstants from the command line is a global property, which ignores the SDK's
+        // append of its own symbols: they are still passed (-D for NASM, --defsym for llvm-mc).
+        // Without them, asmsdk-gnu.inc took the ELF branch on Windows on Arm and the build failed
+        // (CI, 2026-11-23).
+        Assert.Matches(@"(-D|--defsym=)DEBUG\b", defined.StdOut);
+        Assert.Matches(@"(-D|--defsym=)(WINDOWS|LINUX|MACOS)\b", defined.StdOut);
+        Assert.Matches(@"(-D|--defsym=)(X64|ARM64)\b", defined.StdOut);
 
         CommandResult definedAgain = Build("-p:DefineConstants=OPTION_FROM_THE_COMMAND_LINE");
         Assert.True(definedAgain.ExitCode == 0, definedAgain.Tail());

@@ -237,6 +237,14 @@ Each SDK release names the one it was tested with.
 
 ### Fixed
 
+- **A `DefineConstants` given on the command line keeps the SDK's own symbols.**
+  `-p:DefineConstants=X` (or a CI script's global property) is read-only, so MSBuild silently
+  ignored the SDK's append of `DEBUG`/`RELEASE`, `FREESTANDING`/`LIBC` and the platform's
+  symbols, and the assemblers got `X` alone. NASM's `asmsdk.inc` recognizes the platform by
+  itself, but `asmsdk-gnu.inc` took the ELF branch on Windows and macOS: CI on Windows on Arm
+  failed with `expected absolute expression` at `.type`. The symbols are now added to whatever
+  `DefineConstants` holds. (C# loses `DEBUG` and `TRACE` the same way; for assembly it broke the
+  platform layer.)
 - **`Update` and `Remove` of default items work in an `.asmproj`.** The default `AsmSource`,
   `AsmInclude` and `None` globs were declared after the project body, so
   `<None Update="data.txt" CopyToOutputDirectory="PreserveNewest" />` matched nothing and was
