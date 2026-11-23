@@ -230,6 +230,77 @@ public sealed class ImplicitUsingsTests(SdkUnderTest sdk)
     }
 
     /// <summary>
+    /// With ImplicitUsings disabled, nothing names .text for a source, so the section rule must
+    /// come from asmsdk.inc itself: a static library whose source includes asmsdk.inc and names
+    /// no section (tests/projects/SectionlessRaw) defines its HIDDEN_FUNCTION in the text section
+    /// of every RID's library. Each function macro starts with NASM's __SECT__ since 2026-11-23;
+    /// before, raw_mul was an undefined symbol in the win-x64 library.
+    /// </summary>
+    /// <param name="rid">The runtime identifier.</param>
+    [Theory]
+    [MemberData(nameof(CrossPlatformTests.AllRids), MemberType = typeof(CrossPlatformTests))]
+    public void Without_implicit_usings_a_sectionless_static_library_defines_its_function_on_every_rid(string rid)
+    {
+        BuildSectionlessRawProgram();
+        string library = Repo.TestProjectPath("SectionlessRaw", "bin", "Release", "freestanding", rid,
+            rid.StartsWith("win-", StringComparison.Ordinal) ? "sectionlessraw.lib" : "libsectionlessraw.a");
+        Assert.True(File.Exists(library), $"{rid}: no {library}");
+        AssertDefinedInText(sdk.ReadObj(library, "--symbols"), "raw_mul", $"{rid}, {library}");
+    }
+
+    /// <summary>
+    /// With ImplicitUsings disabled, a libc program whose source includes asmsdk.inc and names no
+    /// section before its functions (tests/projects/SectionlessRawProgram) links the SectionlessRaw
+    /// library for every RID, and its main is defined in main.o's text section. On win-x64 its
+    /// LOCAL_FUNCTION seven, which a pointer in .data refers to, is defined too: NASM wrote that
+    /// label undefined as well, and lld stopped with "undefined symbol: seven".
+    /// </summary>
+    /// <param name="rid">The runtime identifier.</param>
+    [Theory]
+    [MemberData(nameof(CrossPlatformTests.AllRids), MemberType = typeof(CrossPlatformTests))]
+    public void Without_implicit_usings_a_sectionless_program_links_on_every_rid(string rid)
+    {
+        BuildSectionlessRawProgram();
+        string program = SectionlessRawProgramFile(rid);
+        Assert.True(File.Exists(program), $"{rid}: no {program}");
+        Assert.Contains($"Format: {CrossPlatformTests.Format[rid]}", sdk.ReadObj(program, "--file-headers"));
+        string objectFile = Repo.TestProjectPath("SectionlessRawProgram", "obj", "Release", "libc", rid, "asm", "obj", "main.o");
+        Assert.True(File.Exists(objectFile), $"{rid}: no {objectFile}");
+        string symbols = sdk.ReadObj(objectFile, "--symbols");
+        AssertDefinedInText(symbols, "main", $"{rid}, {objectFile}");
+        if (rid == "win-x64")
+        {
+            AssertDefinedInText(symbols, "seven", $"{rid}, {objectFile}");
+        }
+    }
+
+    /// <summary>
+    /// The ImplicitUsings-off program of this machine's RID runs: main returns raw_mul(6, seven())
+    /// through the static library and the pointer in .data, so its exit code is 42.
+    /// </summary>
+    [Fact]
+    public void The_hosts_sectionless_program_without_implicit_usings_runs()
+    {
+        BuildSectionlessRawProgram();
+        string? rid = CrossPlatformTests.HostBuildRid();
+        if (rid is null)
+        {
+            Assert.Skip($"AsmSdk builds no program for this machine ({Repo.HostRid})");
+        }
+
+        string program = SectionlessRawProgramFile(rid);
+        if (!OperatingSystem.IsWindows())
+        {
+            // As in The_hosts_sectionless_program_runs: the test checks what the program does,
+            // not its file mode.
+            File.SetUnixFileMode(program, File.GetUnixFileMode(program) | UnixFileMode.UserExecute);
+        }
+
+        CommandResult run = Command.Run(program, [], Repo.Root);
+        Assert.True(run.ExitCode == 42, $"{program} exited with {run.ExitCode}: {run.Tail()}");
+    }
+
+    /// <summary>
     /// The sections that llvm-readobj's <c>--symbols</c> output places a symbol in: one entry
     /// per symbol block whose name is <paramref name="name"/> or Mach-O's <c>_name</c> (an
     /// archive lists every member's symbols, and an ARM64 Mach-O function also carries its
@@ -299,6 +370,21 @@ public sealed class ImplicitUsingsTests(SdkUnderTest sdk)
     private static string SectionlessProgramFile(string rid) =>
         Repo.TestProjectPath("SectionlessProgram", "bin", "Release", "libc", rid,
             rid.StartsWith("win-", StringComparison.Ordinal) ? "sectionless-program.exe" : "sectionless-program");
+
+    /// <summary>Builds tests/projects/SectionlessRawProgram in Release (all eight RIDs, with SectionlessRaw through its reference) once, asserting success.</summary>
+    /// <exception cref="Xunit.Sdk.XunitException">The build failed; the message holds the end of its log (an "undefined symbol" from lld when asmsdk.inc's __SECT__ regressed).</exception>
+    private void BuildSectionlessRawProgram()
+    {
+        CommandResult build = sdk.BuildTestProject("SectionlessRawProgram");
+        Assert.True(build.ExitCode == 0, build.Tail());
+    }
+
+    /// <summary>SectionlessRawProgram's program for a RID: sectionless-raw-program.exe on Windows, sectionless-raw-program elsewhere.</summary>
+    /// <param name="rid">The runtime identifier.</param>
+    /// <returns>The program's full path (which exists only once the project is built).</returns>
+    private static string SectionlessRawProgramFile(string rid) =>
+        Repo.TestProjectPath("SectionlessRawProgram", "bin", "Release", "libc", rid,
+            rid.StartsWith("win-", StringComparison.Ordinal) ? "sectionless-raw-program.exe" : "sectionless-raw-program");
 
     /// <summary>
     /// &lt;ImplicitUsings&gt;disable&lt;/ImplicitUsings&gt; gives raw NASM back: the same kind of

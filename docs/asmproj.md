@@ -128,6 +128,7 @@ The mapping makes NuGet's compatibility rules match the linker's:
 | `OutputType` | `Library` | `Library` gives a shared library, `StaticLibrary` a static one, `Exe` or `WinExe` an executable (a console program), and `Objects` object files only. Any other value builds a shared library. The SDK reads it into its internal `_AsmOutputKind` (`SharedLibrary`, `StaticLibrary`, `Executable` or `Objects`) and then **sets `OutputType` back to `Library`**, so the managed SDK never builds an apphost or a runtimeconfig. A target of your own can read `_AsmOutputKind`, but it is internal and may change. |
 | `AssemblyName` | the project name | the base name of every output (see the table above). Libraries get the `lib` prefix on Linux and macOS, because `-l<name>` and .NET's `[DllImport("<name>")]` both look for it there. The packed static library is named after it too, whatever the `PackageId`. |
 | `AsmProduceStaticLibrary` | `false` | also archive the static library next to a shared one. A referencing project then links the static one. |
+| `OptionalOnUnlistedRuntimes` (not released yet) | `false` | `true`: a .NET project built for a RID this library does not build (none of its RIDs serves it) goes on without it, with the warning `ASM0049`, instead of stopping with `ASM0040`. For an app whose code checks for the library and copes with `DllNotFoundException`. A portable .NET build is unaffected. |
 | `TargetName` | `lib$(AssemblyName)` for libraries on Linux and macOS, `$(AssemblyName)` otherwise | set only when empty. Prefer `AssemblyName`. |
 | `TargetFileName` | `$(TargetName)` plus `.dll`, `.so`, `.dylib`, `.lib`, `.a`, `.exe` or nothing | set explicitly per RID, so that the common targets never append `.dll` on their own. |
 
@@ -259,6 +260,10 @@ each RID's program and the libraries it links next to it (a folder of their own 
 them to a consuming asm program (`AsmReferencedProgram` items), and the targets give a .NET
 consumer `BinariesCopyPath`. A program's `ProjectReference` and `PackageReference` items
 default to `PrivateAssets="all"`: it carries what it needs, so its package depends on nothing.
+(Not released yet: a shared library's references to `StaticLibrary` projects default to
+`PrivateAssets="all"` too, set when MSBuild restores it, because their code is linked in;
+`PrivateAssets="none"` keeps one a dependency. Not with `AsmProduceStaticLibrary`, whose archive's
+users need the static libraries it links.)
 
 ## Toolchain properties
 
@@ -381,8 +386,9 @@ Read-only in practice.
 
 | Target | Runs | Notes |
 |---|---|---|
-| `_AsmConfigureAsmProjectReferences` | after `_GetProjectReferenceTargetFrameworkProperties` | per asm reference: drops a non-shared-library reference with a message; a RID-specific build gets the RID that serves it best (`AsmSelectRuntimeIdentifier`, `ASM0040`, `ASM0041`); a portable build passes the reference's `RuntimeIdentifiers` metadata on; the app's publish properties (`SelfContained`, `PublishAot`, …), output folder (`OutputPath`, `OutDir`) and its own `BinariesCopyPath` and `AsmGenerateNativeLibraryLoader` are not passed; marks the reference `Private="false"`, so the common copy targets leave its files to `_AsmAddNativeCopyItems` (a `Private="false"` the project wrote itself is kept as `AsmCopyLocal`, and still means no copies); records each library and its `BinariesCopyPath` metadata |
+| `_AsmConfigureAsmProjectReferences` | after `_GetProjectReferenceTargetFrameworkProperties` | per asm reference: drops a non-shared-library reference with a message (not released yet: a `StaticLibrary` reference in a `PublishAot` build for one RID is kept, built for that RID and linked, see `_AsmLinkStaticLibrariesIntoNativeAot`; an optional asm project without a serving RID is dropped with `ASM0049`); a RID-specific build gets the RID that serves it best (`AsmSelectRuntimeIdentifier`, `ASM0040`, `ASM0041`); a portable build passes the reference's `RuntimeIdentifiers` metadata on; the app's publish properties (`SelfContained`, `PublishAot`, …), output folder (`OutputPath`, `OutDir`) and its own `BinariesCopyPath` and `AsmGenerateNativeLibraryLoader` are not passed; marks the reference `Private="false"`, so the common copy targets leave its files to `_AsmAddNativeCopyItems` (a `Private="false"` the project wrote itself is kept as `AsmCopyLocal`, and still means no copies); records each library and its `BinariesCopyPath` metadata |
 | `_AsmResolveNativeLayouts` | before `CoreCompile` and the copies | the folder of each asm library (`AsmResolveNativeLayouts`): the reference's `BinariesCopyPath`, then the property, then what the .NET references report (`GetAsmNativeLibraries`), then `Auto` (`ASM0043`, `ASM0046`) |
+| `_AsmLinkStaticLibrariesIntoNativeAot` (not released yet) | after `ResolveProjectReferences` | a `PublishAot` build for one RID: asks each kept `StaticLibrary` reference for its `GetAsmLinkInputs` (from the build that just ran) and adds its archive as a `NativeLibrary` item; its `DirectPInvoke` item (the library's `AssemblyName`) was added with the reference |
 | `GetAsmNativeLibraries`, `GetAsmNativeAssets` | called by a referencing .NET project | the asm libraries this project deploys with its explicit choices; the asm files it knows (its asm references' and, recursively, its .NET references'), matched by full path because the .NET SDK drops custom metadata from the copy items |
 | `_AsmCollectKnownNativeAssets`, `_AsmComputeDeployedNativeAssets` | after the references are built | the asm files this project may receive, and where each goes (`AsmLayOutNativeAssets`: in a RID-specific build only the best-serving RID's, `ASM0044` for two files on one path) |
 | `_AsmAddNativeAssetsToBuildDepsFile`, `_AsmAddNativeAssetsToPublishDepsFile` | after the `deps.json` is generated, for build and publish | add each library as a project library, so the .NET host finds the right one: `runtimeTargets` in a portable app, `native` assets in a RID-specific one, each with `localPath` (`ASM0042` if the file cannot be read) |
@@ -439,7 +445,7 @@ by `dotnet clean` only if you add it to `FileWrites` too.
 | `ASM0024` | One source listed twice as `AsmSource` (not released yet: as `Compile`). | Remove the explicit item, or `EnableDefaultAsmItems=false` (not released yet: `EnableDefaultCompileItems=false`). |
 | `ASM0025` (not released yet) | A `Compile` item that is not an asm source (`.c`, `.cs`): an `.asmproj` compiles `.asm` and `.s` only. | Make it a `None` item; build other languages in a project of their own. |
 | `ASM0030` | The `ExportsFile` cannot be read, has an `extern "C++"` block, or a pattern on Windows. | List exact names. |
-| `ASM0040` | A RID-specific .NET build references an asm project none of whose RIDs serves its RID. | Add a serving RID (the message lists them). |
+| `ASM0040` | A RID-specific .NET build references an asm project none of whose RIDs serves its RID. | Add a serving RID (the message lists them); or, not released yet, `OptionalOnUnlistedRuntimes=true` in the asm project when the app copes without it. |
 | `ASM0041`, `ASM0042` | The .NET SDK's RID graph, or the `deps.json`, cannot be read. | Repair the .NET SDK; rebuild. |
 | `ASM0043` | A `BinariesCopyPath` value is not a preset or a folder inside the output: absolute, `..`, a character no OS takes in a file name, or a placeholder other than `{rid}`. | Use `Auto`, `Runtimes`, `AppFolder`, `RidFolders`, or a folder such as `native/{rid}`. |
 | `ASM0044` | Two different files would be copied to one path: a folder without `{rid}` in a build of several RIDs of one OS (`win-x64` and `win-arm64` both give `x.dll`), or two libraries with one file name. | Add `{rid}` to the folder, narrow the reference's `RuntimeIdentifiers`, or give the libraries different names or folders. |
@@ -447,6 +453,7 @@ by `dotnet clean` only if you add it to `FileWrites` too.
 | `ASM0046` (warning) | Two .NET libraries the project references deploy one asm library with different `BinariesCopyPath` values; the first reported is used. | Set `BinariesCopyPath` on a reference to it in this project, or as this project's property. |
 | `ASM0047` (not released yet) | A Windows program would keep a DLL it links in a subfolder: Windows has no run path. | `AppFolder` (or `Auto`) on Windows RIDs. |
 | `ASM0048` (warning, not released yet) | A program links an import library whose DLL its project or package does not name (a 0.3.0 package), so the DLL is not copied. | Repack the package with this SDK, or copy the DLL yourself. |
+| `ASM0049` (warning, not released yet) | A RID-specific .NET build references an asm project none of whose RIDs serves its RID, and the asm project says `OptionalOnUnlistedRuntimes=true`: the build goes on without it. | Nothing, when the app copes with the library's absence; otherwise add a serving RID to the asm project. |
 | `ASM0050` | Pack cannot remove the SDK dependency from the `.nuspec`. | Report it. |
 | `ASM0051` (not released yet) | A program to pack keeps libraries in a subfolder, which NuGet would flatten. | Keep them next to the program. |
 | `ASM0052` (not released yet) | A .NET tool's settings file cannot be written. | Check the `obj/` folder's permissions. |

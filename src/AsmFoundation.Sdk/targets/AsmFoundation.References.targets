@@ -206,7 +206,76 @@
   -->
   <Target Name="GetAsmConsumerInfo" Returns="@(_AsmConsumerInfo)">
     <ItemGroup>
-      <_AsmConsumerInfo Include="$(MSBuildProjectFullPath)" AsmOutputKind="$(_AsmOutputKind)" RuntimeIdentifiers="$(_AsmDeclaredRuntimeIdentifiers)" AsmImportName="$(AssemblyName)" />
+      <_AsmConsumerInfo Include="$(MSBuildProjectFullPath)" AsmOutputKind="$(_AsmOutputKind)" RuntimeIdentifiers="$(_AsmDeclaredRuntimeIdentifiers)" AsmImportName="$(AssemblyName)" OptionalOnUnlistedRuntimes="$(OptionalOnUnlistedRuntimes)" />
+    </ItemGroup>
+  </Target>
+
+  <!--
+    _AsmMakeStaticLibraryReferencesPrivate: a shared library's references to static libraries
+    are private by default (PrivateAssets="all"), as every reference of a program already is
+    (the ItemDefinitionGroup in Properties.targets). The static library's code is linked INTO
+    the shared library, so neither the shared library's package nor the projects that
+    reference it need the static library. Before, NuGet made it a dependency of the package
+    (its consumers failed with NU1101, the static library having no package of its own) and a
+    transitive reference of every project that references the shared library.
+
+    When: before NuGet reads the references for its restore graph
+    (_GenerateProjectRestoreGraphPerFramework); dotnet pack takes a package's dependencies from
+    the assets file that restore writes, and the .NET SDK its transitive project references, so
+    both follow. A restore that does not run MSBuild's restore targets (one that reads only the
+    evaluated project) does not see this: write PrivateAssets="all" yourself for such a tool.
+
+    Which references: an .asmproj reference that sets no PrivateAssets, and whose project says
+    it is a StaticLibrary (GetAsmConsumerInfo: its own evaluation decides, not a guess from its
+    file). PrivateAssets="none" keeps a static library a dependency, for a package that ships it
+    too. Not in a shared library that also produces a static library (AsmProduceStaticLibrary):
+    a program that links that one statically still needs the static libraries it links; nor in
+    a static library or object files, whose users link what they link.
+  -->
+  <Target Name="_AsmMakeStaticLibraryReferencesPrivate"
+          BeforeTargets="_GenerateProjectRestoreGraphPerFramework"
+          DependsOnTargets="_AsmFindReferencesToClassify;_AsmClassifyEachReference"
+          Condition="'$(_AsmOutputKind)' == 'SharedLibrary' and '$(AsmProduceStaticLibrary)' != 'true'" />
+
+  <Target Name="_AsmFindReferencesToClassify">
+    <ItemGroup>
+      <_AsmReferenceToClassify Include="@(ProjectReference)" Condition="'%(Extension)' == '.asmproj' and '%(ProjectReference.PrivateAssets)' == ''" />
+    </ItemGroup>
+  </Target>
+
+  <!-- One batch per reference, conditioned on there being one: batching over an empty list still
+       runs a target once (see the consumer targets). -->
+  <Target Name="_AsmClassifyEachReference" Outputs="%(_AsmReferenceToClassify.Identity)" Condition="'@(_AsmReferenceToClassify)' != ''">
+    <!-- Properties keep their values from one batch to the next: each one is set here. The
+         batch's one item, as written in the project (its Include): the ProjectReference to
+         update has exactly that identity. -->
+    <PropertyGroup>
+      <_AsmClassifiedSpec>@(_AsmReferenceToClassify)</_AsmClassifiedSpec>
+      <_AsmClassifiedKind />
+    </PropertyGroup>
+    <!-- Asked as the consumer targets ask (GetAsmConsumerInfo needs no build), without this
+         project's RuntimeIdentifier and TargetFramework: a restore passes them as global
+         properties, and the referenced project may build another target framework. -->
+    <MSBuild Projects="@(_AsmReferenceToClassify)"
+             Targets="GetAsmConsumerInfo"
+             RemoveProperties="RuntimeIdentifier;TargetFramework;%(_AsmReferenceToClassify.GlobalPropertiesToRemove)">
+      <Output TaskParameter="TargetOutputs" ItemName="_AsmClassifiedInfo" />
+    </MSBuild>
+    <PropertyGroup>
+      <_AsmClassifiedKind>@(_AsmClassifiedInfo->'%(AsmOutputKind)')</_AsmClassifiedKind>
+    </PropertyGroup>
+    <!-- An item element without Include, inside a target, sets metadata on the existing items
+         its condition selects: here the one reference of this batch. -->
+    <ItemGroup Condition="'$(_AsmClassifiedKind)' == 'StaticLibrary'">
+      <ProjectReference Condition="'%(ProjectReference.Identity)' == '$(_AsmClassifiedSpec)'">
+        <PrivateAssets>all</PrivateAssets>
+      </ProjectReference>
+    </ItemGroup>
+    <Message Condition="'$(_AsmClassifiedKind)' == 'StaticLibrary'"
+             Importance="low"
+             Text="$(_AsmClassifiedSpec) is a static library linked into $(MSBuildProjectName): a private reference (PrivateAssets=&quot;all&quot;), no package dependency." />
+    <ItemGroup>
+      <_AsmClassifiedInfo Remove="@(_AsmClassifiedInfo)" />
     </ItemGroup>
   </Target>
 

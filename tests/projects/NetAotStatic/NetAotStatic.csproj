@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A NativeAOT program that references an asm STATIC library (Sectionless) with nothing but the
+    ProjectReference (CrossPlatformTests): dotnet publish -r <rid> builds sectionless for that
+    RID and links it into the native executable, through the DirectPInvoke and NativeLibrary
+    items the consumer targets add (before 2026-11-23 the interop guide had users write both by
+    hand, per OS). The program calls sl_mul through [LibraryImport("sectionless")] and prints
+    "sl_mul(6, 7) = 42"; no library file is published beside it.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PublishAot>true</PublishAot>
+    <!-- A test program: tests/projects/Directory.Build.props sends packages to the local feed,
+         which this one never is. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Sectionless/Sectionless.asmproj" />
+  </ItemGroup>
+</Project>

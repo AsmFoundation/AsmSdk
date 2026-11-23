@@ -205,9 +205,43 @@ Each SDK release names the one it was tested with.
   depends on that file, as C#'s compile depends on `CoreCompileInputs.cache`. Before, a
   `DefineConstants`, `NoWarn` or `AsmFlags` set in `Directory.Build.props` or with `-p:`
   linked the objects assembled without it.
+- **A NativeAOT publish links a referenced static library by itself.** A `PublishAot` project
+  that references a `StaticLibrary` asm project needs nothing more: `dotnet publish -r <rid>`
+  builds the library for that RID, adds the `DirectPInvoke` item (its `AssemblyName`, the name
+  `[LibraryImport]` uses) and the `NativeLibrary` item (its `.lib` or `.a`, from its
+  `GetAsmLinkInputs`), and the code is linked into the executable. 0.3.0's consumer targets
+  dropped static libraries, and the interop guide showed both items written by hand, per OS.
+  Only for `PublishAot` with a RID: a JIT app still cannot load a static library. Tested
+  (tests/projects/NetAotStatic) on each CI machine: the published executable runs and nothing
+  is published beside it. The manual QA's F7, the owner's choice (2026-11-23).
+- **`OptionalOnUnlistedRuntimes`, an asm library that an app can do without.** With
+  `<OptionalOnUnlistedRuntimes>true</OptionalOnUnlistedRuntimes>` in an asm project, a .NET
+  build for a RID that none of its RIDs serves goes on without it, with the warning
+  **ASM0049**, instead of stopping with ASM0040: nothing is built, copied, listed in
+  `deps.json` or linked, and the app's code must cope with `DllNotFoundException`. The default
+  stays the error, whose message now names the property. A portable build is unaffected. The
+  manual QA's F2, the owner's choice (2026-11-23).
 
 ### Changed
 
+- **A shared library's references to static libraries are private by default.** The SDK sets
+  `PrivateAssets="all"` on a shared library's `ProjectReference` to a `StaticLibrary` project
+  that sets no `PrivateAssets` (its own evaluation says what it is), before NuGet reads the
+  references for restore (`_AsmMakeStaticLibraryReferencesPrivate`), as a program's references
+  already were. The static library's code is linked in, so the shared library's package no
+  longer depends on it (its consumers failed with `NU1101` when the static library had no
+  package) and its referencing projects no longer get it as a transitive reference.
+  `PrivateAssets="none"` keeps the dependency. Not in a shared library with
+  `AsmProduceStaticLibrary`, whose archive's users need the static libraries it links. A restore
+  that does not run MSBuild's restore targets does not see it; write `PrivateAssets="all"` for
+  such a tool. The delivery QA's open item, the owner's choice (2026-11-23).
+- **`asmsdk.inc`'s function macros start with NASM's `__SECT__`,** the section the source last
+  named with a `section` line (`[section .text]` while it named none), so a source that
+  includes `asmsdk.inc` and names no section links on Windows with `ImplicitUsings` off too (see
+  Fixed: NASM's COFF output writes a label before the first section directive as undefined).
+  One change of meaning: after the bracket form `[section .foo]`, which does not redefine
+  `__SECT__`, a function goes back to the last `section` line's section. Code sections written
+  with `section .foo` are unaffected. The owner's choice (2026-11-23).
 - **`NativeLibrary` replaces `AsmLinkLibrary`** (no compatibility, the owner's rule).
   `NativeLibrary` is NativeAOT's item for extra link inputs, as `LinkerArg` already was for
   linker arguments. Packages now write `NativeLibrary` items in their props.

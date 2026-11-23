@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A .NET program that references OptionalRid, an asm library built for linux-musl-arm64 alone
+    and optional elsewhere (CrossPlatformTests). Built for this machine's RID, it goes on without
+    the library (ASM0049) and copes: it prints "optionalrid: absent" when the library cannot be
+    loaded, and "optionalrid: 42" when it can.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- A test program: tests/projects/Directory.Build.props sends packages to the local feed,
+         which this one never is. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../OptionalRid/OptionalRid.asmproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,17 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    Sectionless's twin with ImplicitUsings disabled: sectionlessraw.asm includes asmsdk.inc
+    itself and names no section, as raw NASM code assembled outside AsmSdk might. Then nothing
+    names .text for it, and before 2026-11-23 NASM's COFF output wrote raw_mul as an undefined
+    symbol on win-x64; now each FUNCTION macro starts with NASM's __SECT__, which names .text
+    while the source named no section. ImplicitUsingsTests checks raw_mul is defined in the text
+    section of each RID's library, and SectionlessRawProgram, which references it, links it for
+    all eight. It names no RID: it is built for the RIDs of the project that references it.
+      raw_mul(a, b)    a * b, a HIDDEN_FUNCTION
+  -->
+  <PropertyGroup>
+    <OutputType>StaticLibrary</OutputType>
+    <AssemblyName>sectionlessraw</AssemblyName>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+</Project>

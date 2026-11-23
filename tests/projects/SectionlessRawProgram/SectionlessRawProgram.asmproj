@@ -1,0 +1,22 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    SectionlessProgram's twin with ImplicitUsings disabled: a libc program for all eight RIDs
+    whose x64 source includes asmsdk.inc itself and names no section before its functions,
+    linking the SectionlessRaw static library. main returns raw_mul(6, seven()), so the program
+    exits with status 42, where seven is a LOCAL_FUNCTION reached through a pointer in .data,
+    the case that needs its label defined even though no other object calls it (NASM's COFF
+    output wrote it undefined: lld "undefined symbol: seven"). The link is the test: each
+    function macro now starts with __SECT__. ImplicitUsingsTests builds this project, checks
+    each RID's program and runs the one of this machine's RID.
+  -->
+  <PropertyGroup>
+    <TargetFramework>libc</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>sectionless-raw-program</AssemblyName>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../SectionlessRaw/SectionlessRaw.asmproj" />
+  </ItemGroup>
+</Project>

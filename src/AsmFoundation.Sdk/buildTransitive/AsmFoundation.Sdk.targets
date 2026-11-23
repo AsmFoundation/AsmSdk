@@ -11,7 +11,12 @@
       RuntimeIdentifier in the project): each asm reference is built for the RID that serves
         this one best, by the .NET SDK's runtime identifier graph (the RID itself when the asm
         project builds it; linux-arm64 for linux-musl-arm64 when it builds only that one).
-        ASM0040 when none of its RIDs fits.
+        ASM0040 when none of its RIDs fits; when the asm project sets
+        OptionalOnUnlistedRuntimes=true, the warning ASM0049 instead, and this build goes on
+        without it (its code must cope with the library's absence).
+      NativeAOT publish (PublishAot, one RID): shared libraries and programs as above, and each
+        static library is built for that RID and linked into the executable (DirectPInvoke and
+        NativeLibrary items; see _AsmLinkStaticLibrariesIntoNativeAot).
       Portable build (no RuntimeIdentifier): each asm reference builds every RID it lists, or
         the RIDs of the ProjectReference's RuntimeIdentifiers metadata
         (<ProjectReference Include="..." RuntimeIdentifiers="linux-x64;win-x64" />).
@@ -139,6 +144,10 @@
       <_AsmReferenceRids />
       <_AsmReferenceImportName />
       <_AsmReferenceDelivered />
+      <_AsmReferenceLinked />
+      <_AsmReferenceUsed />
+      <_AsmReferenceOptional />
+      <_AsmReferenceOmitted />
       <_AsmReferenceProgramKind />
     </PropertyGroup>
 
@@ -154,25 +163,31 @@
       <_AsmReferenceKind>@(_AsmReferenceInfo->'%(AsmOutputKind)')</_AsmReferenceKind>
       <_AsmReferenceRids>@(_AsmReferenceInfo->'%(RuntimeIdentifiers)')</_AsmReferenceRids>
       <_AsmReferenceImportName>@(_AsmReferenceInfo->'%(AsmImportName)')</_AsmReferenceImportName>
+      <_AsmReferenceOptional>@(_AsmReferenceInfo->'%(OptionalOnUnlistedRuntimes)')</_AsmReferenceOptional>
     </PropertyGroup>
 
     <!--
       A .NET app loads a shared library and starts a program (an Executable: the helper-process
       case, delivered with the libraries and programs it needs; see GetAsmNativeRuntimeAssets).
-      A static library or object files are left to the asm projects that link them: the .NET
-      SDK adds an asm project's own asm references to this project as transitive
+      A NativeAOT publish (PublishAot, one RID) also links a static library into the native
+      executable (_AsmReferenceLinked; see _AsmLinkStaticLibrariesIntoNativeAot), as the
+      interop guide used to have users wire by hand with DirectPInvoke and NativeLibrary items.
+      Otherwise a static library or object files are left to the asm projects that link them:
+      the .NET SDK adds an asm project's own asm references to this project as transitive
       ProjectReferences, and built from here, a static library that names no RID of its own
       would stop with ASM0010 (measured: a .NET app referencing a library that links a RID-less
       static library).
     -->
     <PropertyGroup>
       <_AsmReferenceDelivered Condition="'$(_AsmReferenceKind)' == 'SharedLibrary' or '$(_AsmReferenceKind)' == 'Executable'">true</_AsmReferenceDelivered>
+      <_AsmReferenceLinked Condition="'$(_AsmReferenceKind)' == 'StaticLibrary' and '$(PublishAot)' == 'true' and '$(RuntimeIdentifier)' != ''">true</_AsmReferenceLinked>
+      <_AsmReferenceUsed Condition="'$(_AsmReferenceDelivered)' == 'true' or '$(_AsmReferenceLinked)' == 'true'">true</_AsmReferenceUsed>
       <_AsmReferenceProgramKind Condition="'$(_AsmReferenceKind)' == 'Executable'">Program</_AsmReferenceProgramKind>
     </PropertyGroup>
-    <Message Condition="'$(_AsmReferenceDelivered)' != 'true'"
+    <Message Condition="'$(_AsmReferenceUsed)' != 'true'"
              Importance="normal"
-             Text="%(_AsmProjectReference.Filename)%(_AsmProjectReference.Extension) produces a $(_AsmReferenceKind), nothing a .NET app loads or starts: not built or copied through $(MSBuildProjectName)." />
-    <ItemGroup Condition="'$(_AsmReferenceDelivered)' != 'true'">
+             Text="%(_AsmProjectReference.Filename)%(_AsmProjectReference.Extension) produces a $(_AsmReferenceKind), nothing a .NET app loads or starts (only a NativeAOT publish links a static library in): not built or copied through $(MSBuildProjectName)." />
+    <ItemGroup Condition="'$(_AsmReferenceUsed)' != 'true'">
       <_MSBuildProjectReferenceExistent Remove="@(_AsmProjectReference)" />
     </ItemGroup>
 
@@ -189,17 +204,33 @@
              Condition="'$(_AsmReferenceDelivered)' == 'true' and '$(RuntimeIdentifier)' == '' and '$(_AsmReferenceRids)' == '' and '%(_AsmProjectReference.RuntimeIdentifiers)' == '' and ('$(_IsPublishing)' == 'true' or '$(_IsPacking)' == 'true')"
              Text="%(_AsmProjectReference.Filename) lists no RuntimeIdentifiers, so this portable $([MSBuild]::ValueOrDefault('$(_AsmConsumerCommandWord)', 'publish')) of $(MSBuildProjectName) carries its library for the build machine's platform alone (its default). List the platforms in %(_AsmProjectReference.Filename)%(_AsmProjectReference.Extension) (&lt;RuntimeIdentifiers&gt;win-x64;linux-x64;osx-arm64&lt;/RuntimeIdentifiers&gt;) or on this ProjectReference (RuntimeIdentifiers=&quot;...&quot;), or publish for one platform with -r &lt;rid&gt;." />
 
-    <ItemGroup Condition="'$(_AsmReferenceDelivered)' == 'true' and '$(RuntimeIdentifier)' != ''">
+    <ItemGroup Condition="'$(_AsmReferenceUsed)' == 'true' and '$(RuntimeIdentifier)' != ''">
       <_AsmReferenceDeclaredRid Include="$(_AsmReferenceRids)" />
       <_AsmReferenceDeclaredRid Include="$(_AsmConsumerSupportedRuntimeIdentifiers)" Condition="'$(_AsmReferenceRids)' == ''" />
     </ItemGroup>
-    <AsmSelectRuntimeIdentifier Condition="'$(_AsmReferenceDelivered)' == 'true' and '$(RuntimeIdentifier)' != ''"
+    <!-- Optional: the asm project's OptionalOnUnlistedRuntimes. Then no serving RID is the
+         warning ASM0049 and an empty selection, instead of the error ASM0040. -->
+    <AsmSelectRuntimeIdentifier Condition="'$(_AsmReferenceUsed)' == 'true' and '$(RuntimeIdentifier)' != ''"
                                 RuntimeIdentifier="$(RuntimeIdentifier)"
                                 AvailableRuntimeIdentifiers="@(_AsmReferenceDeclaredRid)"
                                 RuntimeIdentifierGraphPath="$(RuntimeIdentifierGraphPath)"
-                                ProjectName="%(_AsmProjectReference.Filename)%(_AsmProjectReference.Extension)">
+                                ProjectName="%(_AsmProjectReference.Filename)%(_AsmProjectReference.Extension)"
+                                Optional="$([MSBuild]::ValueOrDefault('$(_AsmReferenceOptional)', 'false'))">
       <Output TaskParameter="Selected" PropertyName="_AsmSelectedRid" />
     </AsmSelectRuntimeIdentifier>
+
+    <!-- An optional asm project without a build for this RID: this build goes on without it,
+         as if there were no reference (nothing built, copied, listed in deps.json or linked).
+         The app's code that calls it gets DllNotFoundException, which it said it handles. -->
+    <PropertyGroup Condition="'$(_AsmReferenceUsed)' == 'true' and '$(RuntimeIdentifier)' != '' and '$(_AsmSelectedRid)' == ''">
+      <_AsmReferenceOmitted>true</_AsmReferenceOmitted>
+      <_AsmReferenceUsed />
+      <_AsmReferenceDelivered />
+      <_AsmReferenceLinked />
+    </PropertyGroup>
+    <ItemGroup Condition="'$(_AsmReferenceOmitted)' == 'true'">
+      <_MSBuildProjectReferenceExistent Remove="@(_AsmProjectReference)" />
+    </ItemGroup>
 
     <PropertyGroup>
       <!-- RID-specific: build the selected RID (the .NET project's own RID would flow there
@@ -224,7 +255,7 @@
          nothing else for a reference that yields no assembly (GetTargetPathWithTargetPlatformMoniker
          returns none). A Private="false" the project wrote itself is kept as AsmCopyLocal and
          still means "no copies". -->
-    <ItemGroup Condition="'$(_AsmReferenceDelivered)' == 'true'">
+    <ItemGroup Condition="'$(_AsmReferenceUsed)' == 'true'">
       <_AsmConfiguredReference Include="@(_AsmProjectReference)">
         <AdditionalProperties>$(_AsmReferenceAdditionalProperties)</AdditionalProperties>
         <GlobalPropertiesToRemove>$(_AsmReferenceGlobalPropertiesToRemove)</GlobalPropertiesToRemove>
@@ -234,14 +265,53 @@
       <_MSBuildProjectReferenceExistent Remove="@(_AsmProjectReference)" />
       <_MSBuildProjectReferenceExistent Include="@(_AsmConfiguredReference)" />
       <!-- AsmKind Program keeps a program out of the generated loader's table: it is started,
-           never loaded through [DllImport]. -->
-      <_AsmNativeLibrary Include="%(_AsmProjectReference.FullPath)" AsmImportName="$(_AsmReferenceImportName)" BinariesCopyPath="%(_AsmProjectReference.BinariesCopyPath)" AsmKind="$([MSBuild]::ValueOrDefault('$(_AsmReferenceProgramKind)', 'Library'))" />
+           never loaded through [DllImport]. A static library linked into NativeAOT is neither
+           copied nor listed: its code is inside the executable. -->
+      <_AsmNativeLibrary Condition="'$(_AsmReferenceDelivered)' == 'true'" Include="%(_AsmProjectReference.FullPath)" AsmImportName="$(_AsmReferenceImportName)" BinariesCopyPath="%(_AsmProjectReference.BinariesCopyPath)" AsmKind="$([MSBuild]::ValueOrDefault('$(_AsmReferenceProgramKind)', 'Library'))" />
+      <!-- NativeAOT: the configured reference (with its RID and properties, so that the call
+           for its link inputs reaches the very build ResolveProjectReferences ran), and
+           DirectPInvoke for its name: ILC then calls the library's functions directly, and the
+           linker resolves them in the archive, instead of a dlopen at run time. The name is
+           the library's AssemblyName, the one [LibraryImport] and [DllImport] use. -->
+      <_AsmAotStaticLibrary Condition="'$(_AsmReferenceLinked)' == 'true'" Include="@(_AsmConfiguredReference)" AsmImportName="$(_AsmReferenceImportName)" />
+      <DirectPInvoke Condition="'$(_AsmReferenceLinked)' == 'true'" Include="$(_AsmReferenceImportName)" />
     </ItemGroup>
     <ItemGroup>
       <_AsmConfiguredReference Remove="@(_AsmConfiguredReference)" />
       <_AsmReferenceDeclaredRid Remove="@(_AsmReferenceDeclaredRid)" />
       <_AsmReferenceInfo Remove="@(_AsmReferenceInfo)" />
     </ItemGroup>
+  </Target>
+
+  <!--
+    _AsmLinkStaticLibrariesIntoNativeAot: a NativeAOT publish links each static library this
+    project references (see _AsmReferenceLinked above) into its native executable, as
+    NativeLibrary items, beside the DirectPInvoke items already added for their names. The
+    paths come from the static library's own GetAsmLinkInputs (its LinkInput, the .lib or .a
+    of the selected RID), asked of the same build ResolveProjectReferences just ran: the same
+    global properties, so MSBuild reuses that project instance and nothing builds twice.
+    NativeAOT reads DirectPInvoke when it writes the compiler's response file and NativeLibrary
+    when it links (LinkNative), both after Build, so adding them here is in time; a
+    dotnet build of a PublishAot project gets them too, unused. A static library a static
+    library references comes along as a transitive ProjectReference, so it is linked as well.
+  -->
+  <Target Name="_AsmLinkStaticLibrariesIntoNativeAot"
+          AfterTargets="ResolveProjectReferences"
+          Condition="'$(UsingAsmFoundationSdk)' != 'true' and '@(_AsmAotStaticLibrary)' != ''">
+    <MSBuild Projects="@(_AsmAotStaticLibrary)"
+             Targets="GetAsmLinkInputs"
+             BuildInParallel="$(BuildInParallel)"
+             Properties="%(_AsmAotStaticLibrary.SetConfiguration);%(_AsmAotStaticLibrary.SetPlatform);%(_AsmAotStaticLibrary.SetTargetFramework)"
+             RemoveProperties="%(_AsmAotStaticLibrary.GlobalPropertiesToRemove)$(_GlobalPropertiesToRemoveFromProjectReferences)">
+      <Output TaskParameter="TargetOutputs" ItemName="_AsmAotLinkInput" />
+    </MSBuild>
+    <ItemGroup>
+      <!-- LinkInput only: the include directories GetAsmLinkInputs also returns are for asm
+           projects that assemble against the library. -->
+      <NativeLibrary Include="@(_AsmAotLinkInput)" Condition="'%(_AsmAotLinkInput.AsmItemType)' == 'LinkInput'" />
+      <_AsmAotLinkInput Remove="@(_AsmAotLinkInput)" />
+    </ItemGroup>
+    <Message Importance="normal" Text="NativeAOT links @(_AsmAotStaticLibrary->'%(Filename)', ', ') into $(MSBuildProjectName) (DirectPInvoke @(_AsmAotStaticLibrary->'%(AsmImportName)', ', '))." />
   </Target>
 
   <!--

@@ -22,7 +22,12 @@ namespace AsmFoundation.Sdk.Tasks;
 /// it (a freestanding library needs no C library, so a glibc-free build serves musl). An exact
 /// match needs no graph at all.
 /// </para>
-/// <para>Errors: ASM0040 (no compatible RID), ASM0041 (the graph cannot be read).</para>
+/// <para>
+/// Errors: ASM0040 (no compatible RID), ASM0041 (the graph cannot be read). With
+/// <see cref="Optional"/>, a missing RID is the warning ASM0049 instead, and
+/// <see cref="Selected"/> stays empty: the caller then builds the .NET project without this
+/// asm project.
+/// </para>
 /// </remarks>
 public sealed class AsmSelectRuntimeIdentifier : Task
 {
@@ -40,12 +45,23 @@ public sealed class AsmSelectRuntimeIdentifier : Task
     /// <summary>The asm project, for messages.</summary>
     public string ProjectName { get; set; } = "";
 
-    /// <summary>The RID to build the asm project for, as the asm project spells it.</summary>
+    /// <summary>
+    /// The asm project's OptionalOnUnlistedRuntimes: true turns a missing RID from the error
+    /// ASM0040 into the warning ASM0049, with an empty <see cref="Selected"/>. A graph that
+    /// cannot be read (ASM0041) stays an error either way: that is a broken .NET SDK, not a
+    /// RID the library chose not to build.
+    /// </summary>
+    public bool Optional { get; set; }
+
+    /// <summary>The RID to build the asm project for, as the asm project spells it; empty when <see cref="Optional"/> let none be found.</summary>
     [Output]
     public string Selected { get; set; } = "";
 
     /// <summary>Selects the RID.</summary>
-    /// <returns>True with <see cref="Selected"/> set; false after logging ASM0040 or ASM0041.</returns>
+    /// <returns>
+    /// True with <see cref="Selected"/> set, or with it empty after the warning ASM0049 for an
+    /// optional asm project; false after logging ASM0040 or ASM0041.
+    /// </returns>
     public override bool Execute()
     {
         string[] available = AvailableRuntimeIdentifiers.Select(i => i.ItemSpec).ToArray();
@@ -80,9 +96,22 @@ public sealed class AsmSelectRuntimeIdentifier : Task
             return true;
         }
 
+        string builds = available.Length == 0 ? "nothing" : string.Join(", ", available);
+        if (Optional)
+        {
+            // The asm project said its code is optional where it is not built: the .NET project
+            // goes on without it, and its code must cope with the library's absence. A warning,
+            // not a message, so that a missing library is never silent.
+            Log.LogWarning(null, "ASM0049", null, null, 0, 0, 0, 0,
+                "{0} builds no runtime identifier that {1} can use (it builds {2}), and it is optional on the RIDs it does not list (OptionalOnUnlistedRuntimes): this {1} build goes on without it, so the code that uses it must handle its absence (DllNotFoundException).",
+                ProjectName, RuntimeIdentifier, builds);
+            Selected = "";
+            return true;
+        }
+
         Log.LogError(null, "ASM0040", null, null, 0, 0, 0, 0,
-            "{0} builds no runtime identifier that {1} can use. It builds {2}; {1} can use {3}. Add one of those to its RuntimeIdentifiers, or build this project for another RID.",
-            ProjectName, RuntimeIdentifier, available.Length == 0 ? "nothing" : string.Join(", ", available), string.Join(", ", fallbacks));
+            "{0} builds no runtime identifier that {1} can use. It builds {2}; {1} can use {3}. Add one of those to its RuntimeIdentifiers, or build this project for another RID. If the code copes without it, OptionalOnUnlistedRuntimes=true in {0} turns this into a warning.",
+            ProjectName, RuntimeIdentifier, builds, string.Join(", ", fallbacks));
         return false;
     }
 }

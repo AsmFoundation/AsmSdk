@@ -158,6 +158,15 @@
          assembly consumers that link statically take the .a. -->
     <AsmProduceStaticLibrary Condition="'$(AsmProduceStaticLibrary)' == ''">false</AsmProduceStaticLibrary>
 
+    <!-- OptionalOnUnlistedRuntimes=true: a .NET project built for a RID that this library does
+         not build (and no listed RID serves, by the RID graph) goes on without it, with the
+         warning ASM0049, instead of stopping with ASM0040. For code that checks for the library
+         and copes without it (DllNotFoundException, NativeLibrary.TryLoad); the default keeps
+         the error, so an app never ships without a library by accident. Read by the .NET
+         consumer targets through GetAsmConsumerInfo (References.targets). A portable .NET
+         build is unaffected: it carries the RIDs the library builds. -->
+    <OptionalOnUnlistedRuntimes Condition="'$(OptionalOnUnlistedRuntimes)' == ''">false</OptionalOnUnlistedRuntimes>
+
     <!-- Default items (declared in Sdk.props): every *.asm (NASM) and *.s (GNU syntax,
          llvm-mc) is a Compile item, as in a .csproj every *.cs is, and every *.inc a None item
          that every source depends on. Which sources build which runtime identifier is decided
@@ -493,6 +502,9 @@
     program's own copy in tools/<rid>/), and the program's package depended on packages whose
     files it already holds. A reference that writes PrivateAssets itself keeps its value.
     MSBuild evaluates item definitions after every property, so _AsmOutputKind is final here.
+    A shared library makes only its static library references private, which depends on what
+    each referenced project is, so it is decided by a target instead
+    (_AsmMakeStaticLibraryReferencesPrivate in References.targets).
   -->
   <ItemDefinitionGroup Condition="'$(_AsmOutputKind)' == 'Executable'">
     <ProjectReference>

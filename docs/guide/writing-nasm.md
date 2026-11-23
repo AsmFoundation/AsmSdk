@@ -64,6 +64,12 @@ section .note.GNU-stack noalloc noexec nowrite progbits
   `FUNCTION` of a project with an `ExportsFile` (which writes no directive) do not, and
   neither does a `LOCAL_FUNCTION` that another section points to (`dq helper` in `.data`:
   `undefined symbol: helper`).
+  (Not released yet: `asmsdk.inc`'s function macros start with NASM's `__SECT__`, the section
+  the source last named with a `section` line, `[section .text]` while it named none. A source
+  that includes `asmsdk.inc` then links without the line too, with `ImplicitUsings` or
+  without. The line still matters for raw NASM. One change of meaning: after the bracket form
+  `[section .foo]`, which does not redefine `__SECT__`, a function goes back to the last
+  `section` line's section, so write code sections with `section .foo`.)
 - **`.note.GNU-stack`** marks the object as not needing an executable stack. It is
   Linux-only: for macOS, NASM stops at the line (`unknown section name`). The SDK already
   links with `-z noexecstack`, but your `.a` may be linked by someone else's toolchain. Since

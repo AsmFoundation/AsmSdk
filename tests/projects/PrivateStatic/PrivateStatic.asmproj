@@ -1,0 +1,22 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A shared library that links a static library (Sectionless) through a ProjectReference that
+    sets no PrivateAssets (PackageTests): since 2026-11-23 the SDK makes such a reference private
+    (PrivateAssets="all"), so the package Test.PrivateStatic does not depend on "sectionless",
+    which has no package (NU1101 for every consumer before), and NetPrivateStatic does not get it
+    as a transitive reference. -p:PrivateStaticAssets=none writes PrivateAssets="none", the
+    opt-out: then the package depends on it again.
+      ps_square(x)    x * x, through the static library's sl_mul
+  -->
+  <PropertyGroup>
+    <AssemblyName>privatestatic</AssemblyName>
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+    <PackageId>Test.PrivateStatic</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>AsmFoundation tests</Authors>
+    <Description>Test package: a shared library with a static library linked in.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Sectionless/Sectionless.asmproj" PrivateAssets="$(PrivateStaticAssets)" />
+  </ItemGroup>
+</Project>

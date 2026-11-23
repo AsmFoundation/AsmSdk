@@ -135,6 +135,16 @@ dependency every `.asmproj` carries is removed from the `.nuspec`.
 
   A `StaticLibrary` package keeps the dependency: its consumers link both archives.
 
+  > [!NOTE]
+  > **Not released yet:** on the main branch a shared library's reference to a static library
+  > is private by default, as a program's references already are: the SDK sets
+  > `PrivateAssets="all"` on it when MSBuild restores the project (`dotnet restore`, `build`,
+  > `pack`). Its package no longer depends on the static library, and the projects that
+  > reference the shared library no longer get the static library as a transitive reference.
+  > `PrivateAssets="none"` keeps the dependency, for a package that ships the static library
+  > too. A shared library that also produces a static library (`AsmProduceStaticLibrary`)
+  > keeps its static references public: whoever links that archive needs theirs.
+
 ## The generated consumer props
 
 Each target framework's `obj/<Configuration>/<tfm>/asm/pack/<PackageId>.props` is packed as

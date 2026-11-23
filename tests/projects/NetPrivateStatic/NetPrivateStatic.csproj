@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A .NET library that references PrivateStatic (PackageTests): its restore must not list the
+    static library PrivateStatic links (Sectionless) among its dependencies, because that
+    reference is private by default. Restore is all it needs; it has no code of its own beyond
+    Marker.cs, which keeps the compiler from warning that it has no source file (CS2008, an
+    error under the folder's TreatWarningsAsErrors).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- A test project: tests/projects/Directory.Build.props sends packages to the local feed,
+         which this one never is. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../PrivateStatic/PrivateStatic.asmproj" />
+  </ItemGroup>
+</Project>

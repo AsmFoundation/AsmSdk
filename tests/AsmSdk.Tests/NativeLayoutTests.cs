@@ -301,6 +301,35 @@ public sealed class NativeLayoutTests(SdkUnderTest sdk)
         AssertLoaded(RunExecutable(output, "NetLayout"), rid);
     }
 
+    /// <summary>
+    /// NativeAOT links a referenced asm STATIC library into the executable with nothing but the
+    /// ProjectReference (tests/projects/NetAotStatic -> Sectionless): the consumer targets build
+    /// the static library for the published RID and add the DirectPInvoke and NativeLibrary items
+    /// the interop guide had users write by hand. The executable runs and prints sl_mul's result,
+    /// and no library file is published beside it. Without the two items the publish would still
+    /// succeed, but the run would fail (DllNotFoundException: no "sectionless" shared library), so
+    /// the run is what proves the link. In a configuration of its own (AotStatic), so Sectionless's
+    /// Release builds, which ImplicitUsingsTests reads, stay as they were. Skipped on a machine
+    /// without NativeAOT's platform linker.
+    /// </summary>
+    [Fact]
+    public void NativeAOT_links_a_referenced_static_library_into_the_executable()
+    {
+        string rid = HostRidOrSkip();
+        string output = RunFolder("aot-static");
+        CommandResult publish = sdk.Once($"publish NetAotStatic -r {rid}", () =>
+            sdk.Dotnet("publish", Repo.TestProjectPath("NetAotStatic", "NetAotStatic.csproj"), "-c", "AotStatic", "-r", rid, "-o", output));
+        SkipWithoutNativeAotLinker(publish);
+        Assert.True(publish.ExitCode == 0, publish.Tail());
+        // The library's files on any OS (sectionless.lib, libsectionless.a, or a shared library
+        // by mistake): none may be published, its code is inside the executable.
+        Assert.DoesNotContain(Directory.GetFiles(output, "*", SearchOption.AllDirectories).Select(Path.GetFileName),
+            name => name!.StartsWith("sectionless.", StringComparison.OrdinalIgnoreCase) || name.StartsWith("libsectionless.", StringComparison.OrdinalIgnoreCase));
+        CommandResult run = RunExecutable(output, "NetAotStatic");
+        Assert.True(run.ExitCode == 0, $"exit {run.ExitCode}: {run.Output}");
+        Assert.Equal("sl_mul(6, 7) = 42", run.StdOut.Trim());
+    }
+
     /// <summary>Skips when a NativeAOT publish failed for want of the platform linker (Visual Studio's on Windows, clang elsewhere).</summary>
     /// <param name="publish">The publish's result.</param>
     /// <exception cref="Exception">Xunit's skip exception.</exception>

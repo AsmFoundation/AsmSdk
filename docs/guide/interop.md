@@ -47,7 +47,11 @@ let .NET's own RID rules choose the library.
   Otherwise it is the nearest one the RID falls back to: an asm project that lists `linux-arm64`
   serves `linux-musl-arm64`, as a package's `runtimes/linux-arm64/` would. When none fits, the
   build stops with **ASM0040**, which lists what the asm project builds and what the app can
-  use.
+  use. (Not released yet: an asm project with
+  `<OptionalOnUnlistedRuntimes>true</OptionalOnUnlistedRuntimes>` makes that the warning
+  **ASM0049** instead, and the build goes on without the library, for an app whose code checks
+  for it and copes with `DllNotFoundException`. The default stays the error, so nothing ships
+  without a library by accident.)
 - **`RuntimeIdentifiers` on the reference** narrows what a portable build carries:
 
   ```xml
@@ -221,9 +225,19 @@ The single-file rows rely on the consumer targets, which mark the asm libraries
 with `BinariesCopyPath` each row puts the library in that folder instead (see above).
 
 **A static library inside a NativeAOT program.** NativeAOT can link a static library into the
-program and call it directly: no library file ships, and nothing is looked up at run time. The
-consumer targets leave static libraries alone, so name the library yourself, for the RID being
-published, and build it for that RID first (`dotnet build Crc.asmproj -c Release -r win-x64`):
+program and call it directly: no library file ships, and nothing is looked up at run time.
+
+> [!NOTE]
+> **Not released yet:** on the main branch the consumer targets do this themselves. A
+> `ProjectReference` to a `StaticLibrary` project is all a `PublishAot` project needs:
+> `dotnet publish -r <rid>` builds the library for that RID and adds the `DirectPInvoke` item
+> (its `AssemblyName`, the name `[LibraryImport]` uses) and the `NativeLibrary` item (its `.lib`
+> or `.a`) shown below. Tested on every CI machine: the published executable runs, and no
+> library file is published beside it.
+
+With 0.3.0 the consumer targets leave static libraries alone, so name the library yourself, for
+the RID being published, and build it for that RID first
+(`dotnet build Crc.asmproj -c Release -r win-x64`):
 
 ```xml
 <ItemGroup Condition="'$(RuntimeIdentifier)' != '' and '$(PublishAot)' == 'true'">

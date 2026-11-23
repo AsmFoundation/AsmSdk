@@ -1,0 +1,16 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    An asm library that is optional on the RIDs it does not list (OptionalOnUnlistedRuntimes),
+    for NetOptionalRid (CrossPlatformTests). It builds linux-musl-arm64 alone, which serves no
+    build machine of the CI (Windows x64 and ARM64, Linux x64 and ARM64, macOS ARM64: none of
+    their RIDs falls back to linux-musl-arm64), so a .NET build for the machine's own RID goes
+    on without it, with the warning ASM0049, and the app runs without it. Built for
+    linux-musl-arm64, it is delivered as any library.
+      or_answer()    42
+  -->
+  <PropertyGroup>
+    <AssemblyName>optionalrid</AssemblyName>
+    <RuntimeIdentifiers>linux-musl-arm64</RuntimeIdentifiers>
+    <OptionalOnUnlistedRuntimes>true</OptionalOnUnlistedRuntimes>
+  </PropertyGroup>
+</Project>

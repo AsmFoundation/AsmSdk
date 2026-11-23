@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Text.RegularExpressions;
 using AsmSdk.Tests.Infrastructure;
 using Xunit;
@@ -5,7 +6,8 @@ using Xunit;
 namespace AsmSdk.Tests;
 
 /// <summary>
-/// Packages built from .asmproj projects: their layouts (one per target framework), and
+/// Packages built from .asmproj projects: their layouts (one per target framework), their
+/// dependencies (a static library linked into a shared library is none, by default), and
 /// consumption by version from another project.
 /// </summary>
 /// <param name="sdk">The SDK under test (assembly fixture).</param>
@@ -95,6 +97,59 @@ public sealed class PackageTests(SdkUnderTest sdk)
         Assert.Equal(["src/include/pub.inc", "src/lib.asm", "src/lib.s", "src/private.inc"],
             entries.Where(entry => entry.StartsWith("src/", StringComparison.Ordinal)));
         Assert.Contains("include/pub.inc", entries);
+    }
+
+    /// <summary>
+    /// A shared library's reference to a static library that sets no PrivateAssets is private by
+    /// default (tests/projects/PrivateStatic -> Sectionless): its package does not depend on the
+    /// static library, whose code is linked in and which has no package of its own (before
+    /// 2026-11-23, every consumer of such a package failed with NU1101), and a .NET project that
+    /// references the shared library (NetPrivateStatic) does not get the static library as a
+    /// transitive reference: its assets file does not name it. In a configuration of its own
+    /// (PrivateStatic), so Sectionless's Release builds stay as other tests left them.
+    /// </summary>
+    [Fact]
+    public void A_shared_librarys_static_library_reference_is_private_by_default()
+    {
+        string output = Path.Combine(Repo.Artifacts, "test-packages", "private-static");
+        CommandResult pack = sdk.Dotnet("pack", Repo.TestProject("PrivateStatic"), "-c", "PrivateStatic", "-o", output);
+        Assert.True(pack.ExitCode == 0 && !MsBuildWarning.IsMatch(pack.StdOut), pack.Tail());
+        Assert.DoesNotContain("<dependency id=\"sectionless\"", Nuspec(Path.Combine(output, "Test.PrivateStatic.1.0.0.nupkg"), "Test.PrivateStatic.nuspec"));
+
+        CommandResult restore = sdk.Dotnet("restore", Repo.TestProjectPath("NetPrivateStatic", "NetPrivateStatic.csproj"));
+        Assert.True(restore.ExitCode == 0, restore.Tail());
+        string assets = File.ReadAllText(Repo.TestProjectPath("NetPrivateStatic", "obj", "project.assets.json"));
+        Assert.Contains("PrivateStatic.asmproj", assets);
+        Assert.DoesNotContain("Sectionless.asmproj", assets);
+    }
+
+    /// <summary>
+    /// PrivateAssets="none" on the reference keeps the static library a dependency of the shared
+    /// library's package: the opt-out of the default, for a package that ships the static library
+    /// too (tests/projects/PrivateStatic with -p:PrivateStaticAssets=none).
+    /// </summary>
+    [Fact]
+    public void PrivateAssets_none_keeps_a_static_library_a_package_dependency()
+    {
+        string output = Path.Combine(Repo.Artifacts, "test-packages", "private-static-none");
+        CommandResult pack = sdk.Dotnet("pack", Repo.TestProject("PrivateStatic"), "-c", "PrivateStatic", "-p:PrivateStaticAssets=none", "-o", output);
+        Assert.True(pack.ExitCode == 0 && !MsBuildWarning.IsMatch(pack.StdOut), pack.Tail());
+        Assert.Contains("<dependency id=\"sectionless\"", Nuspec(Path.Combine(output, "Test.PrivateStatic.1.0.0.nupkg"), "Test.PrivateStatic.nuspec"));
+    }
+
+    /// <summary>Reads the .nuspec inside a package.</summary>
+    /// <param name="nupkg">The .nupkg file.</param>
+    /// <param name="name">The .nuspec's entry name (the package id, then .nuspec).</param>
+    /// <returns>The .nuspec's text.</returns>
+    /// <exception cref="FileNotFoundException">The package does not exist.</exception>
+    /// <exception cref="Xunit.Sdk.XunitException">The package has no such entry.</exception>
+    private static string Nuspec(string nupkg, string name)
+    {
+        using ZipArchive archive = ZipFile.OpenRead(nupkg);
+        ZipArchiveEntry? entry = archive.GetEntry(name);
+        Assert.True(entry is not null, $"{nupkg} has no {name}");
+        using var reader = new StreamReader(entry.Open());
+        return reader.ReadToEnd();
     }
 
     /// <summary>A project consumes a package by version: samples/consumers/Hello.Consumer builds against Hello.Static 1.0.0.</summary>

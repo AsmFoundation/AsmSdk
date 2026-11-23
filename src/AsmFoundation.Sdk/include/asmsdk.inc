@@ -90,6 +90,15 @@
 ;     hides them). Keep a static library's FUNCTIONs to its public API: use
 ;     LOCAL_FUNCTION for what is private to one file, and HIDDEN_FUNCTION for
 ;     what its other files or its users call.
+;   - Each function starts with NASM's __SECT__, the section the source last
+;     named with a "section" line, or "[section .text]" while it named none.
+;     NASM's COFF output (Windows) writes a label defined before the first
+;     section directive as an undefined symbol, so a source with no section
+;     line could not be linked there; the SDK's ImplicitUsings names .text
+;     too, and this covers a source assembled without it. The one change of
+;     meaning: after the bracket form "[section .foo]", which does not
+;     redefine __SECT__, a function goes back to the last "section" line's
+;     section. Use the "section .foo" form for code.
 ; =============================================================================
 
 %ifndef ASMSDK_INC
@@ -226,6 +235,14 @@
             global %2:function
         %endif
     %endif
+    ; Back to the section the source named last ("[section .text]" while it
+    ; named none): NASM's COFF output defines a label only in a section some
+    ; directive named, and writes one in its implicit default section as an
+    ; undefined symbol (measured with NASM 2.16.03, 3.01 and 3.02). The export
+    ; directive above switches back the same way, so a FUNCTION of a DLL was
+    ; already covered; a HIDDEN_FUNCTION, a LOCAL_FUNCTION and a program's or
+    ; an ExportsFile project's FUNCTION were not, without ImplicitUsings.
+    __SECT__
 %2:
     %ifdef WINDOWS
         ; Arguments 5 and 6: above the return address and the 32-byte shadow

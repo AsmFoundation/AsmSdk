@@ -610,6 +610,75 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
     }
 
     /// <summary>
+    /// An asm library that says OptionalOnUnlistedRuntimes (tests/projects/OptionalRid, built for
+    /// linux-musl-arm64 alone, which serves no CI machine) is left out of a .NET build for this
+    /// machine's RID: the build succeeds with the warning ASM0049, no library is copied, and the
+    /// app runs and copes ("optionalrid: absent"), which is what the opt-in promises. In a
+    /// configuration of its own (OptionalRid), apart from the other NetOptionalRid builds.
+    /// </summary>
+    [Fact]
+    public void An_optional_asm_library_is_left_out_of_a_rid_it_does_not_build()
+    {
+        string? rid = HostBuildRid();
+        if (rid is null)
+        {
+            Assert.Skip($"AsmSdk builds nothing for this machine ({Repo.HostRid})");
+        }
+
+        string project = Repo.TestProjectPath("NetOptionalRid", "NetOptionalRid.csproj");
+        CommandResult build = sdk.Dotnet("build", project, "-c", "OptionalRid", "-r", rid, "-p:UseAppHost=false");
+        Assert.True(build.ExitCode == 0, build.Tail());
+        Assert.Contains("ASM0049", build.StdOut);
+        Assert.Contains("OptionalRid.asmproj builds no runtime identifier that " + rid + " can use", build.StdOut);
+        string output = Repo.TestProjectPath("NetOptionalRid", "bin", "OptionalRid", "net10.0", rid);
+        // The library's files on any OS: optionalrid.dll, liboptionalrid.so or .dylib. Not a
+        // "*optionalrid*" pattern: that matches the app's own NetOptionalRid.dll.
+        Assert.DoesNotContain(Directory.GetFiles(output, "*", SearchOption.AllDirectories).Select(Path.GetFileName),
+            name => name!.StartsWith("optionalrid.", StringComparison.OrdinalIgnoreCase) || name.StartsWith("liboptionalrid.", StringComparison.OrdinalIgnoreCase));
+        CommandResult run = Command.Run("dotnet", [Path.Combine(output, "NetOptionalRid.dll")], Repo.Root);
+        Assert.True(run.ExitCode == 0, run.Output);
+        Assert.Equal("optionalrid: absent", run.StdOut.Trim());
+    }
+
+    /// <summary>
+    /// Without the opt-in (OptionalOnUnlistedRuntimes=false on the command line, which reaches
+    /// the asm project as a global property), the same build still stops with ASM0040, and the
+    /// message now names the opt-in for code that copes without the library.
+    /// </summary>
+    [Fact]
+    public void Without_the_opt_in_a_missing_rid_still_stops_the_build()
+    {
+        string? rid = HostBuildRid();
+        if (rid is null)
+        {
+            Assert.Skip($"AsmSdk builds nothing for this machine ({Repo.HostRid})");
+        }
+
+        CommandResult build = sdk.Dotnet("build", Repo.TestProjectPath("NetOptionalRid", "NetOptionalRid.csproj"), "-c", "OptionalRidStrict",
+            "-r", rid, "-p:UseAppHost=false", "-p:OptionalOnUnlistedRuntimes=false");
+        Assert.True(build.ExitCode != 0, build.Tail());
+        Assert.Contains("ASM0040", build.StdOut);
+        Assert.DoesNotContain("ASM0049", build.StdOut);
+        Assert.Contains("OptionalOnUnlistedRuntimes=true in OptionalRid.asmproj turns this into a warning", build.StdOut);
+    }
+
+    /// <summary>
+    /// For the RID it does build (linux-musl-arm64), an optional asm library is delivered like any
+    /// other: its library is copied next to the app, and no ASM0049 is raised.
+    /// </summary>
+    [Fact]
+    public void An_optional_asm_library_is_delivered_for_the_rid_it_builds()
+    {
+        CommandResult build = sdk.Dotnet("build", Repo.TestProjectPath("NetOptionalRid", "NetOptionalRid.csproj"), "-c", "OptionalRid",
+            "-r", "linux-musl-arm64", "-p:UseAppHost=false");
+        Assert.True(build.ExitCode == 0, build.Tail());
+        Assert.DoesNotContain("ASM0049", build.StdOut);
+        string library = Repo.TestProjectPath("NetOptionalRid", "bin", "OptionalRid", "net10.0", "linux-musl-arm64", "liboptionalrid.so");
+        Assert.True(File.Exists(library), $"no {library}: {build.Tail()}");
+        Assert.Contains("Format: elf64-littleaarch64", sdk.ReadObj(library, "--file-headers"));
+    }
+
+    /// <summary>
     /// dotnet pack puts every RID's library under runtimes/&lt;rid&gt;/native/ (and the Windows import
     /// libraries under native/), and the implicit AsmFoundation.Sdk reference is not a dependency.
     /// </summary>
