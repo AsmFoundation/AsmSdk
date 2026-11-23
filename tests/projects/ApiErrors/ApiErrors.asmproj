@@ -1,0 +1,23 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    Wrong PROTO lines, one case per folder under cases/, picked with -p:ApiCase=<folder> (ApiTests
+    builds each in a configuration of its own). Each must stop the build with its code, at the
+    PROTO line:
+      badtype      ASM0130  long, which differs between Windows and the other platforms
+      nofunction   ASM0131  a PROTO for no function, and one for a LOCAL_FUNCTION
+      hidden       ASM0131  a PROTO for a HIDDEN_FUNCTION of a shared library (built as a
+                            StaticLibrary with -p:OutputType=StaticLibrary, it is bindable)
+      count        ASM0132  three integer parameters, FUNCTION says two
+      drift        ASM0133  win-x64's add.win.asm and linux-x64's add.asm disagree
+      duplicate    ASM0134  two PROTO lines for one function
+  -->
+  <PropertyGroup>
+    <AssemblyName>apierrors</AssemblyName>
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+    <RuntimeIdentifiers Condition="'$(ApiCase)' == 'drift'">win-x64;linux-x64</RuntimeIdentifiers>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="cases/$(ApiCase)/*.asm" />
+  </ItemGroup>
+</Project>

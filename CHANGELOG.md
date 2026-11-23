@@ -205,6 +205,24 @@ Each SDK release names the one it was tested with.
   depends on that file, as C#'s compile depends on `CoreCompileInputs.cache`. Before, a
   `DefineConstants`, `NoWarn` or `AsmFlags` set in `Directory.Build.props` or with `-p:`
   linked the objects assembled without it.
+- **`PROTO` lines and the API file, the first phase of generated C# bindings.** A
+  `PROTO int32_t add_ints(int32_t a, int32_t b)` line beside a `FUNCTION` (NASM and GNU syntax
+  alike; `PROTO fast ...` for a short function that never blocks) declares its C signature.
+  `PROTO` and every function macro write a text record into a metadata section of the object
+  (`.asmapi`: an info section on Windows and a `__DWARF` debug section on macOS, which the
+  linkers drop; a non-allocated section in a Linux `.so`, never loaded). After assembling each
+  RID, `AsmReadApi` reads the records, parses the prototypes (the fixed-width C types, `bool`,
+  `char`, `float`, `double`, pointers and function pointers; not `int` or `long`, which differ
+  between platforms) and checks them: **ASM0130** (does not parse, or a type it cannot bind),
+  **ASM0131** (no exported `FUNCTION` of that name; a static library may describe a
+  `HIDDEN_FUNCTION`), **ASM0132** (the integer and pointer parameters differ from `FUNCTION`'s
+  count), **ASM0134** (two `PROTO` lines for one function), **ASM0135** (unreadable records),
+  each at the `PROTO` line. The RID's `<AssemblyName>.api.json` goes into `obj/` and beside its
+  binary; the RID outer build's `AsmMergeApi` checks that every RID declares the same functions
+  the same way (**ASM0133**, naming each RID's prototype and source) and writes the library's
+  file in `bin/<Configuration>/<tfm>/`. No `PROTO` line, no file. The design (the owner's choices
+  of 2026-11-23, approved as a spec): catalog `asmsdk/plans/csharp-bindings.md`; the C# generator
+  is the next phase.
 - **A NativeAOT publish links a referenced static library by itself.** A `PublishAot` project
   that references a `StaticLibrary` asm project needs nothing more: `dotnet publish -r <rid>`
   builds the library for that RID, adds the `DirectPInvoke` item (its `AssemblyName`, the name

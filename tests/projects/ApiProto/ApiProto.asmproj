@@ -1,0 +1,20 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    PROTO lines for the generated C# bindings (ApiTests), for all eight RIDs: each function's C
+    prototype beside its FUNCTION, in the .asm (x64) and the .s (ARM64) source alike. The SDK
+    reads them from each RID's objects, checks them, and writes apiproto.api.json beside each
+    RID's library and, merged, in bin/<Configuration>/freestanding/. What each source covers:
+      add.asm, add.s           add_ints(a, b): a + b, two integers
+      simd/sum.asm, sum.s      sum_bytes(data, len): fast, a pointer and its length, a folder
+      strings.asm, strings.s   name_length(name): a C string's length (const char*)
+      callback.asm, .s         apply(op, a, b): op(a, b), a function pointer
+      halve.asm, halve.s       halve(value): value / 2, doubles only (no integer argument)
+      answer.asm, answer.win.asm, answer.s
+                               answer(): 42, from per-RID variants (win-x64 takes the .win.asm,
+                               the other x64 RIDs the .asm, ARM64 the .s): one logical file
+  -->
+  <PropertyGroup>
+    <AssemblyName>apiproto</AssemblyName>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

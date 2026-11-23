@@ -181,6 +181,39 @@
   %define PLT
 %endif
 
+; ---- The API records (C# bindings) --------------------------------------------
+;
+; Each FUNCTION, LOCAL_FUNCTION and HIDDEN_FUNCTION, and each PROTO line, adds a
+; NUL-terminated text record to a metadata section of the object, which the SDK
+; reads after assembling (AsmReadApi): "fn <scope> <name> <nargs or ->" and
+; "proto <the line>". The section never reaches a Windows or macOS image (an
+; info section, which lld-link drops; a __DWARF debug section, which ld64.lld
+; drops) and is not loaded from a Linux one (a non-allocated section, kept in
+; the .so file beside .comment: a few bytes per function). Measured 2026-11-23
+; on all three formats.
+%ifdef WINDOWS
+  %define ASMSDK_API_SECTION .asmapi info
+%elifdef MACOS
+  %define ASMSDK_API_SECTION __DWARF,__asmapi debug
+%else
+  %define ASMSDK_API_SECTION .asmapi noalloc nowrite progbits
+%endif
+
+; PROTO [fast] <C prototype>
+;   Declares a function's C signature for the generated C# bindings, beside the
+;   FUNCTION that implements it:
+;       PROTO int32_t add_ints(int32_t a, int32_t b)
+;       FUNCTION add_ints, 2
+;   The line is recorded as written (the greedy parameter keeps its commas) and
+;   parsed by the SDK, which checks it against the FUNCTION records of every
+;   RID (ASM0130-ASM0133). "fast" marks a short function that never blocks:
+;   its binding skips the GC transition ([SuppressGCTransition]).
+%macro PROTO 1+
+    [section ASMSDK_API_SECTION]
+        db "proto ", %str(%1), 0
+    __SECT__
+%endmacro
+
 ; ---- Functions ---------------------------------------------------------------
 
 ; ASMSDK_FUNCTION_BEGIN scope, name [, nargs [, register ...]]
@@ -235,6 +268,16 @@
             global %2:function
         %endif
     %endif
+    ; The function's record for the SDK's PROTO checks: its scope, its name and
+    ; the argument count when the source gave one ("-" otherwise, so that an
+    ; omitted count is never compared as 0).
+    %if %0 >= 3
+        %defstr %$api_record fn %1 %2 %3
+    %else
+        %defstr %$api_record fn %1 %2 -
+    %endif
+    [section ASMSDK_API_SECTION]
+        db %$api_record, 0
     ; Back to the section the source named last ("[section .text]" while it
     ; named none): NASM's COFF output defines a label only in a section some
     ; directive named, and writes one in its implicit default section as an

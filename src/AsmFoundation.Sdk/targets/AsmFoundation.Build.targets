@@ -35,6 +35,8 @@
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmCheckImage" AssemblyFile="$(_AsmTasksAssembly)" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmLayOutProgramDependencies" AssemblyFile="$(_AsmTasksAssembly)" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmSelectRunTarget" AssemblyFile="$(_AsmTasksAssembly)" />
+  <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmReadApi" AssemblyFile="$(_AsmTasksAssembly)" />
+  <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmMergeApi" AssemblyFile="$(_AsmTasksAssembly)" />
 
   <!-- ===================================================================================== -->
   <!-- Items                                                                                  -->
@@ -1144,8 +1146,10 @@
   <PropertyGroup>
     <!-- One RID: assemble and link it. The RID outer build: build each RID instead (reached
          only when something calls CoreCompile directly; Build skips it, see below). -->
-    <_AsmCoreCompileDependsOn Condition="'$(_AsmRid)' != ''">AsmAssemble;AsmLink</_AsmCoreCompileDependsOn>
-    <_AsmCoreCompileDependsOn Condition="'$(_AsmRid)' == ''">_AsmBuildEachRuntimeIdentifier</_AsmCoreCompileDependsOn>
+    <!-- The API records are read between the two, so that a wrong PROTO line (ASM0130-0134)
+         stops the build before anything is linked. -->
+    <_AsmCoreCompileDependsOn Condition="'$(_AsmRid)' != ''">AsmAssemble;_AsmReadApi;AsmLink</_AsmCoreCompileDependsOn>
+    <_AsmCoreCompileDependsOn Condition="'$(_AsmRid)' == ''">_AsmBuildEachRuntimeIdentifier;_AsmMergeApi</_AsmCoreCompileDependsOn>
 
     <!--
       The RID outer build's Build is the dispatch alone, the way the outer build of a
@@ -1156,8 +1160,80 @@
       because it is built for the RIDs its referencing projects ask for. Each inner build
       resolves the references itself, for its own RID.
     -->
-    <BuildDependsOn Condition="'$(_AsmRid)' == ''">BeforeBuild;_AsmBuildEachRuntimeIdentifier;AfterBuild</BuildDependsOn>
+    <BuildDependsOn Condition="'$(_AsmRid)' == ''">BeforeBuild;_AsmBuildEachRuntimeIdentifier;_AsmMergeApi;AfterBuild</BuildDependsOn>
   </PropertyGroup>
+
+  <!-- ===================================================================================== -->
+  <!-- The API file: PROTO lines, checked, for the generated C# bindings                     -->
+  <!-- ===================================================================================== -->
+
+  <!--
+    _AsmReadApi (each RID): reads the API records asmsdk.inc and asmsdk-gnu.inc write into the
+    objects (a "fn" record per function macro, a "proto" record per PROTO line), checks the
+    PROTO lines against the functions (AsmReadApi: ASM0130-ASM0132, ASM0134, ASM0135) and writes
+    the RID's API file, <AssemblyName>.api.json, into obj/ and beside the RID's binary. No PROTO
+    line, no file (a stale one is deleted). Not incremental by Inputs/Outputs: it reads a few
+    hundred bytes per object, and the task rewrites the file only when its content changes,
+    so its timestamp still tells consumers when the API changed.
+  -->
+  <PropertyGroup>
+    <_AsmApiIntermediateFile>$(AsmIntermediateDirectory)api/$(AssemblyName).api.json</_AsmApiIntermediateFile>
+  </PropertyGroup>
+  <Target Name="_AsmReadApi" DependsOnTargets="AsmAssemble" Condition="'$(_AsmRid)' != ''">
+    <AsmReadApi Sources="@(_AsmSelectedSource)"
+                Library="$(AssemblyName)"
+                OutputKind="$(_AsmOutputKind)"
+                RuntimeIdentifier="$(_AsmRid)"
+                ApiFile="$(_AsmApiIntermediateFile)">
+      <Output TaskParameter="Written" PropertyName="_AsmApiWritten" />
+    </AsmReadApi>
+    <Copy Condition="'$(_AsmApiWritten)' != ''" SourceFiles="$(_AsmApiIntermediateFile)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
+    <Delete Condition="'$(_AsmApiWritten)' == ''" Files="$(TargetDir)$(AssemblyName).api.json" />
+    <ItemGroup Condition="'$(_AsmApiWritten)' != ''">
+      <FileWrites Include="$(_AsmApiIntermediateFile);$(TargetDir)$(AssemblyName).api.json" />
+    </ItemGroup>
+  </Target>
+
+  <!--
+    _AsmMergeApi (the RID outer build): asks each inner build for its API file (the same global
+    properties as the Build call, so MSBuild answers from the builds that ran), checks that every
+    RID declares the same functions the same way (AsmMergeApi: ASM0133), and writes the
+    library's API file, without the per-RID fields, beside the RID folders:
+    bin/<Configuration>/<tfm>/<AssemblyName>.api.json. Conditioned on there being inner builds
+    (see _AsmBuildEachRuntimeIdentifier: batching over an empty list still runs once).
+  -->
+  <Target Name="_AsmMergeApi" Condition="'$(_AsmRid)' == '' and '@(_AsmInnerBuild)' != ''">
+    <ItemGroup>
+      <_AsmApiInnerProject Include="$(MSBuildProjectFullPath)">
+        <AdditionalProperties>%(_AsmInnerBuild.AdditionalProperties)</AdditionalProperties>
+      </_AsmApiInnerProject>
+    </ItemGroup>
+    <MSBuild Projects="@(_AsmApiInnerProject)" Targets="GetAsmApiFile" BuildInParallel="$(BuildInParallel)">
+      <Output TaskParameter="TargetOutputs" ItemName="_AsmApiInnerFile" />
+    </MSBuild>
+    <AsmMergeApi RuntimeIdentifiers="@(_AsmInnerBuild)" ApiFiles="@(_AsmApiInnerFile)" ApiFile="$(OutDir)$(AssemblyName).api.json">
+      <Output TaskParameter="Written" PropertyName="_AsmApiMerged" />
+    </AsmMergeApi>
+    <ItemGroup Condition="'$(_AsmApiMerged)' != ''">
+      <FileWrites Include="$(_AsmApiMerged)" />
+    </ItemGroup>
+    <ItemGroup>
+      <_AsmApiInnerProject Remove="@(_AsmApiInnerProject)" />
+    </ItemGroup>
+  </Target>
+
+  <!--
+    GetAsmApiFile: the API file of this build, as an item with RuntimeIdentifier metadata (empty
+    in the RID outer build), or nothing when it has no PROTO line. An inner build returns its
+    obj/ copy, which names each function's source for the comparison's messages; the outer
+    build returns the merged file. Asks for nothing to be built: called after Build.
+  -->
+  <Target Name="GetAsmApiFile" Returns="@(_AsmApiFileItem)">
+    <ItemGroup>
+      <_AsmApiFileItem Include="$(_AsmApiIntermediateFile)" Condition="'$(_AsmRid)' != '' and Exists('$(_AsmApiIntermediateFile)')" RuntimeIdentifier="$(_AsmRid)" />
+      <_AsmApiFileItem Include="$(OutDir)$(AssemblyName).api.json" Condition="'$(_AsmRid)' == '' and Exists('$(OutDir)$(AssemblyName).api.json')" RuntimeIdentifier="" />
+    </ItemGroup>
+  </Target>
 
   <!-- ===================================================================================== -->
   <!-- Runtime identifiers: checks and the RID outer build                                    -->

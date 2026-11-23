@@ -242,6 +242,7 @@ ENDFUNCTION lookup
 | `CALL name` / `TAILCALL name` | `bl` / `b` with the OS's name for a C symbol: one of this module, of a linked static library, or of the C library (the linker routes it through a stub). On x86-64 GNU syntax: `call` / `jmp`, through `@PLT` on Linux. |
 | `ADDRESS reg, label` | The position-independent address of a label of this file. |
 | `RODATA` | Switches to read-only data, which each format names differently (`.section .rodata` is an error on Mach-O). |
+| `PROTO [fast] <C prototype>` (not released yet) | Declares the function's C signature for the generated C# bindings, as `PROTO` in NASM (see [Writing NASM](writing-nasm.md#proto-a-functions-c-prototype)). |
 
 `x18` is the platform register on Windows (the TEB) and macOS: never use it.
 On macOS every *variadic* argument goes on the stack (Apple's ARM64 convention), while Windows

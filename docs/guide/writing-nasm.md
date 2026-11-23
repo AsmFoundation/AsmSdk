@@ -192,6 +192,40 @@ On ELF (Linux-only files), the directives also give sizes and data types:
   `--exclude-libs ALL` in the `.so` also works (see
   [Runtimes and linking](runtimes-and-linking.md#production-link-options)).
 
+## PROTO: a function's C prototype
+
+> [!NOTE]
+> **Not released yet:** on the main branch, the first step of the generated C# bindings. A
+> `PROTO` line beside a `FUNCTION` declares its C signature:
+>
+> ```nasm
+> PROTO int32_t add_ints(int32_t a, int32_t b)
+> FUNCTION add_ints, 2
+>     lea     eax, [ARG1 + ARG2]
+>     RETURN
+> ENDFUNCTION
+>
+> PROTO fast uint32_t sum_bytes(const uint8_t* data, size_t len)
+> ```
+>
+> - **The types:** `void`, `bool`, `char`, the fixed-width integers (`int8_t` ... `uint64_t`,
+>   `size_t`, `ptrdiff_t`, `intptr_t`, `uintptr_t`), `float`, `double`, pointers to them, and
+>   function pointers (`int32_t (*op)(int32_t, int32_t)`). Not `int` or `long`: `long` is 32-bit
+>   on Windows and 64-bit elsewhere.
+> - **`fast`** marks a short function that never blocks, whose binding may skip the GC
+>   transition (3.38 ns per call instead of 9.60 ns, measured).
+> - **What the SDK does with it:** `PROTO` and every function macro write a record into a
+>   metadata section of the object. After assembling each RID, the SDK checks every `PROTO`
+>   against that RID's functions and writes `<AssemblyName>.api.json` beside the RID's library;
+>   the RID outer build checks that every RID agrees and writes the library's file in
+>   `bin/<Configuration>/<tfm>/`. The section never reaches a Windows or macOS image, and is not
+>   loaded from a Linux `.so`.
+> - **The checks:** `ASM0130` (a line that does not parse, or a type it cannot bind),
+>   `ASM0131` (no exported `FUNCTION` of that name; a static library may describe a
+>   `HIDDEN_FUNCTION`), `ASM0132` (the integer and pointer parameters differ from `FUNCTION`'s
+>   count), `ASM0133` (two RIDs declare a function differently), `ASM0134` (two `PROTO` lines for
+>   one function). The message points at the `PROTO` line.
+
 ## Sections and data
 
 | Section | Use | Notes |

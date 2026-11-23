@@ -56,6 +56,15 @@
 //                      lea label(%rip) on x86-64. On macOS, FUNCTION and
 //                      LOCAL_FUNCTION also define the plain name as a local
 //                      label next to _name, so that one spelling serves.
+// PROTO [fast] <C prototype>
+//                      Declares a function's C signature for the generated C#
+//                      bindings, beside its FUNCTION, as in asmsdk.inc:
+//                          PROTO int32_t add_ints(int32_t a, int32_t b)
+//                      Recorded as written in the .asmapi metadata section,
+//                      with one "fn" record per function macro, for the SDK
+//                      to read and check (ASM0130-ASM0133). The section never
+//                      reaches a Windows or macOS image and is not loaded from
+//                      a Linux one.
 //
 // The SDK defines WINDOWS, LINUX or MACOS (and MUSL), X64 or ARM64,
 // FREESTANDING or LIBC, DEBUG or RELEASE, each as 1 with llvm-mc's --defsym,
@@ -112,8 +121,39 @@
     .text
 .endm
 
+// ---- The API records (C# bindings) ----------------------------------------------
+// ASMSDK_API_RECORD text: one NUL-terminated record in this format's metadata
+// section, restored to the current section afterwards (.pushsection): an info
+// section that lld-link drops on Windows ("yn", as .drectve), a __DWARF debug
+// section that ld64.lld drops on macOS, a non-allocated section elsewhere
+// (kept in a .so file, never loaded). Measured 2026-11-23 on all three.
+// vararg keeps the commas of a prototype; the text goes inside quotes, which a
+// C prototype never contains.
+.macro ASMSDK_API_RECORD text:vararg
+.ifdef MACOS
+    .pushsection __DWARF,__asmapi,regular,debug
+.else
+.ifdef WINDOWS
+    .pushsection .asmapi,"yn"
+.else
+    .pushsection .asmapi,"",%progbits
+.endif
+.endif
+    .asciz "\text"
+    .popsection
+.endm
+
+// PROTO [fast] <C prototype>: see the header.
+.macro PROTO text:vararg
+    ASMSDK_API_RECORD proto \text
+.endm
+
 // ---- Functions -----------------------------------------------------------------
+// Each function macro first records "fn <scope> <name> -" for the SDK's PROTO
+// checks (scope 1 exported, 0 local, 2 hidden, as asmsdk.inc numbers them; ARM64
+// takes no argument count, so it is always "-").
 .macro FUNCTION name
+    ASMSDK_API_RECORD fn 1 \name -
     ASMSDK_EXPORT \name
 .ifdef MACOS
     .globl _\name
@@ -138,6 +178,7 @@ _\name:
 .endm
 
 .macro LOCAL_FUNCTION name
+    ASMSDK_API_RECORD fn 0 \name -
     .text
 .ifdef MACOS
     // The underscore here too, so that CALL reaches local and global
@@ -160,6 +201,7 @@ _\name:
 .endm
 
 .macro HIDDEN_FUNCTION name
+    ASMSDK_API_RECORD fn 2 \name -
     .text
 .ifdef MACOS
     // private_extern: global while linking, a local symbol of the output.
