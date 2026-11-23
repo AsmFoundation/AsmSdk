@@ -311,9 +311,10 @@ Each was measured with the bundled LLVM 23.1.5 and .NET 10.0.15:
   [Writing NASM](writing-nasm.md#proto-a-functions-c-prototype)) are read from COFF, ELF and
   Mach-O objects only. In a wasm source, `PROTO` stops the build with
   "PROTO is not read from WebAssembly sources yet". The wasm RIDs write no API file, and a
-  library's API file describes its other RIDs. llvm-mc reports this error, like any `.error`
-  of a macro, at `<instantiation>`; the note after it, "while in macro instantiation", names
-  the source line.
+  library's API file describes its other RIDs, so a .NET WebAssembly app gets no generated
+  bindings: it writes its `[DllImport]` declarations itself. llvm-mc reports this error, like
+  any `.error` of a macro, at `<instantiation>`; the note after it, "while in macro
+  instantiation", names the source line.
 
 
 ## Diagnostics

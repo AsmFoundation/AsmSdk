@@ -155,6 +155,10 @@ let .NET's own RID rules choose the library.
 >   generated twice), `ASM0144` (an unreadable API file).
 > - **`<AsmGenerateBindings>false</AsmGenerateBindings>`** turns it off, for a project with its own
 >   imports whose class names would clash.
+> - **Libraries only.** A referenced asm program gets no bindings, even with `PROTO` lines (its
+>   API file describes what it exports to its plugins): a program is started, never loaded.
+>   A .NET WebAssembly app gets none yet either, because the WebAssembly RIDs write no API file
+>   (see [WebAssembly](webassembly.md)); it declares its imports by hand, as above.
 
 ## Where the binaries go: BinariesCopyPath
 

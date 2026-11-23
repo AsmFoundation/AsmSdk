@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A C# program that references the asm PROGRAM ApiProgram, which has a PROTO line and an API
+    file (BindingsTests). A program is started, never loaded, so this project must get no
+    bindings for it: no class Apiprogram, and, ApiProgram being its only asm reference, no
+    generator at all (the generator's own [AsmLibrary] attribute is absent from the assembly).
+    Program.cs reads both from its own assembly and prints:
+      program class False / generator False
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- A test program: tests/projects/Directory.Build.props sends packages to the local feed,
+         which this one never is. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../ApiProgram/ApiProgram.asmproj" />
+  </ItemGroup>
+</Project>

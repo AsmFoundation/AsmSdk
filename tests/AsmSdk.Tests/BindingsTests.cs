@@ -6,9 +6,9 @@ namespace AsmSdk.Tests;
 
 /// <summary>
 /// The generated C# bindings, end to end (phase 2 of catalog asmsdk/plans/csharp-bindings.md): a
-/// C# project that references an asm library with PROTO lines gets [LibraryImport] declarations
-/// from the SDK's generator, laid out by its [AsmLibrary] attributes, and calls the library with
-/// nothing written by hand.
+/// C# project that references an asm library with PROTO lines gets blittable [DllImport]
+/// declarations (and the wrappers that convert bools and strings) from the SDK's generator, laid
+/// out by its [AsmLibrary] attributes, and calls the library with nothing written by hand.
 /// </summary>
 /// <param name="sdk">The SDK under test (assembly fixture).</param>
 /// <remarks>
@@ -121,6 +121,31 @@ public sealed class BindingsTests(SdkUnderTest sdk)
         CommandResult build = sdk.Dotnet("build", Repo.TestProjectPath("NetBindings", "NetBindings.csproj"), "-c", "NoBindings", "-p:AsmGenerateBindings=false");
         Assert.True(build.ExitCode != 0, build.Tail());
         Assert.Contains("error CS0246: The type or namespace name 'NetBindings' could not be found", build.StdOut);
+    }
+
+    /// <summary>
+    /// A program is started, never loaded, so a .NET project that references one gets no
+    /// bindings for it, although the program has PROTO lines and an API file (which describes
+    /// what a plugin host exports to its plugins). tests/projects/NetApiProgram references
+    /// ApiProgram, a linux-x64 program (every machine builds it, and the decision is the build's,
+    /// so this runs everywhere), and prints what its own assembly holds: neither the class
+    /// Apiprogram nor, the program being its only asm reference, the generator's attribute.
+    /// Negative control (measured 2026-11-24): with programs not excluded, the same build wrote
+    /// the class, DllImport("apiprogram") and all, and printed "program class True".
+    /// </summary>
+    [Fact]
+    public void A_program_reference_gets_no_bindings()
+    {
+        CommandResult build = sdk.Once("build NetApiProgram", () => sdk.Dotnet("build", Repo.TestProjectPath("NetApiProgram", "NetApiProgram.csproj"), "-c", "Release"));
+        Assert.True(build.ExitCode == 0, build.Tail());
+        // The API file the bindings would have been made from exists: without it the test would
+        // pass for the wrong reason.
+        Assert.True(File.Exists(Repo.TestProjectPath("ApiProgram", "bin", "Release", "libc", "apiprogram.api.json")), "ApiProgram wrote no API file");
+        CommandResult run = Command.Run("dotnet", [Repo.TestProjectPath("NetApiProgram", "bin", "Release", "net10.0", "NetApiProgram.dll")], Repo.Root);
+        Assert.True(run.ExitCode == 0, run.Output);
+        Assert.Equal(
+            ["program class False", "generator False"],
+            run.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
     }
 
     /// <summary>Skips on a machine whose RID AsmSdk does not build: nothing could run there.</summary>

@@ -291,7 +291,9 @@ Each SDK release names the one it was tested with.
   generators never see each other's output, so .NET's LibraryImport generator left generated
   `[LibraryImport]` methods without a body (measured: CS8795). The SDK sets `AllowUnsafeBlocks`
   whenever bindings are generated (the .NET SDK defaults it to `false`, measured);
-  `AsmGenerateBindings=false` turns the bindings off. Errors at the attribute: **ASM0140** (no
+  `AsmGenerateBindings=false` turns the bindings off. Libraries only: a referenced asm program
+  gets none, `PROTO` lines or not (it is started, never loaded), and a .NET WebAssembly app
+  none yet (the wasm RIDs write no API file). Errors at the attribute: **ASM0140** (no
   such library), **ASM0141** (no such file or folder), **ASM0142** (bound twice), **ASM0143**
   (not `static partial`, or a name generated twice), **ASM0144** (an unreadable API file). Phase 2
   of the design; also fixed: `GetAsmApiFile` returns absolute paths (a referencing project read

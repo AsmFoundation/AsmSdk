@@ -305,8 +305,15 @@
            the library's AssemblyName, the one [LibraryImport] and [DllImport] use. -->
       <_AsmAotStaticLibrary Condition="'$(_AsmReferenceLinked)' == 'true'" Include="@(_AsmConfiguredReference)" AsmImportName="$(_AsmReferenceImportName)" />
       <!-- Bindings: every library this project calls (loaded or linked in) may have PROTO lines;
-           _AsmAddBindings asks it for its API file once it is built. -->
-      <_AsmBindingReference Include="@(_AsmConfiguredReference)" />
+           _AsmAddBindings asks it for its API file once it is built. Not a program, although
+           its PROTO lines give it an API file too (what a plugin host exports): a program is
+           started, never loaded through [DllImport] (AsmKind Program above; glibc refuses to
+           load one: "cannot dynamically load position-independent executable", measured with
+           2.39), so bindings to it would build and fail at the first call (measured:
+           NetApiProgram got DllImport("apiprogram") before this condition). A WebAssembly app's
+           reference is recorded, but its wasm build writes no API file yet, so GetAsmApiFile
+           returns nothing and the app gets no bindings. -->
+      <_AsmBindingReference Condition="'$(_AsmReferenceProgramKind)' != 'Program'" Include="@(_AsmConfiguredReference)" />
       <DirectPInvoke Condition="'$(_AsmReferenceLinked)' == 'true'" Include="$(_AsmReferenceImportName)" />
       <!-- WebAssembly: the configured reference too, for the same reason, for
            _AsmAddWasmNativeFileReferences. It is no _AsmNativeLibrary: nothing to lay out, list

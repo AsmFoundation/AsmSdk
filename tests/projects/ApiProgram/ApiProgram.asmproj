@@ -1,0 +1,17 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    An asm PROGRAM with a PROTO line (BindingsTests, through NetApiProgram). Its build writes an
+    API file as a library's does (bin/Release/libc/apiprogram.api.json): a program may export
+    functions, as a plugin host does for its plugins, and the file describes them. But a .NET
+    project that references a program gets no C# bindings for it: a program is started as a
+    process, never loaded through [DllImport] (Linux refuses to dlopen an executable, and
+    macOS too). linux-x64 only: the bindings are decided when the .NET project builds, and every
+    build machine builds linux-x64, so the test runs everywhere.
+  -->
+  <PropertyGroup>
+    <TargetFramework>libc</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>apiprogram</AssemblyName>
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>
