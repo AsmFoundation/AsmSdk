@@ -1,0 +1,24 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    STRUCT lines for the generated C# bindings (StructTests), for all eight RIDs: the same structs
+    in NASM (x64) and GNU syntax (ARM64), laid out by the SDK before assembling. What each source
+    covers:
+      include/shapes.inc, include/shapes.s.inc
+                         point and rect (a struct by value inside a struct), in an include file
+                         on the include path: both sources of a dialect include it, so its
+                         records reach two objects (one struct, not two)
+      shapes.asm, .s     rect_area(const rect*) reads nested fields, point_set(point*, x, y)
+                         writes through the pointer; an assembly-time check of the layout (%if,
+                         .if) on the constants
+      kinds.asm, .s      hash_state (arrays, a bool), sorter (a function pointer field, a
+                         pointer to itself), mixed (a bool, a const pointer, a char, padding),
+                         and struct_sizes, which reports every struct's size constant for the C#
+                         side to compare with sizeof
+    The C# side (tests/projects/NetStructs) fills each struct and reads the results back, so a
+    field at a different offset in C# and in the asm code gives a wrong number on that machine.
+  -->
+  <PropertyGroup>
+    <AssemblyName>apistruct</AssemblyName>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

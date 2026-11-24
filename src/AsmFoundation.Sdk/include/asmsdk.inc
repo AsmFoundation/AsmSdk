@@ -183,14 +183,14 @@
 
 ; ---- The API records (C# bindings) --------------------------------------------
 ;
-; Each FUNCTION, LOCAL_FUNCTION and HIDDEN_FUNCTION, and each PROTO line, adds a
-; NUL-terminated text record to a metadata section of the object, which the SDK
-; reads after assembling (AsmReadApi): "fn <scope> <name> <nargs or ->" and
-; "proto <the line>". The section never reaches a Windows or macOS image (an
-; info section, which lld-link drops; a __DWARF debug section, which ld64.lld
-; drops) and is not loaded from a Linux one (a non-allocated section, kept in
-; the .so file beside .comment: a few bytes per function). Measured 2026-11-23
-; on all three formats.
+; Each FUNCTION, LOCAL_FUNCTION and HIDDEN_FUNCTION, and each PROTO and STRUCT
+; line, adds a NUL-terminated text record to a metadata section of the object,
+; which the SDK reads after assembling (AsmReadApi): "fn <scope> <name> <nargs
+; or ->", "proto <the line>" and "struct <the line>". The section never reaches
+; a Windows or macOS image (an info section, which lld-link drops; a __DWARF
+; debug section, which ld64.lld drops) and is not loaded from a Linux one (a
+; non-allocated section, kept in the .so file beside .comment: a few bytes per
+; function). Measured 2026-11-23 on all three formats.
 %ifdef WINDOWS
   %define ASMSDK_API_SECTION .asmapi info
 %elifdef MACOS
@@ -211,6 +211,31 @@
 %macro PROTO 1+
     [section ASMSDK_API_SECTION]
         db "proto ", %str(%1), 0
+    __SECT__
+%endmacro
+
+; STRUCT name, <field>, <field>, ...
+;   Declares a struct, laid out as C lays it out on the RID, for this code and
+;   for the generated C# bindings (a sequential C# struct):
+;       STRUCT crc_state, uint32_t crc, uint8_t* data, uint64_t total
+;       mov     eax, [ARG1 + crc_state.crc]     ; offsets: crc 0, data 8, total 16
+;       sub     rsp, crc_state_size              ; 24, padding included
+;   Fields are C declarations: the fixed-width integers, bool, char, float,
+;   double, pointers, function pointers (int32_t (*cmp)(int32_t, int32_t)), a
+;   STRUCT declared before (by value: point min), and arrays of the scalars
+;   (uint32_t h[8]). PROTO lines take pointers to structs (const crc_state* s).
+;   The SDK reads the line before assembling, with those of the include files
+;   (AsmReadStructs), and pre-includes this source's constants: name.field per
+;   field and name_size, as numbers (%assign), so they work anywhere in the
+;   source, in %if too. This macro records the line for the API file and stops
+;   at a STRUCT the SDK did not read: one written by another macro. Footgun:
+;   %if does not hide a STRUCT line from the SDK.
+%macro STRUCT 1-2+
+    %ifndef %{1}_size
+        %error STRUCT %1 was not read by the SDK, which reads the STRUCT lines of the source and of its include files before assembling: write it as a line of its own, not from another macro.
+    %endif
+    [section ASMSDK_API_SECTION]
+        db "struct ", %str(%1), ", ", %str(%2), 0
     __SECT__
 %endmacro
 

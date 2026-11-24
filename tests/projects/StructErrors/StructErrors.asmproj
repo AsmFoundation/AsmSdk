@@ -1,0 +1,29 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    Wrong STRUCT lines, one case per folder under cases/, picked with -p:StructCase=<folder>
+    (StructTests builds each in a configuration of its own). Each stops the build where it should:
+      before assembling (AsmReadStructs), at the STRUCT line:
+        badfield         ASM0130  long, which differs between Windows and the other platforms
+        pointerarray     ASM0130  an array of pointers (no C# fixed buffer holds one)
+        selfvalue        ASM0130  a struct that holds itself by value
+        undeclared       ASM0130  a field of a struct not declared before
+        conflictinclude  ASM0136  a struct declared again, differently, in an include file
+      after assembling (AsmReadApi, AsmMergeApi):
+        conflict         ASM0136  two sources each declare pair their own way
+        byvalue          ASM0130  a PROTO that passes a struct by value
+        drift            ASM0133  win-x64's s.win.asm and linux-x64's s.asm lay shape out differently
+      in the assembler, the STRUCT macro's own error:
+        bymacro          NASM     a STRUCT written by another macro, which the SDK cannot read
+        gnubymacro       llvm-mc  the same in GNU syntax (linux-arm64)
+  -->
+  <PropertyGroup>
+    <AssemblyName>structerrors</AssemblyName>
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+    <RuntimeIdentifiers Condition="'$(StructCase)' == 'drift'">win-x64;linux-x64</RuntimeIdentifiers>
+    <RuntimeIdentifiers Condition="'$(StructCase)' == 'gnubymacro'">linux-arm64</RuntimeIdentifiers>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="cases/$(StructCase)/*.asm;cases/$(StructCase)/*.s" />
+  </ItemGroup>
+</Project>

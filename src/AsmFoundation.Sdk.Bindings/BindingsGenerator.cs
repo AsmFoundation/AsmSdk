@@ -34,6 +34,13 @@ namespace AsmFoundation.Sdk.Bindings;
 /// selection's binding, so its default layout is Flat.
 /// </para>
 /// <para>
+/// Structs (phase 3, the API file's "structs"): a sequential C# struct per STRUCT line, in the
+/// library's default class, which is therefore generated whenever the library has structs, even
+/// when attributed classes took every function. Every signature names a struct fully qualified,
+/// so a binding in any class reaches it; a public class binding a function that takes a struct
+/// of an internal default class is ASM0145 (it would be CS0051 in the generated code).
+/// </para>
+/// <para>
 /// Incremental: the API files are read once per change of their text; attributed classes come
 /// from ForAttributeWithMetadataName; the assembly's attributes are read from the compilation
 /// (a cheap step whose equatable output stops the pipeline when nothing changed).
@@ -73,6 +80,17 @@ public sealed class BindingsGenerator : IIncrementalGenerator
     internal static readonly DiagnosticDescriptor UnreadableApi = new(
         "ASM0144", "Unreadable API file",
         "Cannot read the API file {0}: {1}",
+        "AsmFoundation.Bindings", DiagnosticSeverity.Error, isEnabledByDefault: true);
+
+    /// <summary>
+    /// ASM0145: a public class binds a function whose signature names a struct that the library's
+    /// default class keeps internal. The structs live in the default class (the approved spec), so
+    /// they are as visible as it is; the compiler would otherwise report CS0051 inside generated
+    /// code, which names neither the attribute nor the fix.
+    /// </summary>
+    internal static readonly DiagnosticDescriptor InternalStruct = new(
+        "ASM0145", "Public binding of an internal struct",
+        "{0} is public, but {1} takes the struct {2} of {3}, which its default class {4} keeps internal: make {3}'s bindings public ([assembly: AsmLibrary(\"{3}\", Visibility = AsmVisibility.Public)]), or this class internal",
         "AsmFoundation.Bindings", DiagnosticSeverity.Error, isEnabledByDefault: true);
 
     /// <summary>
@@ -232,6 +250,17 @@ public sealed class BindingsGenerator : IIncrementalGenerator
             }
         }
 
+        // Each library's structs, by C name, as the C# type every signature names them by: nested
+        // in the library's default class, fully qualified, so a binding in any class or
+        // namespace of the app reaches them.
+        var structTypes = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal);
+        foreach (ApiLibraryModel library in libraries.Values)
+        {
+            AttributeRequest? perLibrary = assembly.FirstOrDefault(a => a.Library == library.Library);
+            string container = "global::" + (rootNamespace.Length > 0 ? rootNamespace + "." : "") + DefaultClassName(library, perLibrary) + ".";
+            structTypes[library.Library] = library.Structs.ToDictionary(s => s.Name, s => container + CSharpEmitter.Pascal(s.Name), StringComparer.Ordinal);
+        }
+
         foreach (ApiLibraryModel library in libraries.Values.OrderBy(l => l.Library, StringComparer.Ordinal))
         {
             AttributeRequest? perLibrary = assembly.FirstOrDefault(a => a.Library == library.Library);
@@ -269,9 +298,11 @@ public sealed class BindingsGenerator : IIncrementalGenerator
             }
 
             ApiFunctionModel[] rest = library.Functions.Where(f => !claimedBy.ContainsKey(f.Name)).ToArray();
-            if (rest.Length > 0)
+            // The structs live in the default class, so it exists whenever the library has any,
+            // even when attributed classes took every function.
+            if (rest.Length > 0 || library.Structs.Count > 0)
             {
-                WriteDefaultClass(output, library, rest, rootNamespace, global, perLibrary);
+                WriteDefaultClass(output, library, rest, rootNamespace, global, perLibrary, structTypes[library.Library]);
             }
         }
 
@@ -279,9 +310,35 @@ public sealed class BindingsGenerator : IIncrementalGenerator
         {
             if (entry.Value.Count > 0)
             {
-                WriteClass(output, entry.Key, entry.Value, libraries, global, assembly);
+                WriteClass(output, entry.Key, entry.Value, libraries, global, assembly, structTypes);
             }
         }
+    }
+
+    /// <summary>The name of a library's default class: ClassName on the assembly's per-library attribute, or the library's name in PascalCase.</summary>
+    /// <param name="library">The library.</param>
+    /// <param name="perLibrary">The assembly's options for it, or null.</param>
+    /// <returns>The class name.</returns>
+    private static string DefaultClassName(ApiLibraryModel library, AttributeRequest? perLibrary) =>
+        perLibrary?.ClassName ?? CSharpEmitter.Pascal(library.Library);
+
+    /// <summary>The first struct a function's signature names (behind pointers, in callbacks too), or null.</summary>
+    /// <param name="function">The function.</param>
+    /// <returns>The struct's C name, or null.</returns>
+    private static string? StructIn(ApiFunctionModel function) =>
+        new[] { function.Returns }.Concat(function.Parameters.Select(p => p.Type)).Select(StructIn).FirstOrDefault(s => s is not null);
+
+    /// <summary>The first struct a type names, or null.</summary>
+    /// <param name="type">The type.</param>
+    /// <returns>The struct's C name, or null.</returns>
+    private static string? StructIn(ApiTypeModel type)
+    {
+        if (type.Callback is not null)
+        {
+            return new[] { type.Callback.Returns }.Concat(type.Callback.Parameters.Select(p => p.Type)).Select(StructIn).FirstOrDefault(s => s is not null);
+        }
+
+        return type.IsStruct ? type.Base : null;
     }
 
     /// <summary>The functions an attribute selects: all, its Files, or its Folder; null (after ASM0141) when an entry matches nothing.</summary>
@@ -357,20 +414,21 @@ public sealed class BindingsGenerator : IIncrementalGenerator
         return false;
     }
 
-    /// <summary>Writes a library's default class (what no attributed class took).</summary>
+    /// <summary>Writes a library's default class: its structs, then what no attributed class took.</summary>
     /// <param name="output">The generator's output.</param>
     /// <param name="library">The library.</param>
-    /// <param name="functions">The functions left for it.</param>
+    /// <param name="functions">The functions left for it (may be none, when only structs remain).</param>
     /// <param name="rootNamespace">Its namespace.</param>
     /// <param name="global">The assembly's options for every library, or null.</param>
     /// <param name="perLibrary">The assembly's options for this library, or null.</param>
+    /// <param name="structs">The library's structs and their C# types.</param>
     private static void WriteDefaultClass(SourceProductionContext output, ApiLibraryModel library, ApiFunctionModel[] functions, string rootNamespace,
-        AttributeRequest? global, AttributeRequest? perLibrary)
+        AttributeRequest? global, AttributeRequest? perLibrary, IReadOnlyDictionary<string, string> structs)
     {
         Nesting nesting = (Nesting)(perLibrary?.Nesting ?? global?.Nesting ?? (int)Nesting.Files);
         bool spans = perLibrary?.SpanOverloads ?? global?.SpanOverloads ?? true;
         string access = (perLibrary?.Visibility ?? global?.Visibility ?? 0) == 1 ? "public" : "internal";
-        string className = perLibrary?.ClassName ?? CSharpEmitter.Pascal(library.Library);
+        string className = DefaultClassName(library, perLibrary);
 
         var text = new StringBuilder();
         text.Append("// <auto-generated/> by AsmFoundation.Sdk's bindings generator, from ").Append(System.IO.Path.GetFileName(library.Path)).Append(".\n");
@@ -381,11 +439,15 @@ public sealed class BindingsGenerator : IIncrementalGenerator
         }
 
         int indent = hasNamespace ? 1 : 0;
-        CSharpEmitter.Indent(text, indent).Append("/// <summary>The functions of the asm library ").Append(library.Library).Append(" (its PROTO lines).</summary>\n");
+        CSharpEmitter.Indent(text, indent).Append("/// <summary>The functions and structs of the asm library ").Append(library.Library).Append(" (its PROTO and STRUCT lines).</summary>\n");
         CSharpEmitter.Indent(text, indent).Append(access).Append(" static partial class ").Append(className).Append('\n');
         CSharpEmitter.Indent(text, indent).Append("{\n");
         var collisions = new List<string>();
-        CSharpEmitter.WriteMembers(text, indent + 1, library.Library, functions, nesting, spans, access, className, collisions);
+        CSharpEmitter.WriteStructs(text, indent + 1, library.Structs, access, structs, collisions);
+        // The structs' names are members of this class: a nested class or method of the same name
+        // is reported rather than generated.
+        var reserved = new HashSet<string>(library.Structs.Select(s => CSharpEmitter.Pascal(s.Name)), StringComparer.Ordinal);
+        CSharpEmitter.WriteMembers(text, indent + 1, library.Library, functions, nesting, spans, access, className, collisions, structs, reserved);
         CSharpEmitter.Indent(text, indent).Append("}\n");
         if (hasNamespace)
         {
@@ -407,8 +469,10 @@ public sealed class BindingsGenerator : IIncrementalGenerator
     /// <param name="libraries">The libraries, by name.</param>
     /// <param name="global">The assembly's options for every library, or null.</param>
     /// <param name="assembly">Every assembly attribute (for the per-library options).</param>
+    /// <param name="structTypes">Each library's structs and their C# types, by library.</param>
     private static void WriteClass(SourceProductionContext output, ClassRequest request, List<(AttributeRequest Attribute, List<ApiFunctionModel> Functions)> bindings,
-        Dictionary<string, ApiLibraryModel> libraries, AttributeRequest? global, EquatableArray<AttributeRequest> assembly)
+        Dictionary<string, ApiLibraryModel> libraries, AttributeRequest? global, EquatableArray<AttributeRequest> assembly,
+        Dictionary<string, IReadOnlyDictionary<string, string>> structTypes)
     {
         var text = new StringBuilder();
         text.Append("// <auto-generated/> by AsmFoundation.Sdk's bindings generator, for [AsmLibrary] on ").Append(request.FullName).Append(".\n");
@@ -436,7 +500,24 @@ public sealed class BindingsGenerator : IIncrementalGenerator
             Nesting nesting = (Nesting)(attribute.Nesting ?? (selects ? (int)Nesting.Flat : perLibrary?.Nesting ?? global?.Nesting ?? (int)Nesting.Files));
             bool spans = attribute.SpanOverloads ?? perLibrary?.SpanOverloads ?? global?.SpanOverloads ?? true;
             string access = (attribute.Visibility ?? perLibrary?.Visibility ?? global?.Visibility ?? 0) == 1 ? "public" : "internal";
-            CSharpEmitter.WriteMembers(text, indent + 1, attribute.Library!, functions, nesting, spans, access, request.Name, collisions);
+            bool structsPublic = (perLibrary?.Visibility ?? global?.Visibility ?? 0) == 1;
+            if (access == "public" && !structsPublic)
+            {
+                // A public method taking an internal struct is CS0051 in the generated code:
+                // reported here, at the attribute, with the fix. Checked once per attribute,
+                // at its first such function.
+                foreach (ApiFunctionModel function in functions)
+                {
+                    if (StructIn(function) is string structName)
+                    {
+                        output.ReportDiagnostic(Diagnostic.Create(InternalStruct, attribute.Location.ToLocation(), request.FullName, function.Name, structName,
+                            attribute.Library, DefaultClassName(libraries[attribute.Library!], perLibrary)));
+                        break;
+                    }
+                }
+            }
+
+            CSharpEmitter.WriteMembers(text, indent + 1, attribute.Library!, functions, nesting, spans, access, request.Name, collisions, structTypes[attribute.Library!]);
         }
 
         CSharpEmitter.Indent(text, indent).Append("}\n");

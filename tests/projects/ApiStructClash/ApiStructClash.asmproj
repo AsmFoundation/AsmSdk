@@ -1,0 +1,13 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A struct named like its own file (StructTests, through NetStructsErrors' clash case): clash.asm
+    nests as the class Clash in the default class, and STRUCT clash is the struct Clash there too,
+    which C# cannot hold twice. The generator reports it (ASM0143) instead of writing code that
+    would not compile. linux-x64 only: the bindings are decided when the C# project builds, and
+    every machine builds linux-x64.
+  -->
+  <PropertyGroup>
+    <AssemblyName>apistructclash</AssemblyName>
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

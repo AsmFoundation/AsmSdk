@@ -65,6 +65,18 @@
 //                      to read and check (ASM0130-ASM0133). The section never
 //                      reaches a Windows or macOS image and is not loaded from
 //                      a Linux one.
+// STRUCT name, <field>, ...
+//                      Declares a struct, laid out as C lays it out on the
+//                      RID, for this code and the C# bindings, as in
+//                      asmsdk.inc (the same line in .asm and .s sources):
+//                          STRUCT crc_state, uint32_t crc, uint8_t* data
+//                          ldr     x9, [x0, #crc_state.data]   // 8
+//                      The SDK reads the line before assembling and gives this
+//                      source name.field (offsets) and name_size as symbols
+//                      (.set; llvm-mc keeps them as local symbols of the
+//                      object, as it keeps the defines). .if does not hide a
+//                      STRUCT line from the SDK; one written by another macro
+//                      is an error.
 //
 // The SDK defines WINDOWS, LINUX or MACOS (and MUSL), X64 or ARM64,
 // FREESTANDING or LIBC, DEBUG or RELEASE, each as 1 with llvm-mc's --defsym,
@@ -156,6 +168,18 @@
 // PROTO [fast] <C prototype>: see the header.
 .macro PROTO text:vararg
     ASMSDK_API_RECORD proto \text
+.endm
+
+// STRUCT name, <field>, ...: see the header. The constants come from the SDK
+// (this source's wrapper includes them), because these macros cannot read a
+// pointer field: llvm-mc hands one over as a single token, "uint8_t*data", and
+// GNU macros cannot cut text (measured). So this macro only records the line
+// and checks that the SDK read it: name_size exists for every STRUCT it read.
+.macro STRUCT name, fields:vararg
+.ifndef \name\()_size
+    .error "STRUCT \name was not read by the SDK, which reads the STRUCT lines of the source and of its include files before assembling: write it as a line of its own, not from another macro."
+.endif
+    ASMSDK_API_RECORD struct \name, \fields
 .endm
 
 // ---- Functions -----------------------------------------------------------------

@@ -1,0 +1,15 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    STRUCT lines with ImplicitUsings off (StructTests): each source includes the platform layer
+    itself. NASM still gets the constants as a pre-include of their own; a GNU source normally
+    has no wrapper without ImplicitUsings, and gets one here only because it has a STRUCT line
+    (llvm-mc has no pre-include option, so the wrapper is how its constants arrive). Both sources
+    check the layout with the constants and export pair_sum, so the build itself is the test,
+    and the API file lists the struct.
+  -->
+  <PropertyGroup>
+    <AssemblyName>structraw</AssemblyName>
+    <RuntimeIdentifiers>linux-x64;linux-arm64</RuntimeIdentifiers>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+</Project>

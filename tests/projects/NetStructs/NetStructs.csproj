@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A C# program that uses the asm library ApiStruct's STRUCTs through the generated bindings
+    alone (StructTests): each struct is a sequential C# struct in the default class Apistruct,
+    filled here and read by the asm code through the SDK's offsets (and written by it, in
+    point_set). A field that lands at another offset in C# than in the asm code gives a wrong
+    number on that machine; struct_sizes compares every size constant with C#'s sizeof. It prints:
+      rect_area 15 / point_set 40 2 / state_sum 144 / sorter_call 42 / mixed_get 42 /
+      sizes 8=8 20=20 112=112 24=24 24=24
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- A test program: tests/projects/Directory.Build.props sends packages to the local feed,
+         which this one never is. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../ApiStruct/ApiStruct.asmproj" />
+  </ItemGroup>
+</Project>

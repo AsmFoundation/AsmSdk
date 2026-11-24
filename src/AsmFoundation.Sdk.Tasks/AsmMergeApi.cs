@@ -22,7 +22,13 @@ namespace AsmFoundation.Sdk.Tasks;
 /// <para>
 /// A RID whose inner build wrote no file declared nothing: if another RID did, every function
 /// is missing there. The merged file is written only when its content changes, and deleted when
-/// no RID has PROTO lines.
+/// no RID has PROTO or STRUCT lines.
+/// </para>
+/// <para>
+/// Structs are compared the same way, on everything the C# struct is made from: the canonical
+/// declaration, the size, the alignment and every field's type and offset (the RID's own
+/// layout, from its pointer size). The C# struct is one for every RID, so a layout that differed
+/// would read wrong fields on some RID; found here instead.
 /// </para>
 /// </remarks>
 public sealed class AsmMergeApi : Task
@@ -46,13 +52,15 @@ public sealed class AsmMergeApi : Task
     /// <returns>False after ASM0133 or an unreadable file (ASM0135).</returns>
     public override bool Execute()
     {
-        // RID -> (function name -> its entry), in the order the outer build lists the RIDs.
-        var byRid = new List<(string Rid, Dictionary<string, JsonObject> Functions)>();
+        // RID -> (function name -> its entry) and (struct name -> its entry), in the order the
+        // outer build lists the RIDs.
+        var byRid = new List<(string Rid, Dictionary<string, JsonObject> Functions, Dictionary<string, JsonObject> Structs)>();
         JsonObject? template = null;
         foreach (ITaskItem rid in RuntimeIdentifiers)
         {
             ITaskItem? file = ApiFiles.FirstOrDefault(f => string.Equals(f.GetMetadata("RuntimeIdentifier"), rid.ItemSpec, StringComparison.OrdinalIgnoreCase));
             var functions = new Dictionary<string, JsonObject>(StringComparer.Ordinal);
+            var structs = new Dictionary<string, JsonObject>(StringComparer.Ordinal);
             if (file is not null && File.Exists(file.ItemSpec))
             {
                 try
@@ -64,6 +72,17 @@ public sealed class AsmMergeApi : Task
                         var function = (JsonObject)node;
                         functions[((JsonString)function["name"]!).Value] = function;
                     }
+
+                    // Absent in a RID without STRUCT lines (AsmReadApi writes it only when there
+                    // are some): that RID declares no struct.
+                    if (root["structs"] is JsonArray structArray)
+                    {
+                        foreach (JsonNode node in structArray.Items)
+                        {
+                            var entry = (JsonObject)node;
+                            structs[((JsonString)entry["name"]!).Value] = entry;
+                        }
+                    }
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or FormatException or InvalidCastException or NullReferenceException)
                 {
@@ -72,7 +91,7 @@ public sealed class AsmMergeApi : Task
                 }
             }
 
-            byRid.Add((rid.ItemSpec, functions));
+            byRid.Add((rid.ItemSpec, functions, structs));
         }
 
         if (template is null)
@@ -95,6 +114,19 @@ public sealed class AsmMergeApi : Task
                 Log.LogError(null, "ASM0133", null, null, 0, 0, 0, 0,
                     "The RIDs declare {0} differently: {1}. The bindings are one class for every RID: declare it the same way in every RID's source.",
                     name, string.Join("; ", spellings.Select(s => $"{s.Rid}: {Describe(s.Entry)}")));
+            }
+        }
+
+        foreach (string name in byRid.SelectMany(r => r.Structs.Keys).Distinct(StringComparer.Ordinal).OrderBy(n => n, StringComparer.Ordinal))
+        {
+            var layouts = byRid
+                .Select(r => (r.Rid, Entry: r.Structs.TryGetValue(name, out JsonObject? s) ? s : null))
+                .ToList();
+            if (layouts.Select(l => l.Entry is null ? "" : StructKey(l.Entry)).Distinct(StringComparer.Ordinal).Count() > 1)
+            {
+                Log.LogError(null, "ASM0133", null, null, 0, 0, 0, 0,
+                    "The RIDs declare struct {0} differently: {1}. The bindings give C# one struct for every RID: declare it the same way in every RID's source.",
+                    name, string.Join("; ", layouts.Select(l => $"{l.Rid}: {DescribeStruct(l.Entry)}")));
             }
         }
 
@@ -123,10 +155,51 @@ public sealed class AsmMergeApi : Task
         }
 
         merged["functions"] = array;
+        if (byRid[0].Structs.Count > 0)
+        {
+            var structArray = new JsonArray();
+            foreach (JsonObject entry in byRid[0].Structs.Values.OrderBy(s => ((JsonString)s["name"]!).Value, StringComparer.Ordinal))
+            {
+                structArray.Items.Add(WithoutSource(entry));
+            }
+
+            merged["structs"] = structArray;
+        }
+
         AsmReadApi.WriteIfChanged(ApiFile, Json.Write(merged) + "\n");
         Written = ApiFile;
         return true;
     }
+
+    /// <summary>What must agree between RIDs for a struct: its whole entry but the source it was first declared in.</summary>
+    /// <param name="entry">A struct's entry.</param>
+    /// <returns>The comparison key: the entry's JSON text without "source".</returns>
+    private static string StructKey(JsonObject entry) => Json.Write(WithoutSource(entry));
+
+    /// <summary>A copy of an entry without its per-RID "source" member.</summary>
+    /// <param name="entry">The entry.</param>
+    /// <returns>The copy (members shared, not cloned: nothing modifies them).</returns>
+    private static JsonObject WithoutSource(JsonObject entry)
+    {
+        var copy = new JsonObject();
+        foreach (KeyValuePair<string, JsonNode> member in entry.Members)
+        {
+            if (member.Key != "source")
+            {
+                copy[member.Key] = member.Value;
+            }
+        }
+
+        return copy;
+    }
+
+    /// <summary>A struct's entry for a message: its declaration, size and source, or "nothing".</summary>
+    /// <param name="entry">The entry, or null when the RID does not declare the struct.</param>
+    /// <returns>The description.</returns>
+    private static string DescribeStruct(JsonObject? entry) =>
+        entry is null
+            ? "not declared"
+            : $"{((JsonString)entry["declaration"]!).Value} ({((JsonLiteral)entry["size"]!).Text} bytes, in {((JsonString)entry["source"]!).Value})";
 
     /// <summary>What must agree between RIDs: the canonical prototype, the logical file and "fast".</summary>
     /// <param name="function">A function's entry.</param>

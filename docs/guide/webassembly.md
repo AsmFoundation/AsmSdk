@@ -307,7 +307,9 @@ Each was measured with the bundled LLVM 23.1.5 and .NET 10.0.15:
 - **`libc` builds no module.** The bundled wasm-ld links no C library, so a `libc` `Library` or
   `Exe` for WebAssembly is **ASM0016**. A `libc` `StaticLibrary` builds: the .NET app that links
   it brings the C library (Emscripten's, or wasi-libc).
-- **No `PROTO` lines yet.** The C# bindings' `PROTO` lines (see
+- **No `PROTO` or `STRUCT` lines yet.** A `STRUCT` line stops the build the same way ("STRUCT
+  is not read from WebAssembly sources yet"): the SDK lays structs out for the native RIDs only.
+  The C# bindings' `PROTO` lines (see
   [Writing NASM](writing-nasm.md#proto-a-functions-c-prototype)) are read from COFF, ELF and
   Mach-O objects only. In a wasm source, `PROTO` stops the build with
   "PROTO is not read from WebAssembly sources yet". The wasm RIDs write no API file, and a

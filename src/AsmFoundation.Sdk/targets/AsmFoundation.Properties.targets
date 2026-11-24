@@ -264,6 +264,12 @@
        switch every WebAssembly-specific step tests; _AsmOs tells the browser from WASI. -->
   <PropertyGroup Condition="'$(_AsmRid)' == 'browser-wasm'"><_AsmOs>Browser</_AsmOs><_AsmArch>wasm</_AsmArch></PropertyGroup>
   <PropertyGroup Condition="'$(_AsmRid)' == 'wasi-wasm'"><_AsmOs>Wasi</_AsmOs><_AsmArch>wasm</_AsmArch></PropertyGroup>
+  <!-- The RID's pointer size in bytes, which lays out STRUCT fields of pointers and of size_t and
+       its kin (AsmReadStructs, AsmReadApi): 4 on wasm32, 8 on every other RID. -->
+  <PropertyGroup Condition="'$(_AsmArch)' != ''">
+    <_AsmPointerSize Condition="'$(_AsmArch)' == 'wasm'">4</_AsmPointerSize>
+    <_AsmPointerSize Condition="'$(_AsmArch)' != 'wasm'">8</_AsmPointerSize>
+  </PropertyGroup>
 
   <PropertyGroup>
     <!--

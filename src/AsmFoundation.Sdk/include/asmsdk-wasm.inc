@@ -70,6 +70,10 @@
 //                          wasm RID declares nothing and the library's API file
 //                          describes its other RIDs. The error says so where the
 //                          line is, rather than leaving it unchecked.
+// STRUCT name, <field>...  Not for WebAssembly yet either, for the same reason:
+//                          an .error. (The SDK lays structs out for the other
+//                          RIDs only; a wasm32 layout would differ anyway, its
+//                          pointers being 4 bytes.)
 //
 // The SDK also defines WASM, BROWSER or WASI, FREESTANDING, DEBUG or RELEASE,
 // as labels (see below), so ".ifdef WASI" chooses between WASI imports and
@@ -232,6 +236,13 @@
 // gets this message rather than llvm-mc's "invalid instruction".
 .macro PROTO text:vararg
     .error "PROTO is not read from WebAssembly sources yet: the SDK reads the C# bindings' records from COFF, ELF and Mach-O objects only, so the library's API file describes its other RIDs. Remove the line from the wasm source."
+.endm
+
+// ---- The C# bindings' STRUCT lines -------------------------------------------
+// Refused as PROTO is, where the line is (see the header). vararg takes the
+// fields' commas.
+.macro STRUCT name, fields:vararg
+    .error "STRUCT is not read from WebAssembly sources yet: the SDK lays the C# bindings' structs out for the COFF, ELF and Mach-O RIDs only, so the library's API file describes its other RIDs. Remove the line from the wasm source."
 .endm
 
 .endif

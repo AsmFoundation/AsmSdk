@@ -273,6 +273,29 @@ Each SDK release names the one it was tested with.
   depends on that file, as C#'s compile depends on `CoreCompileInputs.cache`. Before, a
   `DefineConstants`, `NoWarn` or `AsmFlags` set in `Directory.Build.props` or with `-p:`
   linked the objects assembled without it.
+- **`STRUCT` lines, the third phase of the generated C# bindings.** A
+  `STRUCT rect, point min, point max, uint32_t flags` line (NASM and GNU syntax alike) declares a
+  struct laid out as C lays it out on the RID.
+  - **The asm code** reads it through `rect.max` (an offset) and `rect_size` (the size, padding
+    included): NASM gets `%assign` numbers, which work in `%if`, and llvm-mc gets `.set` symbols.
+  - **C#** gets a sequential struct in the library's default class. A `PROTO` takes a pointer to
+    it (`const rect* r`), never a struct by value.
+  - **Fields:** the PROTO types, a `STRUCT` declared before (by value), function pointers, and
+    arrays of the scalars (`uint32_t h[8]`, a C# `fixed` buffer).
+  - **The SDK lays structs out** (the owner's choice), not the macros. It reads each source's
+    `STRUCT` lines, and those of the files it includes, before assembling, and gives the source
+    its constants (`_AsmReadStructs`, a pre-include or the GNU wrapper). The reason, measured:
+    llvm-mc hands a GNU macro `uint8_t* data` as the one token `uint8_t*data`, and GNU macros
+    cannot cut text.
+  - **The `STRUCT` macro** records the line for the API file (`"structs"` with every offset).
+    It stops the build at a `STRUCT` the SDK did not read, one written by another macro.
+  - **Checks:** `ASM0130` (a refused field: an array of pointers or structs, a struct holding
+    itself, one used before it is declared, a struct by value in `PROTO`), `ASM0136` (one struct
+    declared twice, differently), `ASM0133` (two RIDs that lay a struct out differently), and
+    from the generator `ASM0145` (a public binding of an internal struct).
+  - **The tests check it on every machine they run on:** the asm code reads back each field C#
+    wrote, and its size constants equal C#'s `sizeof`.
+  - **Not yet in WebAssembly sources** (an error, as `PROTO` is).
 - **Generated C# bindings.** A C# project (.NET 7 or later) that references an asm library with
   `PROTO` lines calls it with nothing written by hand: the SDK package's Roslyn incremental
   generator (`bindings/netstandard2.0/AsmFoundation.Sdk.Bindings.dll`, added by the consumer

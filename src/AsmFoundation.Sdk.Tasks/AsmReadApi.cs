@@ -11,9 +11,9 @@ namespace AsmFoundation.Sdk.Tasks;
 
 /// <summary>
 /// Reads the API records of one RID's objects (what asmsdk.inc and asmsdk-gnu.inc write: a
-/// "fn" record per function macro, a "proto" record per PROTO line), checks every PROTO line
-/// against the functions, and writes the RID's API file, the input of the generated C#
-/// bindings.
+/// "fn" record per function macro, a "proto" record per PROTO line, a "struct" record per
+/// STRUCT line), lays the structs out, checks every PROTO line against the functions, and writes
+/// the RID's API file, the input of the generated C# bindings.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -32,8 +32,16 @@ namespace AsmFoundation.Sdk.Tasks;
 /// </para>
 /// <para>
 /// The file is written only when its content changes, so a rebuild that changes no PROTO line
-/// leaves it (and the C# generated from it) alone. A RID with no PROTO line writes no file and
-/// deletes a stale one: no API, no bindings.
+/// leaves it (and the C# generated from it) alone. A RID with no PROTO and no STRUCT line writes
+/// no file and deletes a stale one: no API, no bindings.
+/// </para>
+/// <para>
+/// Structs: laid out by <see cref="ApiStruct"/>, the computation <see cref="AsmReadStructs"/>
+/// gave the assembler before, so the API file records the offsets the code was assembled with.
+/// One struct reaches several objects when an include declares it: the same declaration is one
+/// struct, a different one under the same name is ASM0136 (two sources that each declare it
+/// their own way: the bindings could give C# only one). A PROTO line may point at a struct
+/// (<c>const rect* r</c>), never pass one by value (ASM0130).
 /// </para>
 /// </remarks>
 public sealed class AsmReadApi : Task
@@ -71,6 +79,9 @@ public sealed class AsmReadApi : Task
     [Required]
     public string ApiFile { get; set; } = "";
 
+    /// <summary>The RID's pointer size in bytes, for the struct layouts: 8 on every RID this task runs for.</summary>
+    public int PointerSize { get; set; } = 8;
+
     /// <summary>The API file's path when the RID has PROTO lines; empty otherwise.</summary>
     [Output]
     public string Written { get; set; } = "";
@@ -81,6 +92,7 @@ public sealed class AsmReadApi : Task
     {
         var functions = new List<FunctionRecord>();
         var protos = new List<ProtoRecord>();
+        var structRecords = new List<ProtoRecord>();
         foreach (ITaskItem source in Sources)
         {
             string objectFile = source.GetMetadata("ObjectToolPath");
@@ -117,17 +129,24 @@ public sealed class AsmReadApi : Task
                 {
                     protos.Add(new ProtoRecord(record.Substring("proto ".Length), source));
                 }
+                else if (record.StartsWith("struct ", StringComparison.Ordinal))
+                {
+                    structRecords.Add(new ProtoRecord(record.Substring("struct ".Length), source));
+                }
 
                 // Any other record is for a later SDK (forward compatibility): ignored.
             }
         }
+
+        // The structs first: PROTO lines may point at them.
+        Dictionary<string, (ApiStruct Struct, ProtoRecord Record)> structs = LayOutStructs(structRecords);
 
         var parsed = new List<(ProtoRecord Record, ApiPrototype Prototype)>();
         foreach (ProtoRecord proto in protos)
         {
             try
             {
-                parsed.Add((proto, ApiPrototype.Parse(proto.Text)));
+                parsed.Add((proto, ApiPrototype.Parse(proto.Text, structs.ContainsKey)));
             }
             catch (FormatException ex)
             {
@@ -160,7 +179,7 @@ public sealed class AsmReadApi : Task
             return false;
         }
 
-        if (parsed.Count == 0)
+        if (parsed.Count == 0 && structs.Count == 0)
         {
             if (File.Exists(ApiFile))
             {
@@ -170,10 +189,57 @@ public sealed class AsmReadApi : Task
             return true;
         }
 
-        string text = Json.Write(ToJson(parsed.GroupBy(p => p.Prototype.Name, StringComparer.Ordinal).Select(g => g.First()))) + "\n";
+        string text = Json.Write(ToJson(parsed.GroupBy(p => p.Prototype.Name, StringComparer.Ordinal).Select(g => g.First()), structs.Values)) + "\n";
         WriteIfChanged(ApiFile, text);
         Written = ApiFile;
         return true;
+    }
+
+    /// <summary>
+    /// Lays out the RID's struct records in the order the objects hold them (each object in its
+    /// source's order, includes at their places), one struct per name: a repeated declaration
+    /// that is the same is skipped, a different one is ASM0136.
+    /// </summary>
+    /// <param name="records">The struct records, in order.</param>
+    /// <returns>The structs by name, each with the record that declared it first.</returns>
+    /// <remarks>
+    /// Every object's records are complete on their own (AsmReadStructs gave the source each struct
+    /// it uses by value before assembling), so a struct is always met after the structs it holds.
+    /// A record that does not parse here (ASM0130) can only come from a STRUCT the scan never saw,
+    /// which the macro stops on first; the check stays, for a hand-written record.
+    /// </remarks>
+    private Dictionary<string, (ApiStruct Struct, ProtoRecord Record)> LayOutStructs(List<ProtoRecord> records)
+    {
+        var structs = new Dictionary<string, (ApiStruct Struct, ProtoRecord Record)>(StringComparer.Ordinal);
+        foreach (ProtoRecord record in records)
+        {
+            ApiStruct laidOut;
+            try
+            {
+                laidOut = ApiStruct.Parse(record.Text, PointerSize, name => structs.TryGetValue(name, out var s) ? s.Struct : null);
+            }
+            catch (FormatException ex)
+            {
+                Log.LogError(null, "ASM0130", null, record.SourcePath, record.FindStructLine(null), 0, 0, 0, "STRUCT {0}: {1}.", record.Text, ex.Message);
+                continue;
+            }
+
+            if (structs.TryGetValue(laidOut.Name, out var first))
+            {
+                if (first.Struct.Canonical != laidOut.Canonical)
+                {
+                    Log.LogError(null, "ASM0136", null, record.SourcePath, record.FindStructLine(laidOut.Name), 0, 0, 0,
+                        "STRUCT {0} declares {0} differently from {1}: \"{2}\" here, \"{3}\" there. The bindings give C# one struct per name: declare it once, in an include file both sources include.",
+                        laidOut.Name, first.Record.SourceRelativePath, laidOut.Canonical, first.Struct.Canonical);
+                }
+
+                continue;
+            }
+
+            structs[laidOut.Name] = (laidOut, record);
+        }
+
+        return structs;
     }
 
     /// <summary>Writes a file only when its content differs, so its timestamp says when the API last changed.</summary>
@@ -266,10 +332,17 @@ public sealed class AsmReadApi : Task
     private void LogError(ProtoRecord record, string? name, string code, string format, params object[] args) =>
         Log.LogError(null, code, null, record.SourcePath, record.FindLine(name), 0, 0, 0, format, args);
 
-    /// <summary>The API file's JSON: the library and each function, sorted by name.</summary>
+    /// <summary>The API file's JSON: the library, each function and each struct, sorted by name.</summary>
     /// <param name="prototypes">One prototype per function.</param>
+    /// <param name="structs">One layout per struct, with the record that declared it.</param>
     /// <returns>The document.</returns>
-    private JsonObject ToJson(IEnumerable<(ProtoRecord Record, ApiPrototype Prototype)> prototypes)
+    /// <remarks>
+    /// "structs" is written only when the RID has some, so a library without STRUCT lines keeps
+    /// the file phase 2 wrote. Each struct's "source" is the source whose object declared it
+    /// first (an include's struct names the first source that includes it), for messages only:
+    /// the merged file leaves it out.
+    /// </remarks>
+    private JsonObject ToJson(IEnumerable<(ProtoRecord Record, ApiPrototype Prototype)> prototypes, IEnumerable<(ApiStruct Struct, ProtoRecord Record)> structs)
     {
         var root = new JsonObject();
         root["format"] = new JsonLiteral("1");
@@ -290,6 +363,19 @@ public sealed class AsmReadApi : Task
         }
 
         root["functions"] = array;
+        var structArray = new JsonArray();
+        foreach ((ApiStruct laidOut, ProtoRecord record) in structs.OrderBy(s => s.Struct.Name, StringComparer.Ordinal))
+        {
+            JsonObject entry = laidOut.ToJson();
+            entry["source"] = new JsonString(record.SourceRelativePath);
+            structArray.Items.Add(entry);
+        }
+
+        if (structArray.Items.Count > 0)
+        {
+            root["structs"] = structArray;
+        }
+
         return root;
     }
 
@@ -337,11 +423,11 @@ public sealed class AsmReadApi : Task
         }
     }
 
-    /// <summary>A PROTO line's record and the source it came from.</summary>
+    /// <summary>A PROTO or STRUCT line's record and the source it came from.</summary>
     private sealed class ProtoRecord
     {
         /// <summary>Records the line and its source.</summary>
-        /// <param name="text">The line, after "PROTO".</param>
+        /// <param name="text">The line, after "PROTO" or "STRUCT".</param>
         /// <param name="source">The source item.</param>
         internal ProtoRecord(string text, ITaskItem source)
         {
@@ -384,6 +470,35 @@ public sealed class AsmReadApi : Task
                 {
                     if ((pattern is not null ? pattern.IsMatch(lines[i]) : lines[i].Contains("PROTO") && lines[i].Contains(Text.Trim()))
                         && seen++ == occurrence)
+                    {
+                        return i + 1;
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Only a message's location is lost.
+            }
+
+            return 0;
+        }
+
+        /// <summary>
+        /// The 1-based line of a struct's STRUCT line in the source, found by searching for
+        /// "STRUCT name," (any STRUCT line when the name is unknown); 0 when the source cannot be
+        /// read or the line is in an include file, which the message then names by its source.
+        /// </summary>
+        /// <param name="name">The struct's name, or null.</param>
+        /// <returns>The line, or 0.</returns>
+        internal int FindStructLine(string? name)
+        {
+            try
+            {
+                string[] lines = File.ReadAllLines(SourcePath);
+                var pattern = new Regex(@"^\s*STRUCT\s+" + (name is null ? "" : Regex.Escape(name) + @"\s*(,|$)"));
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    if (pattern.IsMatch(lines[i]))
                     {
                         return i + 1;
                     }

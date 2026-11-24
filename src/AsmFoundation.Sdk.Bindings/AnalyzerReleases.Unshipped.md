@@ -10,3 +10,4 @@ ASM0141 | AsmFoundation.Bindings | Error | BindingsGenerator: a Files or Folder 
 ASM0142 | AsmFoundation.Bindings | Error | BindingsGenerator: a function bound by a second class without AliasBinding
 ASM0143 | AsmFoundation.Bindings | Error | BindingsGenerator: a class that is not static partial, or a name generated twice
 ASM0144 | AsmFoundation.Bindings | Error | BindingsGenerator: an API file that cannot be read
+ASM0145 | AsmFoundation.Bindings | Error | BindingsGenerator: a public class binds a function taking a struct the internal default class holds

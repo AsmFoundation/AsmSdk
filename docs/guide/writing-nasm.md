@@ -225,6 +225,56 @@ On ELF (Linux-only files), the directives also give sizes and data types:
 >   `HIDDEN_FUNCTION`), `ASM0132` (the integer and pointer parameters differ from `FUNCTION`'s
 >   count), `ASM0133` (two RIDs declare a function differently), `ASM0134` (two `PROTO` lines for
 >   one function). The message points at the `PROTO` line.
+> - **Structs:** a `PROTO` takes a pointer to a `STRUCT` (`const rect* r`), never a struct by
+>   value: each platform passes one its own way.
+
+## STRUCT: a struct for the asm code and for C#
+
+> [!NOTE]
+> **Not released yet:** on the main branch, with the generated C# bindings. A `STRUCT` line
+> declares a struct, laid out as C lays it out on the RID, with fields written as C declarations:
+>
+> ```nasm
+> STRUCT point, int32_t x, int32_t y
+> STRUCT rect, point min, point max, uint32_t flags
+>
+> PROTO int32_t rect_area(const rect* r)
+> FUNCTION rect_area, 1
+>     mov     eax, [ARG1 + rect.max + point.x]     ; offsets: rect.max is 8, point.x 0
+>     sub     eax, [ARG1 + rect.min + point.x]
+>     mov     r8d, [ARG1 + rect.max + point.y]
+>     sub     r8d, [ARG1 + rect.min + point.y]
+>     imul    eax, r8d
+>     RETURN
+> ENDFUNCTION
+> ```
+>
+> - **The constants:** `name.field` (each field's offset) and `name_size` (the size, padding
+>   included), the names NASM's own `struc` gives. They are preprocessor numbers (`%assign`), so
+>   they also work in `%if` and `times`. Nothing lands in the object's symbol table.
+> - **The fields:**
+>   - the fixed-width integers, `bool`, `char`, `float` and `double`;
+>   - pointers (`const uint8_t* data`), including to the struct itself (`node* next`);
+>   - function pointers (`int32_t (*cmp)(int32_t, int32_t)`);
+>   - a `STRUCT` declared before, by value (`point min`);
+>   - arrays of the scalars (`uint32_t h[8]`).
+>
+>   Arrays of pointers or of structs are refused: C#'s fixed buffers hold primitive types only.
+> - **How it works:** the SDK reads the `STRUCT` lines of each source, and of the files it
+>   includes, before assembling. It computes the layout once, in C#, and gives the source its
+>   constants as a pre-include. Each source gets the structs it declares or includes, as in C. The
+>   `STRUCT` macro records the line for the API file, where the RIDs are compared (`ASM0133`), and
+>   the generator writes a sequential C# struct from it (see
+>   [Generated bindings](interop.md#generated-bindings)).
+> - **Footguns:**
+>   - `%if` does not hide a `STRUCT` line from the SDK.
+>   - A `STRUCT` written by another macro is an error at its expansion ("STRUCT made was not read
+>     by the SDK"): the SDK reads the source's text, and a macro's body is not assembled where it
+>     is written.
+>   - Includes are found where NASM finds them: the project folder, then the include folders, not
+>     the including file's folder.
+> - **The checks:** `ASM0130` (a line that does not parse, or a refused field), `ASM0136` (one
+>   struct declared twice, differently), at the line, before anything is assembled.
 
 ## Sections and data
 

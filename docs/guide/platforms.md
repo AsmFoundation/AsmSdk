@@ -260,6 +260,7 @@ ENDFUNCTION lookup
 | `ADDRESS reg, label` | The position-independent address of a label of this file. |
 | `RODATA` | Switches to read-only data, which each format names differently (`.section .rodata` is an error on Mach-O). |
 | `PROTO [fast] <C prototype>` (not released yet) | Declares the function's C signature for the generated C# bindings, as `PROTO` in NASM (see [Writing NASM](writing-nasm.md#proto-a-functions-c-prototype)). Not in WebAssembly sources yet: there `PROTO` is an error (see [WebAssembly](webassembly.md#footguns)). |
+| `STRUCT name, <field>, ...` (not released yet) | Declares a struct, as `STRUCT` in NASM, with the same line (see [Writing NASM](writing-nasm.md#struct-a-struct-for-the-asm-code-and-for-c)): `ldr x9, [x0, #crc_state.data]`. The SDK reads the line before assembling and the source's wrapper includes its constants, `name.field` and `name_size`, as symbols (`.set`), which llvm-mc keeps as local symbols of the object. The SDK does the layout because GNU macros cannot: llvm-mc hands a macro `uint8_t* data` as the one token `uint8_t*data` (measured). Not in WebAssembly sources yet: an error. |
 
 `x18` is the platform register on Windows (the TEB) and macOS: never use it.
 On macOS every *variadic* argument goes on the stack (Apple's ARM64 convention), while Windows

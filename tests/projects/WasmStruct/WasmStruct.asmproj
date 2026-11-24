@@ -1,0 +1,11 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A STRUCT line in a WebAssembly source (StructTests): asmsdk-wasm.inc's STRUCT is an .error
+    that says why, at the line, as its PROTO is: the SDK lays structs out for the native RIDs
+    only, and its scan of STRUCT lines does not run for wasm. Without the macro llvm-mc would stop
+    on an unknown instruction instead.
+  -->
+  <PropertyGroup>
+    <RuntimeIdentifiers>browser-wasm</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

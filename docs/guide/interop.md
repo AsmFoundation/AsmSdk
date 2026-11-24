@@ -145,6 +145,29 @@ let .NET's own RID rules choose the library.
 >   `length`, `size`, `count`, or the pointer's name plus `_len` or `_count`) also gets a
 >   `Span<T>` or `ReadOnlySpan<T>` overload, pinned for the call. `PROTO fast` adds
 >   `[SuppressGCTransition]`.
+> - **Structs:** each `STRUCT` of the library (see
+>   [Writing NASM](writing-nasm.md#struct-a-struct-for-the-asm-code-and-for-c)) becomes a
+>   sequential C# struct in the default class, with the same fields:
+>
+>   ```csharp
+>   unsafe
+>   {
+>       Hello.Rect rect = default;               // STRUCT rect, point min, point max, uint32_t flags
+>       rect.Max.X = 4;
+>       int area = Hello.Shapes.RectArea(&rect); // PROTO int32_t rect_area(const rect* r)
+>   }
+>   ```
+>
+>   - **The C# types:** an array is a `fixed` buffer, `bool` is `bool` (one byte, as in C) and
+>     `char` is `byte`. A function pointer is a `delegate* unmanaged<...>`, and a nested struct
+>     is its generated struct.
+>   - **The layout:** .NET lays the fields out at C's offsets (the SDK's tests check it on every
+>     machine they run on: the asm code reads back what C# wrote). Each summary shows the C line,
+>     the size and every offset.
+>   - **Visibility:** the structs are as visible as the default class. A public binding class
+>     whose functions take one needs the library's bindings public (`ASM0145`).
+>   - **Names:** a struct named like a file's class is reported (`ASM0143`). A field named like
+>     its struct is `Value`.
 > - **Why `[DllImport]` and not `[LibraryImport]`:** source generators never see each other's
 >   output, so .NET's LibraryImport generator would leave generated `[LibraryImport]` methods
 >   without a body (measured: CS8795). The bindings are complete instead: blittable externs, with
@@ -152,7 +175,8 @@ let .NET's own RID rules choose the library.
 >   `AllowUnsafeBlocks` whenever bindings are generated.
 > - **Errors**, at the attribute: `ASM0140` (no such asm library), `ASM0141` (no such file or
 >   folder), `ASM0142` (bound twice), `ASM0143` (a class that is not `static partial`, or a name
->   generated twice), `ASM0144` (an unreadable API file).
+>   generated twice), `ASM0144` (an unreadable API file), `ASM0145` (a public class binds a
+>   function taking a struct the internal default class holds).
 > - **`<AsmGenerateBindings>false</AsmGenerateBindings>`** turns it off, for a project with its own
 >   imports whose class names would clash.
 > - **Libraries only.** A referenced asm program gets no bindings, even with `PROTO` lines (its

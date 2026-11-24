@@ -38,6 +38,7 @@
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmReadApi" AssemblyFile="$(_AsmTasksAssembly)" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmMergeApi" AssemblyFile="$(_AsmTasksAssembly)" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmWriteSourceWrappers" AssemblyFile="$(_AsmTasksAssembly)" />
+  <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmReadStructs" AssemblyFile="$(_AsmTasksAssembly)" />
 
   <!-- ===================================================================================== -->
   <!-- Items                                                                                  -->
@@ -683,14 +684,79 @@
   <!-- ===================================================================================== -->
 
   <!--
+    _AsmReadStructs: the STRUCT lines (the C# bindings' structs, catalog
+    asmsdk/plans/csharp-bindings.md phase 3). Before assembling, AsmReadStructs reads each
+    source's STRUCT lines and those of the files it includes, lays each struct out as C does on
+    this RID, and writes the source's constants (rect.min, rect_size) into
+    obj/.../asm/structs/<the source's path>.inc. How each assembler gets them:
+      NASM     a pre-include, -P "<that file>" (AsmStructsArgument), after ImplicitUsings' own
+      llvm-mc  the source's wrapper includes the file (AsmWriteSourceWrappers); a GNU source with
+               structs gets a wrapper even with ImplicitUsings off, since llvm-mc has no
+               pre-include option
+    Why the SDK reads the lines (the owner's choice, 2026-11-24): GNU macros cannot split a
+    pointer field ("uint8_t* data" reaches them as one token), so the macros could not lay a
+    struct out on ARM64; one C# computation serves both syntaxes, the API file and the C#
+    struct. The STRUCT macro still records its line (the API file is what was assembled) and
+    stops the build at a STRUCT this target did not read (one written by another macro).
+    Each source gets only the structs it declares or includes, as in C. Runs on every build (no
+    Inputs): a STRUCT line in any include may change, and reading a few files costs less than
+    listing them; a constants file is rewritten only when its text changes, and the files are
+    inputs of AsmAssemble, so a changed layout assembles again. Not for WebAssembly, whose
+    sources cannot take STRUCT lines yet (asmsdk-wasm.inc stops on one).
+    Errors: ASM0130 (a STRUCT line that does not parse, or a refused field), ASM0136 (one struct
+    declared twice, differently), each at its line.
+  -->
+  <Target Name="_AsmReadStructs"
+          DependsOnTargets="AsmPrepare"
+          Condition="'$(_AsmRid)' != '' and '$(_AsmArch)' != 'wasm' and '@(_AsmSelectedSource)' != ''">
+    <AsmReadStructs Sources="@(_AsmSelectedSource)"
+                    IncludeDirectories="@(_AsmIncludeDirectoryOrdered)"
+                    ProjectDirectory="$(MSBuildProjectDirectory)"
+                    OutputDirectory="$(AsmIntermediateDirectory)structs/"
+                    PointerSize="$(_AsmPointerSize)">
+      <Output TaskParameter="UpdatedSources" ItemName="_AsmSourceWithStructs" />
+      <Output TaskParameter="StructFiles" ItemName="_AsmStructsFile" />
+    </AsmReadStructs>
+    <!-- The same sources, in the same order, with AsmStructsFile and AsmStructsToolPath set on
+         those that have structs: the task returns every item with all its metadata. -->
+    <ItemGroup>
+      <_AsmSelectedSource Remove="@(_AsmSelectedSource)" />
+      <_AsmSelectedSource Include="@(_AsmSourceWithStructs)" />
+      <_AsmSourceWithStructs Remove="@(_AsmSourceWithStructs)" />
+      <FileWrites Include="@(_AsmStructsFile)" />
+    </ItemGroup>
+    <!-- Qualified metadata throughout: an unqualified %(...) over items that lack it stops the
+         build with MSB4096 (measured, see _AsmSelectedSource in AsmPrepare). The wrapper path is
+         the one AsmPrepare gives an ImplicitUsings build, so a source keeps one name for its
+         wrapper whatever the reason it has one. -->
+    <ItemGroup>
+      <_AsmSelectedSource Condition="'%(_AsmSelectedSource.AsmLanguage)' == 'Gnu' and '%(_AsmSelectedSource.AsmStructsToolPath)' != '' and '%(_AsmSelectedSource.SourceWrapper)' == ''">
+        <SourceWrapper>$(AsmIntermediateDirectory)implicit/%(_AsmSelectedSource.AsmRecursiveDir)%(_AsmSelectedSource.Filename)%(_AsmSelectedSource.Extension)</SourceWrapper>
+      </_AsmSelectedSource>
+      <_AsmSelectedSource Condition="'%(_AsmSelectedSource.AsmLanguage)' == 'Gnu' and '%(_AsmSelectedSource.AsmStructsToolPath)' != ''">
+        <AssembledToolPath>$([MSBuild]::MakeRelative('$(MSBuildProjectDirectory)/', $([System.IO.Path]::GetFullPath('%(_AsmSelectedSource.SourceWrapper)'))).Replace('\','/'))</AssembledToolPath>
+      </_AsmSelectedSource>
+      <!-- With its own leading space (%20, which MSBuild cannot trim away), written right after
+           the ImplicitUsings argument in AsmAssemble's command: a source without structs keeps
+           exactly the command line it had before STRUCT existed (ElfOutputTests reads it). -->
+      <_AsmSelectedSource Condition="'%(_AsmSelectedSource.AsmLanguage)' == 'Nasm' and '%(_AsmSelectedSource.AsmStructsToolPath)' != ''">
+        <AsmStructsArgument>%20-P &quot;%(_AsmSelectedSource.AsmStructsToolPath)&quot;</AsmStructsArgument>
+      </_AsmSelectedSource>
+    </ItemGroup>
+  </Target>
+
+  <!--
     _AsmWriteSourceWrappers: writes, for each GNU-syntax source that needs one, the file that
     llvm-mc assembles in its place, obj/.../asm/implicit/<the source's path>:
       the defines, as labels               WebAssembly only (llvm-mc's wasm objects hold no
                                            constant symbols, so no defsym; ASM0018)
       .include "asmsdk-gnu-implicit.inc"   with ImplicitUsings (llvm-mc has no pre-include
                                            option, which NASM's -P is for .asm files)
+      .include "<the STRUCT constants>"    when the source declares or includes a STRUCT
+                                           (_AsmReadStructs)
       # 1 "<the source's full path>"       a line marker, then the source's own text
-    Every WebAssembly source gets one, and every GNU source of an ImplicitUsings build. The
+    Every WebAssembly source gets one, every GNU source of an ImplicitUsings build, and every
+    GNU source with STRUCT lines. The
     marker keeps diagnostics and DWARF lines on the source and its own line numbers (an
     .include of the source, AsmSdk's first wrapper, put the wrapper's name in every DWARF row:
     see AsmWriteSourceWrappers for the measurement). The object keeps the generated file's
@@ -702,8 +768,8 @@
     edit, and comparing a few files costs less than the up-to-date check would.
   -->
   <Target Name="_AsmWriteSourceWrappers"
-          DependsOnTargets="AsmPrepare"
-          Condition="'$(_AsmImplicitUsings)' == 'true' or '$(_AsmArch)' == 'wasm'">
+          DependsOnTargets="AsmPrepare;_AsmReadStructs"
+          Condition="'$(_AsmImplicitUsings)' == 'true' or '$(_AsmArch)' == 'wasm' or '@(_AsmStructsFile)' != ''">
     <PropertyGroup>
       <!-- Found through llvm-mc's include path, where the SDK's include folder comes last, so a
            project's own file of that name would shadow it, as for any other include. A
@@ -786,8 +852,8 @@
     which still logs it as before) so that ASM0019 can name the source and the rule.
   -->
   <Target Name="AsmAssemble"
-          DependsOnTargets="AsmPrepare;_AsmWriteSourceWrappers;_AsmWriteAssembleOptions"
-          Inputs="@(_AsmSelectedSource);@(_AsmDependency);$(MSBuildProjectFullPath);$(MSBuildThisFileFullPath);$(_AsmAssembleOptionsFile)"
+          DependsOnTargets="AsmPrepare;_AsmReadStructs;_AsmWriteSourceWrappers;_AsmWriteAssembleOptions"
+          Inputs="@(_AsmSelectedSource);@(_AsmDependency);$(MSBuildProjectFullPath);$(MSBuildThisFileFullPath);$(_AsmAssembleOptionsFile);@(_AsmStructsFile)"
           Outputs="%(_AsmSelectedSource.ObjectFile)">
     <Error Code="ASM0004"
            Condition="'%(_AsmSelectedSource.AsmLanguage)' == 'Gnu' and '$(AsmToolchain)' == 'Bundled' and !Exists('$(_AsmLlvmMcPath)')"
@@ -798,7 +864,7 @@
       <_AsmAssemblerExitCode>0</_AsmAssemblerExitCode>
     </PropertyGroup>
     <Exec Condition="'%(_AsmSelectedSource.AsmLanguage)' == 'Nasm'"
-          Command="$(_AsmNasm) $(_AsmNasmMessageArguments) $(_AsmNasmFormatArguments) $(_AsmDebugArguments) $(_AsmWarningArguments) $(_AsmNasmReproducibleArgument) $(AsmFlags) $(_AsmIncludeArguments) $(_AsmDefineArguments) $(_AsmNasmImplicitUsingsArgument) -o &quot;%(_AsmSelectedSource.ObjectToolPath)&quot; &quot;%(_AsmSelectedSource.AssembledToolPath)&quot;"
+          Command="$(_AsmNasm) $(_AsmNasmMessageArguments) $(_AsmNasmFormatArguments) $(_AsmDebugArguments) $(_AsmWarningArguments) $(_AsmNasmReproducibleArgument) $(AsmFlags) $(_AsmIncludeArguments) $(_AsmDefineArguments) $(_AsmNasmImplicitUsingsArgument)%(_AsmSelectedSource.AsmStructsArgument) -o &quot;%(_AsmSelectedSource.ObjectToolPath)&quot; &quot;%(_AsmSelectedSource.AssembledToolPath)&quot;"
           WorkingDirectory="$(MSBuildProjectDirectory)"
           ContinueOnError="ErrorAndContinue">
       <Output TaskParameter="ExitCode" PropertyName="_AsmAssemblerExitCode" />
@@ -1370,9 +1436,11 @@
 
   <!--
     _AsmReadApi (each RID): reads the API records asmsdk.inc and asmsdk-gnu.inc write into the
-    objects (a "fn" record per function macro, a "proto" record per PROTO line), checks the
-    PROTO lines against the functions (AsmReadApi: ASM0130-ASM0132, ASM0134, ASM0135) and writes
-    the RID's API file, <AssemblyName>.api.json, into obj/ and beside the RID's binary. No PROTO
+    objects (a "fn" record per function macro, a "proto" record per PROTO line, a "struct"
+    record per STRUCT line), lays the structs out with the RID's pointer size (the layout
+    _AsmReadStructs gave the assembler), checks the PROTO lines against the functions
+    (AsmReadApi: ASM0130-ASM0132, ASM0134-ASM0136) and writes the RID's API file,
+    <AssemblyName>.api.json, into obj/ and beside the RID's binary. No PROTO and no STRUCT
     line, no file (a stale one is deleted). Not incremental by Inputs/Outputs: it reads a few
     hundred bytes per object, and the task rewrites the file only when its content changes,
     so its timestamp still tells consumers when the API changed.
@@ -1390,7 +1458,8 @@
                 Library="$(AssemblyName)"
                 OutputKind="$(_AsmOutputKind)"
                 RuntimeIdentifier="$(_AsmRid)"
-                ApiFile="$(_AsmApiIntermediateFile)">
+                ApiFile="$(_AsmApiIntermediateFile)"
+                PointerSize="$(_AsmPointerSize)">
       <Output TaskParameter="Written" PropertyName="_AsmApiWritten" />
     </AsmReadApi>
     <Copy Condition="'$(_AsmApiWritten)' != ''" SourceFiles="$(_AsmApiIntermediateFile)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />

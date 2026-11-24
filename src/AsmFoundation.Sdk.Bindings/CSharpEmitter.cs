@@ -21,13 +21,14 @@ internal enum Nesting
 /// <summary>
 /// Writes the C# of a bound class's members: one blittable [DllImport] extern per function (with
 /// a wrapper when it takes a bool or a string), span overloads, nested classes per file or
-/// folder. Pure text, no Roslyn: what the generator decided (which functions, which layout) comes
-/// in, source comes out.
+/// folder, and the library's structs (sequential C# structs, in its default class). Pure text, no
+/// Roslyn: what the generator decided (which functions, which layout) comes in, source comes out.
 /// </summary>
 /// <remarks>
 /// <para>
 /// The C types map to the blittable C# types of the same size and signedness
-/// (<see cref="BaseType"/>), so each call is direct, with no runtime marshalling. Two kinds
+/// (<see cref="BaseType(string, bool)"/>), a STRUCT to its generated struct, fully qualified,
+/// so each call is direct, with no runtime marshalling. Two kinds
 /// convert in a generated wrapper on purpose: a <c>bool</c> is one byte (C's bool), a
 /// <c>const char*</c> parameter is a <c>string</c> converted to UTF-8; inside a function
 /// pointer's signature neither converts (an unmanaged function pointer cannot), so there they
@@ -95,8 +96,15 @@ internal static class CSharpEmitter
     /// <param name="access">"internal" or "public", for the members and the nested classes.</param>
     /// <param name="className">The bound class's own name: a function named like the class it lands in becomes Invoke (C# forbids a member named like its type, CS0542).</param>
     /// <param name="collisions">Receives a description of each name generated twice in one scope.</param>
+    /// <param name="structs">The library's STRUCTs: each C name with its generated C# type, fully qualified (global::Ns.Library.Rect), which a signature naming the struct uses.</param>
+    /// <param name="reserved">
+    /// Names already taken in the class's own scope (the default class's structs), or null: a
+    /// method or nested class of that name would be a duplicate member (CS0102), reported as a
+    /// collision instead.
+    /// </param>
     internal static void WriteMembers(StringBuilder output, int indent, string library, IEnumerable<ApiFunctionModel> functions,
-        Nesting nesting, bool spanOverloads, string access, string className, List<string> collisions)
+        Nesting nesting, bool spanOverloads, string access, string className, List<string> collisions,
+        IReadOnlyDictionary<string, string> structs, ISet<string>? reserved = null)
     {
         var root = new Node("");
         foreach (ApiFunctionModel function in functions.OrderBy(f => f.Name, StringComparer.Ordinal))
@@ -117,7 +125,7 @@ internal static class CSharpEmitter
             node.Functions.Add(function);
         }
 
-        WriteNode(output, indent, library, root, className, spanOverloads, access, collisions, "");
+        WriteNode(output, indent, library, root, className, spanOverloads, access, collisions, "", structs, reserved);
     }
 
     /// <summary>Writes one scope: its methods, then its nested classes.</summary>
@@ -130,9 +138,19 @@ internal static class CSharpEmitter
     /// <param name="access">The members' accessibility.</param>
     /// <param name="collisions">Receives names generated twice.</param>
     /// <param name="scope">The scope's path, for messages ("" for the class itself).</param>
+    /// <param name="structs">The library's STRUCTs and their C# types.</param>
+    /// <param name="reserved">Names this scope already holds (the root's structs), or null.</param>
     private static void WriteNode(StringBuilder output, int indent, string library, Node node, string scopeName, bool spanOverloads, string access,
-        List<string> collisions, string scope)
+        List<string> collisions, string scope, IReadOnlyDictionary<string, string> structs, ISet<string>? reserved)
     {
+        // A struct of the default class named like one of its nested classes (STRUCT add and
+        // add.asm both make Add) would be a duplicate member: reported, and the class left out.
+        foreach (string child in node.Children.Keys.Where(k => reserved?.Contains(k) == true).ToList())
+        {
+            collisions.Add($"the file or folder {node.Children[child].Source} becomes the class {scope}{child}, the name of a struct");
+            node.Children.Remove(child);
+        }
+
         // Two functions whose PascalCase names meet, or a function named like a nested class,
         // would be a C# error in the generated code; reported instead, at the attribute.
         var methodNames = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -160,8 +178,14 @@ internal static class CSharpEmitter
                 continue;
             }
 
+            if (reserved?.Contains(method) == true)
+            {
+                collisions.Add($"{function.Name} becomes {scope}{method}, the name of a struct");
+                continue;
+            }
+
             methodNames[method] = function.Name;
-            WriteFunction(output, indent, library, function, method, spanOverloads, access);
+            WriteFunction(output, indent, library, function, method, spanOverloads, access, structs);
         }
 
         foreach (KeyValuePair<string, Node> child in node.Children)
@@ -169,9 +193,96 @@ internal static class CSharpEmitter
             Indent(output, indent).Append("/// <summary>The functions of ").Append(child.Value.Source).Append(".</summary>\n");
             Indent(output, indent).Append(access).Append(" static partial class ").Append(child.Key).Append('\n');
             Indent(output, indent).Append("{\n");
-            WriteNode(output, indent + 1, library, child.Value, child.Key, spanOverloads, access, collisions, scope + child.Key + ".");
+            // Nested scopes hold no struct (the structs are members of the root only).
+            WriteNode(output, indent + 1, library, child.Value, child.Key, spanOverloads, access, collisions, scope + child.Key + ".", structs, null);
             Indent(output, indent).Append("}\n");
         }
+    }
+
+    /// <summary>
+    /// Writes the library's STRUCTs, each a sequential C# struct of the same fields: the
+    /// fixed-width types as their C# equivalents, bool as bool (one byte, as in C), char as
+    /// byte, pointers and function pointers as they are, a nested struct as its generated
+    /// struct, an array as a fixed buffer. Each summary states the C line, the size and every
+    /// offset, so the asm code's constants can be compared with what C# sees.
+    /// </summary>
+    /// <param name="output">Where to write.</param>
+    /// <param name="indent">The structs' indentation.</param>
+    /// <param name="library">The library's structs.</param>
+    /// <param name="access">"internal" or "public": the default class's accessibility, which the structs share.</param>
+    /// <param name="structs">Every struct's C name and C# type (for fields that hold or point at one).</param>
+    /// <param name="collisions">Receives each field name generated twice in one struct.</param>
+    /// <remarks>
+    /// Sequential, not explicit offsets: .NET lays these fields out exactly as C does on every
+    /// RID the API covers (measured on win-x64 with a bool, a pointer, fixed buffers, a nested
+    /// struct and a function pointer; the tests read every field back through the asm code on
+    /// each CI machine), and Sequential keeps doing so where a pointer is 4 bytes. Not partial:
+    /// fields added in another part would have no defined order (CS0282) and break the layout.
+    /// A field named like its struct (C allows it, C# forbids it: CS0542) is Value.
+    /// </remarks>
+    internal static void WriteStructs(StringBuilder output, int indent, IEnumerable<ApiStructModel> library, string access,
+        IReadOnlyDictionary<string, string> structs, List<string> collisions)
+    {
+        foreach (ApiStructModel model in library)
+        {
+            string name = Pascal(model.Name);
+            Indent(output, indent).Append("/// <summary><c>STRUCT ").Append(Xml(model.Declaration)).Append("</c>: ")
+                .Append(model.Size).Append(" bytes, aligned to ").Append(model.Alignment).Append(".</summary>\n");
+            Indent(output, indent).Append('[').Append(Interop).Append(".StructLayout(").Append(Interop).Append(".LayoutKind.Sequential)]\n");
+            Indent(output, indent).Append(access).Append(" unsafe struct ").Append(name).Append('\n');
+            Indent(output, indent).Append("{\n");
+            var fieldNames = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (ApiStructFieldModel field in model.Fields)
+            {
+                string fieldName = Pascal(field.Name);
+                if (fieldName == name)
+                {
+                    fieldName = "Value";
+                }
+
+                if (fieldNames.TryGetValue(fieldName, out string? other))
+                {
+                    collisions.Add($"the fields {other} and {field.Name} of struct {model.Name} both become {name}.{fieldName}");
+                    continue;
+                }
+
+                fieldNames[fieldName] = field.Name;
+                Indent(output, indent + 1).Append("/// <summary><c>").Append(Xml(CSpelling(field.Type, field.Name, field.Count))).Append("</c>, at offset ")
+                    .Append(field.Offset).Append(".</summary>\n");
+                Indent(output, indent + 1).Append("public ");
+                if (field.Count is int count)
+                {
+                    // A fixed buffer: the SDK allowed arrays of primitive scalars only, the
+                    // element types C# fixed buffers take.
+                    output.Append("fixed ").Append(BaseType(field.Type, inCallback: false, structs)).Append(' ').Append(fieldName).Append('[').Append(count).Append("];\n");
+                }
+                else
+                {
+                    output.Append(TypeName(field.Type, inCallback: false, structs)).Append(' ').Append(fieldName).Append(";\n");
+                }
+            }
+
+            Indent(output, indent).Append("}\n\n");
+        }
+    }
+
+    /// <summary>A field's C declaration, for its summary: "const uint8_t* data", "uint32_t h[8]", "int32_t (*cmp)(int32_t, int32_t)".</summary>
+    /// <param name="type">The field's type.</param>
+    /// <param name="name">Its C name.</param>
+    /// <param name="count">Its array length, or null.</param>
+    /// <returns>The declaration.</returns>
+    private static string CSpelling(ApiTypeModel type, string? name, int? count)
+    {
+        if (type.Callback is not null)
+        {
+            string parameters = type.Callback.Parameters.Count == 0
+                ? "void"
+                : string.Join(", ", type.Callback.Parameters.Select(p => CSpelling(p.Type, p.Name, null)));
+            return CSpelling(type.Callback.Returns, null, null) + " (*" + name + ")(" + parameters + ")";
+        }
+
+        string spelled = (type.Const ? "const " : "") + type.Base + new string('*', type.Pointers);
+        return (name is null ? spelled : spelled + " " + name) + (count is int n ? "[" + n + "]" : "");
     }
 
     /// <summary>
@@ -186,6 +297,7 @@ internal static class CSharpEmitter
     /// <param name="method">Its C# name.</param>
     /// <param name="spanOverloads">Whether to write a span overload.</param>
     /// <param name="access">The accessibility.</param>
+    /// <param name="structs">The library's STRUCTs and their C# types (for pointers to them).</param>
     /// <remarks>
     /// Why [DllImport] and not [LibraryImport]: source generators never see each other's output,
     /// so the runtime's LibraryImport generator would not implement [LibraryImport] methods this
@@ -197,7 +309,7 @@ internal static class CSharpEmitter
     /// it works under DisableRuntimeMarshalling and in NativeAOT.
     /// </remarks>
     private static void WriteFunction(StringBuilder output, int indent, string library, ApiFunctionModel function, string method,
-        bool spanOverloads, string access)
+        bool spanOverloads, string access, IReadOnlyDictionary<string, string> structs)
     {
         string[] names = function.Parameters.Select((p, i) => ParameterName(p, i)).ToArray();
         bool wrapped = IsBool(function.Returns) || function.Parameters.Any(p => IsBool(p.Type) || IsString(p.Type));
@@ -219,22 +331,22 @@ internal static class CSharpEmitter
         }
 
         Indent(output, indent).Append(wrapped ? "private" : access).Append(" static ").Append(unsafeNative ? "unsafe " : "").Append("extern ")
-            .Append(NativeType(function.Returns)).Append(' ').Append(native).Append('(');
+            .Append(NativeType(function.Returns, structs)).Append(' ').Append(native).Append('(');
         for (int i = 0; i < names.Length; i++)
         {
-            output.Append(i == 0 ? "" : ", ").Append(NativeType(function.Parameters[i].Type)).Append(' ').Append(names[i]);
+            output.Append(i == 0 ? "" : ", ").Append(NativeType(function.Parameters[i].Type, structs)).Append(' ').Append(names[i]);
         }
 
         output.Append(");\n\n");
 
         if (wrapped)
         {
-            WriteWrapper(output, indent, function, method, native, names, access);
+            WriteWrapper(output, indent, function, method, native, names, access, structs);
         }
 
         if (spanOverloads)
         {
-            WriteSpanOverload(output, indent, function, method, names, access);
+            WriteSpanOverload(output, indent, function, method, names, access, structs);
         }
     }
 
@@ -251,18 +363,20 @@ internal static class CSharpEmitter
     /// <param name="native">The private extern's name.</param>
     /// <param name="names">The parameters' C# names.</param>
     /// <param name="access">The accessibility.</param>
-    private static void WriteWrapper(StringBuilder output, int indent, ApiFunctionModel function, string method, string native, string[] names, string access)
+    /// <param name="structs">The library's STRUCTs and their C# types.</param>
+    private static void WriteWrapper(StringBuilder output, int indent, ApiFunctionModel function, string method, string native, string[] names, string access,
+        IReadOnlyDictionary<string, string> structs)
     {
         const string Marshaller = "global::System.Runtime.InteropServices.Marshalling.Utf8StringMarshaller.ManagedToUnmanagedIn";
         int[] strings = Enumerable.Range(0, names.Length).Where(i => IsString(function.Parameters[i].Type)).ToArray();
         bool unsafeWrapper = strings.Length > 0 || HasPointer(function.Returns) || function.Parameters.Any(p => HasPointer(p.Type) && !IsString(p.Type));
 
         Summary(output, indent, function);
-        Indent(output, indent).Append(access).Append(" static ").Append(unsafeWrapper ? "unsafe " : "").Append(ReturnType(function.Returns))
+        Indent(output, indent).Append(access).Append(" static ").Append(unsafeWrapper ? "unsafe " : "").Append(ReturnType(function.Returns, structs))
             .Append(' ').Append(method).Append('(');
         for (int i = 0; i < names.Length; i++)
         {
-            output.Append(i == 0 ? "" : ", ").Append(ParameterType(function.Parameters[i].Type)).Append(' ').Append(names[i]);
+            output.Append(i == 0 ? "" : ", ").Append(ParameterType(function.Parameters[i].Type, structs)).Append(' ').Append(names[i]);
         }
 
         output.Append(")\n");
@@ -330,9 +444,10 @@ internal static class CSharpEmitter
 
     /// <summary>A type as the blittable extern sees it: a bool is a byte, a const char* a byte*.</summary>
     /// <param name="type">The type.</param>
+    /// <param name="structs">The library's STRUCTs and their C# types.</param>
     /// <returns>The C# type.</returns>
-    private static string NativeType(ApiTypeModel type) =>
-        IsBool(type) ? "byte" : IsString(type) ? "byte*" : TypeName(type, inCallback: false);
+    private static string NativeType(ApiTypeModel type, IReadOnlyDictionary<string, string> structs) =>
+        IsBool(type) ? "byte" : IsString(type) ? "byte*" : TypeName(type, inCallback: false, structs);
 
     /// <summary>
     /// Writes the span overload of a function with pointer-and-length pairs (a pointer, then a
@@ -346,7 +461,9 @@ internal static class CSharpEmitter
     /// <param name="method">Its C# name.</param>
     /// <param name="names">Its parameters' C# names.</param>
     /// <param name="access">The accessibility.</param>
-    private static void WriteSpanOverload(StringBuilder output, int indent, ApiFunctionModel function, string method, string[] names, string access)
+    /// <param name="structs">The library's STRUCTs and their C# types (a span of structs: const point* pts, size_t count).</param>
+    private static void WriteSpanOverload(StringBuilder output, int indent, ApiFunctionModel function, string method, string[] names, string access,
+        IReadOnlyDictionary<string, string> structs)
     {
         var pairs = new Dictionary<int, int>();
         for (int i = 0; i + 1 < function.Parameters.Count; i++)
@@ -368,7 +485,7 @@ internal static class CSharpEmitter
 
         var lengths = new HashSet<int>(pairs.Values);
         Indent(output, indent).Append("/// <summary><c>").Append(Xml(function.Prototype)).Append("</c>, with spans for the pointer and length pairs.</summary>\n");
-        Indent(output, indent).Append(access).Append(" static unsafe ").Append(ReturnType(function.Returns)).Append(' ').Append(method).Append('(');
+        Indent(output, indent).Append(access).Append(" static unsafe ").Append(ReturnType(function.Returns, structs)).Append(' ').Append(method).Append('(');
         bool first = true;
         for (int i = 0; i < names.Length; i++)
         {
@@ -382,11 +499,11 @@ internal static class CSharpEmitter
             ApiTypeModel type = function.Parameters[i].Type;
             if (pairs.ContainsKey(i))
             {
-                output.Append(type.Const ? "global::System.ReadOnlySpan<" : "global::System.Span<").Append(BaseType(type.Base, inCallback: false)).Append("> ").Append(names[i]);
+                output.Append(type.Const ? "global::System.ReadOnlySpan<" : "global::System.Span<").Append(BaseType(type, inCallback: false, structs)).Append("> ").Append(names[i]);
             }
             else
             {
-                output.Append(ParameterType(type)).Append(' ').Append(names[i]);
+                output.Append(ParameterType(type, structs)).Append(' ').Append(names[i]);
             }
         }
 
@@ -395,7 +512,7 @@ internal static class CSharpEmitter
         int depth = indent + 1;
         foreach (int i in pairs.Keys)
         {
-            Indent(output, depth).Append("fixed (").Append(BaseType(function.Parameters[i].Type.Base, inCallback: false)).Append("* __p").Append(i)
+            Indent(output, depth).Append("fixed (").Append(BaseType(function.Parameters[i].Type, inCallback: false, structs)).Append("* __p").Append(i)
                 .Append(" = ").Append(names[i]).Append(")\n");
         }
 
@@ -453,28 +570,50 @@ internal static class CSharpEmitter
 
     /// <summary>A parameter's C# type: a const char* is a string (UTF-8), the rest as <see cref="TypeName"/>.</summary>
     /// <param name="type">The type.</param>
+    /// <param name="structs">The library's STRUCTs and their C# types.</param>
     /// <returns>The C# type.</returns>
-    private static string ParameterType(ApiTypeModel type) => IsString(type) ? "string" : TypeName(type, inCallback: false);
+    private static string ParameterType(ApiTypeModel type, IReadOnlyDictionary<string, string> structs) =>
+        IsString(type) ? "string" : TypeName(type, inCallback: false, structs);
 
     /// <summary>A return type: a const char* stays byte* (who frees it is the library's rule).</summary>
     /// <param name="type">The type.</param>
+    /// <param name="structs">The library's STRUCTs and their C# types.</param>
     /// <returns>The C# type.</returns>
-    private static string ReturnType(ApiTypeModel type) => TypeName(type, inCallback: false);
+    private static string ReturnType(ApiTypeModel type, IReadOnlyDictionary<string, string> structs) => TypeName(type, inCallback: false, structs);
 
     /// <summary>The C# spelling of a type.</summary>
     /// <param name="type">The type.</param>
     /// <param name="inCallback">Inside a function pointer's signature, where nothing marshals (bool is byte).</param>
+    /// <param name="structs">The library's STRUCTs and their C# types.</param>
     /// <returns>The C# type.</returns>
-    private static string TypeName(ApiTypeModel type, bool inCallback)
+    private static string TypeName(ApiTypeModel type, bool inCallback, IReadOnlyDictionary<string, string> structs)
     {
         if (type.Callback is not null)
         {
-            var parts = type.Callback.Parameters.Select(p => TypeName(p.Type, inCallback: true)).ToList();
-            parts.Add(TypeName(type.Callback.Returns, inCallback: true));
+            var parts = type.Callback.Parameters.Select(p => TypeName(p.Type, inCallback: true, structs)).ToList();
+            parts.Add(TypeName(type.Callback.Returns, inCallback: true, structs));
             return "delegate* unmanaged<" + string.Join(", ", parts) + ">";
         }
 
-        return BaseType(type.Base, inCallback) + new string('*', type.Pointers);
+        return BaseType(type, inCallback, structs) + new string('*', type.Pointers);
+    }
+
+    /// <summary>The C# type of a type's base: the generated struct for a STRUCT, the C# primitive for a C type.</summary>
+    /// <param name="type">The type.</param>
+    /// <param name="inCallback">Inside a function pointer's signature: bool is byte there.</param>
+    /// <param name="structs">The library's STRUCTs and their C# types.</param>
+    /// <returns>The C# type, without pointers.</returns>
+    /// <exception cref="ArgumentException">A STRUCT the library does not declare (an API file the SDK did not write), or an unknown C type.</exception>
+    private static string BaseType(ApiTypeModel type, bool inCallback, IReadOnlyDictionary<string, string> structs)
+    {
+        if (!type.IsStruct)
+        {
+            return BaseType(type.Base, inCallback);
+        }
+
+        return structs.TryGetValue(type.Base, out string? name)
+            ? name
+            : throw new ArgumentException($"the struct '{type.Base}' is not declared in the API file", nameof(type));
     }
 
     /// <summary>The C# type of a C base type: same size and signedness.</summary>

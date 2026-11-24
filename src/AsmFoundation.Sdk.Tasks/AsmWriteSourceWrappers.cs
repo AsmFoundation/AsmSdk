@@ -70,9 +70,11 @@ public sealed class AsmWriteSourceWrappers : Task
 
     /// <summary>
     /// The sources to wrap. Metadata: <c>SourceWrapper</c>, the file to write (relative to the
-    /// project folder or absolute), and <c>SourceToolPath</c>, the name the line marker gives the
-    /// source (its full path, forward slashes; the item's FullPath when missing). Items without
-    /// <c>SourceWrapper</c> are skipped: they are assembled as they are.
+    /// project folder or absolute), <c>SourceToolPath</c>, the name the line marker gives the
+    /// source (its full path, forward slashes; the item's FullPath when missing), and
+    /// <c>AsmStructsToolPath</c>, the source's STRUCT constants (AsmReadStructs), included after
+    /// the platform layer when set. Items without <c>SourceWrapper</c> are skipped: they are
+    /// assembled as they are.
     /// </summary>
     [Required]
     public ITaskItem[] Sources { get; set; } = Array.Empty<ITaskItem>();
@@ -141,9 +143,20 @@ public sealed class AsmWriteSourceWrappers : Task
                 markerName = source.GetMetadata("FullPath").Replace('\\', '/');
             }
 
+            // The source's own STRUCT constants, after the platform layer and before its text:
+            // its code reads them (rect.min), and llvm-mc has no pre-include option. The path is
+            // the project-relative one the task was given: llvm-mc finds an include from its
+            // working directory, the project folder (measured), and a relative name keeps the
+            // wrapper the same in every checkout.
+            string structs = source.GetMetadata("AsmStructsToolPath");
+            string sourcePrelude = structs.Length == 0
+                ? prelude
+                : prelude + "// The STRUCT constants of this source and its includes (AsmReadStructs).\n"
+                    + ".include \"" + structs.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"\n";
+
             try
             {
-                byte[] text = Compose(prelude, markerName, File.ReadAllBytes(source.GetMetadata("FullPath")));
+                byte[] text = Compose(sourcePrelude, markerName, File.ReadAllBytes(source.GetMetadata("FullPath")));
                 WriteIfChanged(wrapperPath, text);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
@@ -213,7 +226,7 @@ public sealed class AsmWriteSourceWrappers : Task
     /// source, then the source's bytes as they are (encoding and line endings untouched), less a
     /// leading UTF-8 byte order mark, which behind the marker would be three stray bytes.
     /// </summary>
-    /// <param name="prelude">The shared lines (<see cref="Prelude"/>).</param>
+    /// <param name="prelude">The lines before the marker: the shared ones (<see cref="Prelude"/>), then the source's STRUCT include when it has one.</param>
     /// <param name="markerName">The source's name in the marker: its full path, forward slashes.</param>
     /// <param name="source">The source file's bytes.</param>
     /// <returns>The wrapper's bytes.</returns>

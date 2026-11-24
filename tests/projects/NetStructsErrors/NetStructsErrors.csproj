@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The generator's struct errors, one case per file under cases/, picked with
+    -p:StructCase=<name> (StructTests builds each in a configuration of its own):
+      publicstruct  ASM0145  a public class binds rect_area, which takes ApiStruct's rect, while
+                             the default class Apistruct (where rect lives) is internal
+      clash         ASM0143  ApiStructClash's struct clash and its file clash.asm both become Clash
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="cases/**" />
+    <Compile Include="cases/$(StructCase).cs" />
+  </ItemGroup>
+  <!-- Each case references only its own library, so that no case reports another's error. -->
+  <ItemGroup Condition="'$(StructCase)' == 'publicstruct'">
+    <ProjectReference Include="../ApiStruct/ApiStruct.asmproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(StructCase)' == 'clash'">
+    <ProjectReference Include="../ApiStructClash/ApiStructClash.asmproj" />
+  </ItemGroup>
+</Project>
