@@ -76,6 +76,30 @@ internal sealed class ApiType
     /// </summary>
     internal bool IsIntegerArgument => Callback is not null || Pointers > 0 || IntegerBases.Contains(Base);
 
+    /// <summary>
+    /// The WebAssembly value type a value of this type passes as on wasm32, as clang lowers C:
+    /// <c>i32</c> for pointers, function pointers (a table index), every integer of 32 bits or
+    /// fewer and the pointer-sized ones (<c>size_t</c>, <c>intptr_t</c> and kin are 32-bit on
+    /// wasm32); <c>i64</c> for <c>int64_t</c> and <c>uint64_t</c>; <c>f32</c> for <c>float</c>;
+    /// <c>f64</c> for <c>double</c>; null for <c>void</c>, which is no value at all.
+    /// </summary>
+    /// <remarks>
+    /// A STRUCT by value has no single value type, and never reaches here: a PROTO line may only
+    /// point at one (ASM0130), and a pointer is <c>i32</c> like any other. <c>bool</c> and
+    /// <c>char</c> widen to <c>i32</c>, as every integer below 32 bits does: WebAssembly has no
+    /// narrower value type.
+    /// </remarks>
+    internal string? WasmValueType => Callback is not null || Pointers > 0
+        ? "i32"
+        : Base switch
+        {
+            "void" => null,
+            "int64_t" or "uint64_t" => "i64",
+            "float" => "f32",
+            "double" => "f64",
+            _ => "i32",
+        };
+
     /// <summary>The canonical C spelling of a declaration of this type.</summary>
     /// <param name="declarator">The declared name, or null for none.</param>
     /// <returns>For example "const uint8_t* data", or "int32_t (*cmp)(int32_t, int32_t)".</returns>
@@ -232,6 +256,31 @@ internal sealed class ApiPrototype
 
     /// <summary>The number of parameters that pass in integer registers: what FUNCTION's count states.</summary>
     internal int IntegerArgumentCount => Parameters.Count(p => p.Type.IsIntegerArgument);
+
+    /// <summary>
+    /// The prototype lowered to a WebAssembly function type, in the spelling of asmsdk-wasm.inc's
+    /// FUNCTION: <c>(i32, i32) -&gt; (i32)</c>, <c>() -&gt; ()</c> for <c>void f(void)</c>. On wasm the
+    /// FUNCTION macro records its exact type, so the PROTO line is compared with all of it, where
+    /// native code can compare only the integer-argument count.
+    /// </summary>
+    internal string WasmSignature
+    {
+        get
+        {
+            string parameters = string.Join(", ", Parameters.Select(p => p.Type.WasmValueType));
+            return $"({parameters}) -> ({Returns.WasmValueType})";
+        }
+    }
+
+    /// <summary>
+    /// A WebAssembly function type with its spacing removed, so that two spellings of one type
+    /// compare equal: <c>(i32,i32)-&gt;(i32)</c> for <c>(i32, i32) -&gt; (i32)</c> and
+    /// <c>(i32,i32)  -&gt;  (i32)</c> alike.
+    /// </summary>
+    /// <param name="signature">A function type as written after FUNCTION's name, or as <see cref="WasmSignature"/> spells it.</param>
+    /// <returns>The type without whitespace.</returns>
+    internal static string NormalizeWasmSignature(string signature) =>
+        new string(signature.Where(ch => !char.IsWhiteSpace(ch)).ToArray());
 
     /// <summary>Parses a PROTO line (the text after "PROTO").</summary>
     /// <param name="text">The line, as recorded.</param>

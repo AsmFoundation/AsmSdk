@@ -18,6 +18,13 @@ The smaller `Hello.*` samples are still the place to start: [Getting started](..
 builds the same kinds of project in a few lines each, and [Samples](../ecosystem/samples.md) lists
 them all.
 
+> [!NOTE]
+> **Not released yet, on main:** two of them also build for [WebAssembly](../guide/webassembly.md).
+> Crc32C builds `browser-wasm` and `wasi-wasm` from `crc32c.wasm.s`, and `Crc32C.Browser` calls it
+> from a .NET WebAssembly app ([In WebAssembly](crc32c.md#in-webassembly)). HexDump builds
+> `wasi-wasm` from `main.wasi.s`, a WASI command that wasmtime runs
+> ([The WASI build](hexdump.md#the-wasi-build)).
+
 ## A C# gRPC service on an engine in assembly
 
 [GrpcAsm](https://github.com/AsmFoundation/GrpcAsm), built with AsmSdk, is a gRPC server whose
@@ -74,3 +81,7 @@ with that machine's own build; the Linux x64 programs run on the Linux x64 one:
   (including a word that spans two reads), and its error messages and exit statuses.
 - **HexDump:** that it is static and under 8 KB, its output against a C# rendering of xxd's
   format, and its errors. It was also compared with `xxd` itself, byte for byte.
+- **On main (not released yet):** Crc32C's package carries the two wasm RIDs, `Crc32C.Browser`
+  verifies the library in Node where the `wasm-tools` workload is, and HexDump's WASI command
+  runs in wasmtime on every machine: its size, its output from a file, standard input and `-`,
+  its errors, and `dotnet run -r wasi-wasm`.

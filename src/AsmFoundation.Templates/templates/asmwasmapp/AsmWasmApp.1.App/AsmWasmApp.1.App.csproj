@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- A .NET WebAssembly app: its build needs the wasm-tools workload
+         ("dotnet workload install wasm-tools"), which links the assembly library's archive into
+         the app's runtime, dotnet.native.wasm. -->
+    <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- [LibraryImport] generates its marshalling code as unsafe code. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- main.mjs starts the .NET runtime and runs Main: "dotnet run" runs it in Node (the host
+         runtimeconfig.template.json names; without it .NET's WasmAppHost stops with "no
+         perHostConfigs found", measured), and so does "node main.mjs" from
+         bin/<Configuration>/net10.0/browser-wasm/AppBundle. -->
+    <WasmMainJSPath>main.mjs</WasmMainJSPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Builds the assembly library for browser-wasm and links its archive into this app. -->
+    <ProjectReference Include="../AsmWasmApp.1.Native/AsmWasmApp.1.Native.asmproj" />
+  </ItemGroup>
+
+</Project>

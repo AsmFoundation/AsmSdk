@@ -63,17 +63,26 @@
 //                          label's last byte.
 // ADDRESS label            Pushes the address of a data label (i32.const label):
 //                          a wasm32 pointer into the module's linear memory.
-// PROTO <C prototype>      Not for WebAssembly yet: an .error. asmsdk.inc and
-//                          asmsdk-gnu.inc record PROTO lines in their objects for
-//                          the generated C# bindings, and the SDK reads those
-//                          records from COFF, ELF and Mach-O objects only, so a
-//                          wasm RID declares nothing and the library's API file
-//                          describes its other RIDs. The error says so where the
-//                          line is, rather than leaving it unchecked.
-// STRUCT name, <field>...  Not for WebAssembly yet either, for the same reason:
-//                          an .error. (The SDK lays structs out for the other
-//                          RIDs only; a wasm32 layout would differ anyway, its
-//                          pointers being 4 bytes.)
+// PROTO [fast] <C prototype>
+//                          Declares a function's C signature for the generated
+//                          C# bindings, as in asmsdk.inc and asmsdk-gnu.inc:
+//                              PROTO int32_t add_ints(int32_t a, int32_t b)
+//                              FUNCTION add_ints, (i32, i32) -> (i32)
+//                          Recorded in the object's "asmapi" custom section,
+//                          beside one "fn" record per function macro that holds
+//                          the function's wasm type. The SDK checks that the
+//                          prototype, lowered to wasm (pointers, bool and the
+//                          integers of 32 bits or fewer are i32; int64_t i64;
+//                          float f32; double f64), is exactly that type
+//                          (ASM0132). wasm-ld keeps the section in the module, so
+//                          JavaScript can read the API there too:
+//                          WebAssembly.Module.customSections(module, "asmapi").
+//                          Write it before its FUNCTION (see the footguns).
+// STRUCT name, <field>...  Not for WebAssembly yet: an .error. The SDK hands
+//                          native sources a struct's offsets as assembler
+//                          constants, which llvm-mc's wasm writer refuses (".set"
+//                          and ".L" names alike, measured), so a library with
+//                          STRUCTs cannot build wasm RIDs yet.
 //
 // The SDK also defines WASM, BROWSER or WASI, FREESTANDING, DEBUG or RELEASE,
 // as labels (see below), so ".ifdef WASI" chooses between WASI imports and
@@ -108,6 +117,13 @@
 //     "type mismatch" at the line where it stops agreeing.
 //   - The names here are upper case; "call" is the instruction, "CALL" the
 //     macro.
+//   - PROTO and the function macros go between functions, never inside one:
+//     llvm-mc's wasm parser cannot return to the section it left (it has no
+//     .pushsection), and a record written inside a function body took the rest
+//     of the function with it (measured: the module linked, the function had
+//     lost its end). So FUNCTION arms a guard that ENDFUNCTION disarms, and a
+//     PROTO or FUNCTION in between stops with "<name> has no ENDFUNCTION yet",
+//     pointing at its line in the "while in macro instantiation" note.
 //   - Assembled outside AsmSdk, include this file directly: asmsdk-gnu.inc
 //     brings it only when WASM is defined, and the defsym that would define
 //     it is the constant symbol llvm-mc's wasm writer refuses. Define WASM as
@@ -120,17 +136,59 @@
 .ifndef .Lasmsdk_wasm_inc
 .Lasmsdk_wasm_inc:
 
+// ---- The API records (C# bindings) -------------------------------------------
+// ASMSDK_API_RECORD text: one NUL-terminated record in the object's "asmapi"
+// custom section (llvm-mc names a custom section after what follows
+// ".custom_section."), as asmsdk-gnu.inc writes .asmapi in native objects. It
+// leaves the assembler in that section: the wasm parser has no .pushsection to
+// return with, so the callers switch to their own section next (FUNCTION) or
+// stand where no code follows them (PROTO, between functions; see the guard).
+// vararg keeps the commas of a prototype and of a wasm type.
+.macro ASMSDK_API_RECORD text:vararg
+    .section .custom_section.asmapi,"",@
+    .asciz "\text"
+.endm
+
+// The guard. A record written inside a function body would take the rest of the
+// body with it, so PROTO and the function macros first expand
+// ASMSDK_CHECK_OUTSIDE. Each function macro redefines it to test whether its
+// own function has ended, by the .L label ENDFUNCTION defines: a mutable symbol
+// cannot do this, because llvm-mc's wasm target refuses to redefine a .set
+// ("LLVM ERROR: .set redefinition is not supported", measured), while a label
+// is defined once and stays, and a macro can be purged and defined again. .L
+// symbols are temporary: none reaches the object. Before the first function
+// there is nothing to test.
+.macro ASMSDK_CHECK_OUTSIDE
+.endm
+
+// ASMSDK_FUNCTION_BEGIN scope, name, signature: what the three function macros
+// share after their own checks. The record first (it switches to the custom
+// section), then the guard for this function, then the function's own section:
+// llvm-mc starts one by itself only when the label is in a text section, and two
+// functions in one section stop the wasm writer.
+.macro ASMSDK_FUNCTION_BEGIN scope, name, signature:vararg
+    ASMSDK_CHECK_OUTSIDE
+    ASMSDK_API_RECORD fn \scope \name \signature
+    .purgem ASMSDK_CHECK_OUTSIDE
+    .macro ASMSDK_CHECK_OUTSIDE
+    .ifndef .Lasmsdk_end_\name
+        .error "PROTO and the function macros go between functions: \name has no ENDFUNCTION yet"
+    .endif
+    .endm
+    .section .text.\name,"",@
+.endm
+
 // ---- Functions -------------------------------------------------------------
 // The signature is the rest of the line after the name, commas and parentheses
 // included (vararg): "FUNCTION add2, (i32, i32) -> (i32)". Each function gets
-// its own section explicitly, whatever section the source was in: llvm-mc
-// starts one by itself only when the label is in a text section, and two
-// functions in one section stop the wasm writer.
+// its own section explicitly, whatever section the source was in, and records
+// "fn <scope> <name> <signature>" for the C# bindings (scope 1 exported, 0
+// local, 2 hidden, as asmsdk.inc and asmsdk-gnu.inc number them).
 .macro FUNCTION name, signature:vararg
 .ifb \signature
     .error "FUNCTION \name: WebAssembly functions need their type, as in FUNCTION \name, (i32, i32) -> (i32)"
 .endif
-    .section .text.\name,"",@
+    ASMSDK_FUNCTION_BEGIN 1, \name, \signature
     .globl \name
     .type \name, @function
 \name:
@@ -141,7 +199,7 @@
 .ifb \signature
     .error "LOCAL_FUNCTION \name: WebAssembly functions need their type, as in LOCAL_FUNCTION \name, (i32) -> (i32)"
 .endif
-    .section .text.\name,"",@
+    ASMSDK_FUNCTION_BEGIN 0, \name, \signature
     .type \name, @function
 \name:
     .functype \name \signature
@@ -153,7 +211,7 @@
 .ifb \signature
     .error "HIDDEN_FUNCTION \name: WebAssembly functions need their type, as in HIDDEN_FUNCTION \name, (i32) -> (i32)"
 .endif
-    .section .text.\name,"",@
+    ASMSDK_FUNCTION_BEGIN 2, \name, \signature
     .globl \name
     .hidden \name
     .type \name, @function
@@ -162,9 +220,11 @@
 .endm
 
 // end_function closes the body; a function needs no .size in a wasm object
-// (its section is its extent).
+// (its section is its extent). The .L label disarms the guard FUNCTION armed
+// (see ASMSDK_CHECK_OUTSIDE): a temporary symbol, never in the object.
 .macro ENDFUNCTION name
     end_function
+.Lasmsdk_end_\name:
 .endm
 
 // ---- Declarations ----------------------------------------------------------
@@ -231,18 +291,18 @@
 .endm
 
 // ---- The C# bindings' PROTO lines ------------------------------------------
-// Refused, with the reason, where the line is (see the header). vararg takes the
-// prototype's commas, as asmsdk-gnu.inc's PROTO does. Defined so that the line
-// gets this message rather than llvm-mc's "invalid instruction".
+// PROTO [fast] <C prototype>: see the header. The guard first: a PROTO inside a
+// function body would take the rest of the body into the record section.
 .macro PROTO text:vararg
-    .error "PROTO is not read from WebAssembly sources yet: the SDK reads the C# bindings' records from COFF, ELF and Mach-O objects only, so the library's API file describes its other RIDs. Remove the line from the wasm source."
+    ASMSDK_CHECK_OUTSIDE
+    ASMSDK_API_RECORD proto \text
 .endm
 
 // ---- The C# bindings' STRUCT lines -------------------------------------------
-// Refused as PROTO is, where the line is (see the header). vararg takes the
+// Refused, with the reason, where the line is (see the header). vararg takes the
 // fields' commas.
 .macro STRUCT name, fields:vararg
-    .error "STRUCT is not read from WebAssembly sources yet: the SDK lays the C# bindings' structs out for the COFF, ELF and Mach-O RIDs only, so the library's API file describes its other RIDs. Remove the line from the wasm source."
+    .error "STRUCT is not read from WebAssembly sources yet: the SDK gives native sources a struct's offsets as assembler constants, which llvm-mc's WebAssembly writer refuses, so a library with STRUCTs cannot build wasm RIDs yet. Remove the line from the wasm source."
 .endm
 
 .endif

@@ -1,0 +1,6 @@
+<Solution>
+  <!-- The .asmproj carries the generic project type, the one "dotnet sln add" writes for it:
+       Visual Studio and Rider load it with it like any SDK-style project. -->
+  <Project Path="AsmWasmApp.1.App/AsmWasmApp.1.App.csproj" />
+  <Project Path="AsmWasmApp.1.Native/AsmWasmApp.1.Native.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+</Solution>

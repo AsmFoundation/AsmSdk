@@ -98,11 +98,13 @@ public sealed class ExampleTests(SdkUnderTest sdk)
     // ---- Crc32C: the packages and the consumer ----
 
     /// <summary>
-    /// The asm package for .NET: each of the seven RIDs' libraries under runtimes/&lt;rid&gt;/native/
-    /// (where .NET finds a RID-specific native asset), the import libraries of the Windows DLLs
-    /// under native/ (for asm consumers), the public include file, netstandard1.0's lib/ marker
-    /// and props, and the .NET consumer targets that give a PackageReference BinariesCopyPath
-    /// (a shared library is packed, so they are there).
+    /// The asm package for .NET: each of the seven native RIDs' libraries under
+    /// runtimes/&lt;rid&gt;/native/ (where .NET finds a RID-specific native asset), the import
+    /// libraries of the Windows DLLs under native/ (for asm consumers), each WebAssembly RID's
+    /// archive (what a .NET WebAssembly app links, through the props) and module (for JavaScript
+    /// and WASI hosts) under native/ and never runtimes/, the public include file,
+    /// netstandard1.0's lib/ marker and props, and the .NET consumer targets that give a
+    /// PackageReference BinariesCopyPath (a shared library is packed, so they are there).
     /// </summary>
     [Fact]
     public void Crc32C_packs_its_library_where_dotnet_finds_it()
@@ -120,6 +122,8 @@ public sealed class ExampleTests(SdkUnderTest sdk)
                 "runtimes/linux-musl-x64/native/libcrc32c.so",
                 "runtimes/osx-x64/native/libcrc32c.dylib", "runtimes/osx-arm64/native/libcrc32c.dylib",
                 "native/win-x64/freestanding/crc32c.dll.lib", "native/win-arm64/freestanding/crc32c.dll.lib",
+                "native/browser-wasm/freestanding/crc32c.a", "native/browser-wasm/freestanding/crc32c.wasm",
+                "native/wasi-wasm/freestanding/crc32c.a", "native/wasi-wasm/freestanding/crc32c.wasm",
             },
             SdkUnderTest.PackageEntries(Path.Combine(Repo.Artifacts, "packages", "Samples.Crc32C.1.0.0.nupkg")));
     }
@@ -334,6 +338,206 @@ public sealed class ExampleTests(SdkUnderTest sdk)
         CommandResult usage = LinuxRunner.RunShell($"'./{exe}' a b");
         Assert.Equal(2, usage.ExitCode);
         Assert.Equal("usage: hexdump [file]\n", usage.StdErr);
+    }
+
+    /// <summary>HexDump's WASI command (main.wasi.s, the wasi-wasm build): a module of a few kilobytes that imports WASI alone.</summary>
+    private static readonly string HexDumpWasi = Repo.Sample("HexDump", "bin", "Release", "freestanding", "wasi-wasm", "hexdump.wasm");
+
+    /// <summary>
+    /// HexDump's WASI build is a WASI command under 4 KB: it exports _start and its memory, and
+    /// imports nothing but wasi_snapshot_preview1's functions. Every machine checks it, wasmtime
+    /// or not.
+    /// </summary>
+    [Fact]
+    public void HexDump_wasi_is_a_small_wasi_command()
+    {
+        RequireSamples();
+        WasmBinary module = WasmBinary.Read(HexDumpWasi);
+        Assert.Contains("_start", module.ExportedFunctions);
+        Assert.All(module.Imports, import => Assert.Equal("wasi_snapshot_preview1", import.Module));
+        Assert.Contains(module.Imports, import => import.Name == "path_open");
+        long size = new FileInfo(HexDumpWasi).Length;
+        Assert.True(size < 4096, $"hexdump.wasm is {size} bytes");
+    }
+
+    /// <summary>
+    /// HexDump's WASI build prints the same bytes as xxd and as the Linux build: from a file under
+    /// the folder wasmtime preopened, from standard input, and from "-". The large input (200,000
+    /// bytes) crosses the 64 KiB input buffer and the output buffer's flushes, which a short one
+    /// never reaches. (Compared with xxd itself too, byte for byte, when it was written.)
+    /// </summary>
+    [Fact]
+    public void HexDump_wasi_prints_xxd_lines()
+    {
+        RequireSamples();
+        RequireWasmtime();
+        string folder = Directory.CreateDirectory(Path.Combine(RunFolder, "hexdump-wasi")).FullName;
+        byte[] input = [.. Enumerable.Range(0, 256).Select(b => (byte)b), .. "Hello, world!\n"u8];
+        var random = new Random(7);
+        byte[] large = new byte[200_000];
+        random.NextBytes(large);
+        File.WriteAllBytes(Path.Combine(folder, "input.bin"), input);
+        File.WriteAllBytes(Path.Combine(folder, "large.bin"), large);
+
+        foreach ((string name, byte[] bytes) in new[] { ("input.bin", input), ("large.bin", large) })
+        {
+            // --dir . preopens the working directory as fd 3, where a relative name opens.
+            CommandResult run = Command.Run("wasmtime", ["run", "--dir", ".", HexDumpWasi, name], folder);
+            Assert.True(run.ExitCode == 0, run.Output);
+            Assert.Equal(Xxd(bytes), run.StdOut);
+        }
+
+        CommandResult stdin = Command.RunWithInput("wasmtime", ["run", HexDumpWasi], input, folder);
+        Assert.True(stdin.ExitCode == 0, stdin.Output);
+        Assert.Equal(Xxd(input), stdin.StdOut);
+        CommandResult dash = Command.RunWithInput("wasmtime", ["run", HexDumpWasi, "-"], input, folder);
+        Assert.Equal(Xxd(input), dash.StdOut);
+    }
+
+    /// <summary>
+    /// HexDump's WASI errors, with main.asm's words where Linux has them: a missing file (exit 1),
+    /// too many arguments (exit 2), a directory ("Is a directory", which WASI would only report at
+    /// the read as EBADF), a name outside the preopened folder (wasmtime: EPERM), and no folder
+    /// preopened at all.
+    /// </summary>
+    [Fact]
+    public void HexDump_wasi_reports_errors()
+    {
+        RequireSamples();
+        RequireWasmtime();
+        string folder = Directory.CreateDirectory(Path.Combine(RunFolder, "hexdump-wasi-errors")).FullName;
+        Directory.CreateDirectory(Path.Combine(folder, "sub"));
+        File.WriteAllText(Path.Combine(folder, "file.txt"), "x");
+        (string[] Arguments, int Exit, string StdErr)[] cases =
+        [
+            (["--dir", ".", HexDumpWasi, "no-such-file"], 1, "hexdump: no-such-file: No such file or directory\n"),
+            (["--dir", ".", HexDumpWasi, "a", "b"], 2, "usage: hexdump [file]\n"),
+            (["--dir", ".", HexDumpWasi, "sub"], 1, "hexdump: sub: Is a directory\n"),
+            (["--dir", ".", HexDumpWasi, "../file.txt"], 1, "hexdump: ../file.txt: Operation not permitted\n"),
+            ([HexDumpWasi, "file.txt"], 1, "hexdump: file.txt: No folder preopened: run it with --dir .\n"),
+        ];
+        foreach ((string[] arguments, int exit, string stderr) in cases)
+        {
+            CommandResult run = Command.Run("wasmtime", ["run", .. arguments], folder);
+            Assert.True(run.ExitCode == exit, $"{string.Join(' ', arguments)}: exit {run.ExitCode}, {run.Output}");
+            Assert.Equal(stderr, run.StdErr);
+        }
+    }
+
+    /// <summary>
+    /// "dotnet run -r wasi-wasm" builds HexDump's WASI command and runs it in wasmtime, in the
+    /// folder dotnet run was started from, with the program's arguments after "--": the same dump
+    /// as xxd's, and HexDump's exit status.
+    /// </summary>
+    [Fact]
+    public void HexDump_wasi_runs_with_dotnet_run()
+    {
+        RequireSamples();
+        RequireWasmtime();
+        string folder = Directory.CreateDirectory(Path.Combine(RunFolder, "hexdump-wasi-run")).FullName;
+        byte[] input = "dotnet run, wasmtime, WASI\n"u8.ToArray();
+        string file = Path.Combine(folder, "run.bin");
+        File.WriteAllBytes(file, input);
+        // dotnet run works in the repository root (the test environment's working directory), so
+        // the file goes by its path relative to it, inside the folder wasmtime preopens.
+        CommandResult run = sdk.DotnetRun("samples/HexDump/HexDump.asmproj", ["-c", "Release", "-r", "wasi-wasm"], Repo.Relative(file));
+        Assert.True(run.ExitCode == 0, run.Output);
+        Assert.EndsWith(Xxd(input), run.StdOut.Replace("\r\n", "\n"));
+    }
+
+    /// <summary>
+    /// Crc32C.Browser, the Crc32C sample in a .NET browser-wasm app: libcrc32c's WebAssembly half
+    /// (crc32c.wasm.s) reaches the app through Crc32C.Net, a .NET library, and is linked into its
+    /// runtime; the app's verify mode checks it against .NET's BitOperations.Crc32C and the same
+    /// slicing-by-8 in C# on lengths 0-4096 at alignments 0-7, under Node. Needs .NET's native
+    /// WebAssembly build for net10.0 (CI's Linux x64 and Windows x64 runners), like the other .NET
+    /// WebAssembly app tests; the timing mode is run by hand (results/).
+    /// </summary>
+    [Fact]
+    public void Crc32C_browser_app_agrees_with_dotnet()
+    {
+        string bundle = BuildCrc32CBrowser();
+        CommandResult run = Command.Run("node", ["main.mjs", "verify"], bundle);
+        Assert.True(run.ExitCode == 0, run.Output);
+        Assert.Contains("libcrc32c path Portable", run.StdOut, StringComparison.Ordinal);
+        Assert.Contains("verified: 123456789 = 0xE3069283; asm, .NET and C# agree", run.StdOut, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The page's path, without a browser: "node main.mjs hash &lt;file&gt;" starts the runtime
+    /// without Main and calls Page.Hash through [JSExport], as index.html does, so the export, the
+    /// bytes handed from JavaScript to .NET, and the report the page reads are checked here. The
+    /// file is the bundle's own index.html (also checking that the build deployed the page); each
+    /// implementation's line must carry the checksum computed in C#. A missing file is exit 1 with
+    /// Node's message, a missing argument exit 2.
+    /// </summary>
+    [Fact]
+    public void Crc32C_browser_app_hashes_a_file_through_the_page_export()
+    {
+        string bundle = BuildCrc32CBrowser();
+        string page = Path.Combine(bundle, "index.html");
+        Assert.True(File.Exists(page), "the build deployed no index.html into the bundle (WasmExtraFilesToDeploy)");
+        string expected = Crc32CHex(File.ReadAllBytes(page));
+
+        CommandResult hash = Command.Run("node", ["main.mjs", "hash", "index.html"], bundle);
+        Assert.True(hash.ExitCode == 0, hash.Output);
+        Assert.Contains($"index.html: {new FileInfo(page).Length} bytes (interpreter, libcrc32c path Portable)", hash.StdOut, StringComparison.Ordinal);
+        foreach (string name in new[] { "asm (crc32c.wasm.s)", ".NET BitOperations.Crc32C", "C# slicing-by-8" })
+        {
+            Assert.Matches($@"(?m)^  {Regex.Escape(name)} +{expected} +\d+\.\d MB/s$", hash.StdOut.Replace("\r\n", "\n"));
+        }
+
+        Assert.Contains("the three agree", hash.StdOut, StringComparison.Ordinal);
+
+        CommandResult missing = Command.Run("node", ["main.mjs", "hash", "no-such-file"], bundle);
+        Assert.Equal(1, missing.ExitCode);
+        Assert.Contains("hash: no-such-file: ENOENT", missing.StdErr, StringComparison.Ordinal);
+        CommandResult usage = Command.Run("node", ["main.mjs", "hash"], bundle);
+        Assert.Equal(2, usage.ExitCode);
+        Assert.Contains("usage: node main.mjs hash <file>", usage.StdErr, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Builds Crc32C.Browser in Release once per run and returns its bundle folder, or skips (fails,
+    /// when required) where Node or .NET's native WebAssembly build is missing.
+    /// </summary>
+    /// <returns>bin/Release/net10.0/browser-wasm/AppBundle of the sample.</returns>
+    /// <exception cref="Exception">Xunit's skip exception; an assertion failure when the build fails or the run is required.</exception>
+    private string BuildCrc32CBrowser()
+    {
+        WebAssemblyTests.RequireForWasmApps(Command.OnPath("node"), "No Node on PATH to run the browser-wasm app here", "browser-wasm");
+        string project = Repo.Sample("Crc32C.Browser", "Crc32C.Browser.csproj");
+        WebAssemblyTests.RequireWasmNativeBuild(sdk, project, "UsingBrowserRuntimeWorkload");
+        CommandResult build = sdk.Once("build Crc32C.Browser", () => sdk.Dotnet("build", project, "-c", "Release"));
+        Assert.True(build.ExitCode == 0, build.Tail());
+        return Repo.Sample("Crc32C.Browser", "bin", "Release", "net10.0", "browser-wasm", "AppBundle");
+    }
+
+    /// <summary>
+    /// CRC-32C in zlib's convention (the complements around the register), from .NET's
+    /// BitOperations.Crc32C one byte at a time: an independent reference for the sample's output.
+    /// </summary>
+    /// <param name="bytes">The data.</param>
+    /// <returns>The checksum as 8 uppercase hex digits, as the sample prints it.</returns>
+    private static string Crc32CHex(byte[] bytes)
+    {
+        uint crc = ~0u;
+        foreach (byte b in bytes)
+        {
+            crc = System.Numerics.BitOperations.Crc32C(crc, b);
+        }
+
+        return (~crc).ToString("X8", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>Skips the calling test when wasmtime is not on PATH.</summary>
+    /// <exception cref="Exception">Xunit's skip exception.</exception>
+    private static void RequireWasmtime()
+    {
+        if (!Command.OnPath("wasmtime"))
+        {
+            Assert.Skip("No wasmtime on PATH to run WASI programs here (https://wasmtime.dev)");
+        }
     }
 
     /// <summary>

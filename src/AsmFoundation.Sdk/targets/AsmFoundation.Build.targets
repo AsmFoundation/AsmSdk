@@ -1435,25 +1435,27 @@
   <!-- ===================================================================================== -->
 
   <!--
-    _AsmReadApi (each RID): reads the API records asmsdk.inc and asmsdk-gnu.inc write into the
-    objects (a "fn" record per function macro, a "proto" record per PROTO line, a "struct"
-    record per STRUCT line), lays the structs out with the RID's pointer size (the layout
-    _AsmReadStructs gave the assembler), checks the PROTO lines against the functions
+    _AsmReadApi (each RID): reads the API records asmsdk.inc, asmsdk-gnu.inc and asmsdk-wasm.inc
+    write into the objects (a "fn" record per function macro, a "proto" record per PROTO line, a
+    "struct" record per STRUCT line), lays the structs out with the RID's pointer size (the
+    layout _AsmReadStructs gave the assembler), checks the PROTO lines against the functions
     (AsmReadApi: ASM0130-ASM0132, ASM0134-ASM0136) and writes the RID's API file,
     <AssemblyName>.api.json, into obj/ and beside the RID's binary. No PROTO and no STRUCT
     line, no file (a stale one is deleted). Not incremental by Inputs/Outputs: it reads a few
     hundred bytes per object, and the task rewrites the file only when its content changes,
     so its timestamp still tells consumers when the API changed.
-    Not for WebAssembly (not released yet): asmsdk-wasm.inc writes no records, and the objects
-    are wasm, a format the section reader (ObjectSections) does not read, so a wasm RID
-    declares nothing and has no API file. A PROTO line in a wasm source is an .error of
-    asmsdk-wasm.inc rather than a line silently left unchecked; _AsmMergeApi leaves the wasm
-    RIDs out of its comparison.
+    WebAssembly too (not released yet; the owner's choice of 2026-11-24, "records kept in the
+    module"): asmsdk-wasm.inc writes the same records into the object's asmapi custom section,
+    each "fn" record with the function's whole wasm type, so ASM0132 compares the PROTO line,
+    lowered to wasm types, with that type exactly. The section rides into the module, where
+    JavaScript can read it (WebAssembly.Module.customSections); wasm-ld keeps it even with
+    strip-all (measured). A wasm RID's API file is what a .NET WebAssembly app's bindings come
+    from: the app's reference is built for its RID, and GetAsmApiFile answers from that build.
   -->
   <PropertyGroup>
     <_AsmApiIntermediateFile>$(AsmIntermediateDirectory)api/$(AssemblyName).api.json</_AsmApiIntermediateFile>
   </PropertyGroup>
-  <Target Name="_AsmReadApi" DependsOnTargets="AsmAssemble" Condition="'$(_AsmRid)' != '' and '$(_AsmArch)' != 'wasm'">
+  <Target Name="_AsmReadApi" DependsOnTargets="AsmAssemble" Condition="'$(_AsmRid)' != ''">
     <AsmReadApi Sources="@(_AsmSelectedSource)"
                 Library="$(AssemblyName)"
                 OutputKind="$(_AsmOutputKind)"
@@ -1476,24 +1478,21 @@
     library's API file, without the per-RID fields, beside the RID folders:
     bin/<Configuration>/<tfm>/<AssemblyName>.api.json. Conditioned on there being inner builds
     (see _AsmBuildEachRuntimeIdentifier: batching over an empty list still runs once).
-    The WebAssembly RIDs take no part (see _AsmReadApi): AsmMergeApi reads a RID without an API
-    file as one that declares nothing, so a library of native and wasm RIDs with PROTO lines
-    would otherwise stop with ASM0133 for every function. Its API file describes the other
-    RIDs; a library of wasm RIDs only has none.
+    Every RID takes part, WebAssembly included (the owner's choice of 2026-11-24, "one API for
+    every RID"): a library for linux-x64 and browser-wasm declares the same PROTO lines in its
+    .asm and its .wasm.s, or the build stops with ASM0133, as it does between Windows and
+    Linux. A C# library shared by a desktop app and a Blazor app then sees one API.
   -->
   <Target Name="_AsmMergeApi" Condition="'$(_AsmRid)' == '' and '@(_AsmInnerBuild)' != ''">
     <ItemGroup>
-      <_AsmApiRid Include="@(_AsmInnerBuild)" Condition="'%(Identity)' != 'browser-wasm' and '%(Identity)' != 'wasi-wasm'" />
-      <_AsmApiInnerProject Include="$(MSBuildProjectFullPath)" Condition="'@(_AsmApiRid)' != ''">
-        <AdditionalProperties>%(_AsmApiRid.AdditionalProperties)</AdditionalProperties>
+      <_AsmApiInnerProject Include="$(MSBuildProjectFullPath)">
+        <AdditionalProperties>%(_AsmInnerBuild.AdditionalProperties)</AdditionalProperties>
       </_AsmApiInnerProject>
     </ItemGroup>
-    <MSBuild Condition="'@(_AsmApiInnerProject)' != ''" Projects="@(_AsmApiInnerProject)" Targets="GetAsmApiFile" BuildInParallel="$(BuildInParallel)">
+    <MSBuild Projects="@(_AsmApiInnerProject)" Targets="GetAsmApiFile" BuildInParallel="$(BuildInParallel)">
       <Output TaskParameter="TargetOutputs" ItemName="_AsmApiInnerFile" />
     </MSBuild>
-    <!-- Not for a library of wasm RIDs only: RuntimeIdentifiers is required, and an empty list
-         is no value to MSBuild. -->
-    <AsmMergeApi Condition="'@(_AsmApiRid)' != ''" RuntimeIdentifiers="@(_AsmApiRid)" ApiFiles="@(_AsmApiInnerFile)" ApiFile="$(OutDir)$(AssemblyName).api.json">
+    <AsmMergeApi RuntimeIdentifiers="@(_AsmInnerBuild)" ApiFiles="@(_AsmApiInnerFile)" ApiFile="$(OutDir)$(AssemblyName).api.json">
       <Output TaskParameter="Written" PropertyName="_AsmApiMerged" />
     </AsmMergeApi>
     <ItemGroup Condition="'$(_AsmApiMerged)' != ''">
@@ -1501,7 +1500,6 @@
     </ItemGroup>
     <ItemGroup>
       <_AsmApiInnerProject Remove="@(_AsmApiInnerProject)" />
-      <_AsmApiRid Remove="@(_AsmApiRid)" />
     </ItemGroup>
   </Target>
 

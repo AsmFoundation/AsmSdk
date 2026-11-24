@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "AsmFoundation",
+  "classifications": [ "Assembly", "WebAssembly", "Console", "Solution" ],
+  "identity": "AsmFoundation.Templates.AsmWasmAppSolution",
+  "groupIdentity": "AsmFoundation.Templates.AsmWasmAppSolution",
+  "name": "Assembly + .NET WebAssembly Solution",
+  "shortName": "asmwasmapp",
+  "description": "A solution with a .NET WebAssembly app (browser-wasm, run by Node or a browser) and the WebAssembly assembly library it calls through [LibraryImport], linked into the app's runtime. Built by AsmFoundation.Sdk and the .NET SDK with the wasm-tools workload.",
+  "tags": {
+    "language": "C#",
+    "type": "solution"
+  },
+  "sourceName": "AsmWasmApp.1",
+  "defaultName": "AsmWasmApp1",
+  "preferNameDirectory": true,
+  "symbols": {
+    "SdkVersion": {
+      "type": "parameter",
+      "datatype": "string",
+      "defaultValue": "__ASMSDK_VERSION__",
+      "replaces": "ASMSDK_VERSION",
+      "displayName": "AsmFoundation.Sdk version",
+      "description": "The AsmFoundation.Sdk version the assembly project names in its Sdk attribute. Default: the version of this template package, which is released with the SDK of the same version."
+    },
+    "skipRestore": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Skip restore",
+      "description": "If specified, skips the automatic restore of the solution on create."
+    }
+  },
+  "primaryOutputs": [
+    { "path": "AsmWasmApp.1.slnx" },
+    { "path": "AsmWasmApp.1.App/AsmWasmApp.1.App.csproj" },
+    { "path": "AsmWasmApp.1.Native/AsmWasmApp.1.Native.asmproj" }
+  ],
+  "postActions": [
+    {
+      "id": "restore",
+      "condition": "(!skipRestore)",
+      "description": "Restore NuGet packages required by this solution.",
+      "manualInstructions": [ { "text": "Run 'dotnet restore'" } ],
+      "actionId": "210D431B-A78B-4D2F-B762-4ED3E3EA9025",
+      "continueOnError": true,
+      "args": {
+        "files": [ "AsmWasmApp.1.slnx" ]
+      }
+    }
+  ]
+}

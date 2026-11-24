@@ -1,13 +1,13 @@
 <Project Sdk="AsmFoundation.Sdk">
   <!--
-    A library of native and WebAssembly RIDs whose native sources carry PROTO lines for the C#
-    bindings (WebAssemblyTests): add.asm for linux-x64, add.wasm.s for browser-wasm, which
-    defines the same function and, as WebAssembly sources must for now, no PROTO line. The SDK
-    reads the API records from linux-x64's objects only (it reads COFF, ELF and Mach-O, not
-    wasm) and merges the API file from the RIDs that can declare: wasmapi.api.json in
-    bin/Release/freestanding/ and in linux-x64/, none in browser-wasm/. Before the WebAssembly
-    RIDs were left out, the browser-wasm build stopped reading its wasm objects (ASM0135), and
-    the merge would have found every function missing there (ASM0133).
+    A library of native and WebAssembly RIDs with PROTO lines for the C# bindings
+    (WebAssemblyTests): add.asm for linux-x64, add.wasm.s for browser-wasm, each with the same
+    PROTO line, as one API for every RID requires (ASM0133, the owner's choice of 2026-11-24).
+    The SDK reads the records of both RIDs' objects (the wasm ones from the object's "asmapi"
+    custom section) and writes wasmapi.api.json in linux-x64/, in browser-wasm/ and, merged, in
+    bin/Release/freestanding/. The module keeps the records: Node reads them back with
+    WebAssembly.Module.customSections. WasmBindingsApp, a .NET browser-wasm app, calls the
+    function through the bindings generated from browser-wasm's API file.
   -->
   <PropertyGroup>
     <AssemblyName>wasmapi</AssemblyName>

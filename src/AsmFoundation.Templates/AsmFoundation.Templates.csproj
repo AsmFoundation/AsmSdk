@@ -6,8 +6,11 @@
       asmexe     an assembly program on the platform's C library (dotnet run runs it)
       asmstatic  an assembly static library with a public include/ folder
       asmnet     a solution: a C# console app, the assembly library it calls, and xunit tests
+      asmwasm    a WebAssembly assembly library (browser-wasm, wasi-wasm), with run.mjs for Node
+      asmwasmapp a solution: a .NET browser-wasm app and the WebAssembly library it calls
     Measured before: "dotnet new search asm" found only WebAssembly templates, and a .NET
-    developer had to write every .asmproj and .slnx entry by hand.
+    developer had to write every .asmproj and .slnx entry by hand. The two WebAssembly
+    templates are the owner's choice of 2026-11-24 ("asmwasm + asmwasmapp").
 
     The package carries the templates under content/, as every template package does
     (PackageType Template). Packed with the SDK's version: each template's SdkVersion
@@ -19,7 +22,7 @@
     <PackageId>AsmFoundation.Templates</PackageId>
     <PackageType>Template</PackageType>
     <Title>AsmFoundation templates for dotnet new</Title>
-    <Description>dotnet new templates for assembly projects built with AsmFoundation.Sdk: an assembly library (asmlib), an assembly program (asmexe), a static library (asmstatic), and a solution with a C# app, the assembly library it calls and its tests (asmnet). The projects build for this machine with dotnet build, run with dotnet run, test with dotnet test, and target Windows, Linux and macOS on x64 and ARM64.</Description>
+    <Description>dotnet new templates for assembly projects built with AsmFoundation.Sdk: an assembly library (asmlib), an assembly program (asmexe), a static library (asmstatic), a solution with a C# app, the assembly library it calls and its tests (asmnet), a WebAssembly library (asmwasm), and a solution with a .NET WebAssembly app and the WebAssembly library it calls (asmwasmapp). The projects build for this machine with dotnet build, run with dotnet run, test with dotnet test, and target Windows, Linux and macOS on x64 and ARM64, and WebAssembly.</Description>
     <PackageTags>dotnet-new;templates;assembly;asm;nasm;native;interop;msbuild-sdk</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Nothing managed: no assembly, no dependencies, only the templates. The template

@@ -1,0 +1,145 @@
+<!doctype html>
+<!--
+  Crc32C.Browser's page: the CRC-32C of a file the visitor chooses, by the asm library
+  (crc32c.wasm.s, linked into this app's .NET runtime), by .NET's BitOperations.Crc32C and by the
+  same slicing-by-8 in C#, with each one's throughput in this browser. main.mjs does the work
+  (Page.Hash, a [JSExport] method); this file is the markup and the styles only. The build copies
+  it into the bundle (WasmExtraFilesToDeploy); serve that folder over HTTP to open it, since a
+  browser loads no module or WebAssembly from file://.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CRC-32C of a file: assembly, .NET and C# in WebAssembly</title>
+  <!-- No icon: an empty one keeps the browser from asking the server for /favicon.ico. -->
+  <link rel="icon" href="data:,">
+  <style>
+    /* AsmSdk's colors (the docs site's logo palette): ink, teal and mint on paper; night in the
+       dark scheme. System fonts only: the sample loads nothing from the network. */
+    :root {
+      color-scheme: light dark;
+      --ink: #062f2e;
+      --text: #1d2b2a;
+      --muted: #4d5f5d;
+      --face: #06706d;
+      --edge: #3eea8c;
+      --paper: #f4f9f7;
+      --line: #d9e7e3;
+      --page: #ffffff;
+      --bar: #06706d;
+      --ok: #0b6b3a;
+      --error: #b42318;
+      --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --ink: #e3f6f0;
+        --text: #d3e6e1;
+        --muted: #a1c6c0;
+        --face: #6fd8c6;
+        --edge: #3eea8c;
+        --paper: #020e0d;
+        --line: #0f3c39;
+        --page: #041716;
+        --bar: #3eea8c;
+        --ok: #7fe0a8;
+        --error: #ff8a80;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--page);
+      color: var(--text);
+      font: 1rem/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    main {
+      max-width: 46rem;
+      margin: 0 auto;
+      padding: 3.5rem 1.5rem 4rem;
+    }
+    h1 {
+      color: var(--ink);
+      font-size: clamp(1.9rem, 4vw, 2.6rem);
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      margin: 0 0 0.75rem;
+    }
+    p { margin: 0 0 1rem; max-width: 40rem; }
+    code { font-family: var(--mono); font-size: 0.9em; }
+    #zone {
+      display: grid;
+      gap: 0.5rem;
+      justify-items: start;
+      margin: 2rem 0 1rem;
+      padding: 1.5rem;
+      border: 2px dashed var(--face);
+      border-radius: 10px;
+      background: var(--paper);
+    }
+    #zone[data-over] { border-style: solid; border-color: var(--edge); }
+    #zone label { color: var(--ink); font-weight: 600; }
+    #zone input { font: inherit; color: var(--text); }
+    #zone input:focus-visible { outline: 3px solid var(--edge); outline-offset: 3px; }
+    #status { color: var(--muted); min-height: 1.55em; }
+    #status[data-state="error"] { color: var(--error); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5rem 0 0.5rem;
+      font-variant-numeric: tabular-nums;
+    }
+    th, td { text-align: left; padding: 0.6rem 0.75rem 0.6rem 0; border-bottom: 1px solid var(--line); }
+    thead th { color: var(--muted); font-weight: 500; font-size: 0.9rem; }
+    tbody th { color: var(--ink); font-weight: 600; }
+    .crc { font-family: var(--mono); }
+    .speed { width: 38%; }
+    .mbps { white-space: nowrap; }
+    .bar {
+      display: block;
+      block-size: 6px;
+      border-radius: 3px;
+      background: var(--bar);
+      margin-bottom: 0.3rem;
+    }
+    #verdict { font-weight: 600; }
+    #verdict[data-state="ok"] { color: var(--ok); }
+    #verdict[data-state="error"] { color: var(--error); }
+    .notes { margin-top: 2.5rem; color: var(--muted); font-size: 0.92rem; }
+  </style>
+  <script type="module" src="./main.mjs"></script>
+</head>
+<body>
+  <main>
+    <h1>CRC-32C of a file</h1>
+    <p>
+      The same checksum three ways, in this browser: by <code>crc32c.wasm.s</code>, the
+      WebAssembly half of the Crc32C sample's assembly library, by .NET's
+      <code>BitOperations.Crc32C</code>, and by the same table method written in C#.
+    </p>
+
+    <div id="zone">
+      <label for="file">Choose a file, or drop one here</label>
+      <input id="file" type="file" disabled>
+    </div>
+    <p id="status" role="status" aria-live="polite">Starting the .NET runtime…</p>
+
+    <div id="results" hidden>
+      <table>
+        <thead>
+          <tr><th scope="col">Implementation</th><th scope="col">CRC-32C</th><th scope="col">Throughput</th></tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <p id="verdict"></p>
+    </div>
+
+    <p class="notes">
+      The file stays in this page: it is read into memory and hashed here, never sent anywhere.
+      A small file is hashed again until each implementation has run for 100 ms; the benchmark,
+      <code>node main.mjs bench</code>, gives the measured comparison.
+    </p>
+  </main>
+</body>
+</html>

@@ -107,3 +107,49 @@ offsets past 4 GiB, with a build that starts at 0xFFFFFFF0 against `xxd -o 0xFFF
   input, against a C# rendering of xxd's format.
 - **The errors:** a missing file (exit 1, `hexdump: no-such-file: No such file or directory`) and
   two arguments (exit 2, the usage).
+
+## The WASI build
+
+> [!NOTE]
+> **Not released yet:** WebAssembly is on the main branch only (see
+> [WebAssembly](../guide/webassembly.md)).
+
+The project lists a second runtime, `wasi-wasm`, and a second source for it, `main.wasi.s`: the
+same tool as a WASI command, about 2.5 KB, which wasmtime (or any WASI host) runs, and
+`dotnet run -r wasi-wasm` starts there.
+
+```xml
+<RuntimeIdentifiers>linux-x64;wasi-wasm</RuntimeIdentifiers>
+```
+
+```text
+$ dotnet run -r wasi-wasm -- photo.jpg
+00000000: ffd8 ffe0 0010 4a46 4946 0001 0101 0048  ......JFIF.....H
+$ wasmtime run --dir . hexdump.wasm sub; echo $?
+hexdump: sub: Is a directory
+1
+```
+
+What `main.asm` asks of the kernel with `syscall`, `main.wasi.s` asks of the host with `call`, through
+the `wasi_snapshot_preview1` functions it imports: `path_open` for `openat`, `fd_read` and
+`fd_write` for `read` and `write`, `proc_exit` for `exit_group`, and `args_sizes_get` with
+`args_get` for the arguments the kernel would have put on the stack. The formatting is the same
+algorithm, written for a stack machine.
+
+- **No ambient file system.** A WASI program opens files only under the folders its host
+  preopened, as file descriptors from 3 up; `dotnet run` and `wasmtime run --dir .` give the
+  current folder as fd 3. A name outside it is refused (wasmtime 39 answers EPERM,
+  `Operation not permitted`). With no folder preopened, the tool says how to run it:
+  `No folder preopened: run it with --dir .`.
+- **A directory opens.** Under WASI a directory opens like a file and fails only when read
+  (EBADF), so the tool asks for the file's type first (`fd_filestat_get`) and says
+  `Is a directory`, as `main.asm` does.
+- **No signals,** so nothing retries EINTR. Writes may still be short; `write_all` finishes them.
+- **No assembler constants** in WebAssembly, so the buffer sizes are written where they are used.
+- **Compared with xxd itself:** all 256 byte values, 200,000 random bytes, an empty input, from a
+  file, from standard input and from `-`: byte-identical.
+
+`ExampleTests` checks the module (a WASI command under 4 KB that imports WASI alone), the output
+(a 200,000-byte input crosses the 64 KiB read buffer and the output flushes), every error with
+its words and exit status, and `dotnet run -r wasi-wasm`. The checks run wherever wasmtime is on
+`PATH`, which CI installs on all five machines.

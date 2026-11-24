@@ -23,6 +23,10 @@ machine builds both RIDs with nothing to install. What runs the outputs:
 - **JavaScript** (a browser, Node, Deno, Bun) instantiates the module and calls its exports.
 - **A WASI host** (wasmtime, edge platforms) runs the program, or the module's exports.
 
+Two of the [examples](../examples/index.md) show it in full: Crc32C builds its library for both
+wasm RIDs and `Crc32C.Browser` calls it from a .NET WebAssembly app
+([In WebAssembly](../examples/crc32c.md#in-webassembly)), and HexDump is also a WASI command
+([The WASI build](../examples/hexdump.md#the-wasi-build)).
 
 ## A first library
 
@@ -56,6 +60,18 @@ instance.exports.add(40, 2);   // 42
 
 WebAssembly names carry no `lib` prefix: the module and the archive are both named after
 `AssemblyName`.
+
+Two `dotnet new` templates start the same way (see [Projects](projects.md)):
+
+```sh
+dotnet new asmwasm -n Calc        # this library, with a run.mjs that calls it from Node
+dotnet build Calc
+node Calc/run.mjs                 # add_ints(40, 2) = 42
+
+dotnet new asmwasmapp -n Calc     # a .NET browser-wasm app and the library it calls
+dotnet workload install wasm-tools
+dotnet run --project Calc/Calc.App
+```
 
 
 ## Sources
@@ -171,6 +187,60 @@ default CPU, wasm sources may use:
 takes one away. .NET's own WebAssembly runtime is built with SIMD.
 
 
+### PROTO: the C# bindings
+
+A `PROTO` line before a `FUNCTION` declares the function's C signature for the generated C#
+bindings, as in NASM and GNU sources (see
+[Writing NASM](writing-nasm.md#proto-a-functions-c-prototype)):
+
+```asm
+PROTO int32_t add_ints(int32_t a, int32_t b)
+FUNCTION add_ints, (i32, i32) -> (i32)
+    local.get 0
+    local.get 1
+    i32.add
+ENDFUNCTION add_ints
+```
+
+- **The records.** `PROTO` and every function macro write a text record into the object's
+  `asmapi` custom section, the WebAssembly form of the `.asmapi` section native objects carry.
+  The SDK reads them after assembling each RID and writes the RID's API file, from which a
+  .NET WebAssembly app's bindings come (see [the app](#in-a-net-webassembly-app)).
+- **An exact check.** A `FUNCTION`'s record carries its whole wasm type, so `PROTO` must lower to
+  exactly that type, or the build stops with **ASM0132**. Native code can compare only an
+  argument count. The lowering is clang's for `wasm32`:
+
+  | C type | wasm type |
+  |---|---|
+  | `bool`, `char`, the integers of 32 bits or fewer, `size_t`, `intptr_t`, any pointer, a function pointer | `i32` |
+  | `int64_t`, `uint64_t` | `i64` |
+  | `float` | `f32` |
+  | `double` | `f64` |
+  | `void` (a return) | no result |
+
+- **One API for every RID.** A library for `linux-x64` and `browser-wasm` declares the same `PROTO`
+  lines in its `.asm` and its `.wasm.s`, or the build stops with **ASM0133**, as it does between
+  Windows and Linux. A C# library shared by a desktop app and a Blazor app then sees one API.
+- **The module keeps them.** wasm-ld keeps the `asmapi` section in the module it links, even with
+  `--strip-all` (measured), as a Linux `.so` keeps `.asmapi`. A JavaScript host can read the API
+  there:
+
+  ```js
+  const records = WebAssembly.Module.customSections(module, "asmapi")
+    .flatMap((s) => new TextDecoder().decode(s).split("\0").filter((r) => r));
+  // [ "proto int32_t add_ints(int32_t a, int32_t b)", "fn 1 add_ints (i32, i32) -> (i32)" ]
+  ```
+
+  Each function costs about 30 bytes, plus its PROTO line's text.
+- **Between functions.** `PROTO` goes before its `FUNCTION`, never inside a function body.
+  llvm-mc's wasm parser cannot return to the section a record leaves it in (it has no
+  `.pushsection`), and a record written inside a function body took the rest of the body with it
+  (measured: the module linked, and the function had lost its `end`). So `FUNCTION` arms a guard
+  that `ENDFUNCTION` disarms, and a `PROTO`, or a `FUNCTION`, in between stops the build: "PROTO
+  and the function macros go between functions: f has no ENDFUNCTION yet". llvm-mc reports a
+  macro's `.error` at `<instantiation>`. The note after it, "while in macro instantiation", names
+  the source line.
+
 ## Using the outputs
 
 ### In a .NET WebAssembly app
@@ -212,7 +282,37 @@ Without that native build, .NET builds the app as plain IL. It never links the a
 call into the code would fail once the app runs. So an app that links asm projects, or an asm
 package, stops with **ASM0054**, which names the fix.
 
+**Generated bindings.** When the asm sources carry `PROTO` lines (see
+[PROTO](#proto-the-c-bindings)), the app needs no `[LibraryImport]` at all: the asm project's
+WebAssembly build writes its API file, and the generator turns it into C#, as for a native app
+(see [Interop](interop.md#generated-bindings)):
+
+```csharp
+int sum = Calc.Add.AddInts(40, 2);   // the library "Calc", its source add.wasm.s, add_ints
+```
+
+An asm library can also reach the app through a .NET library that references it, as
+`samples/Crc32C.Browser` reaches `Crc32C` through `Crc32C.Net`: it is linked into the app's runtime
+the same way, and nothing is laid out or copied, since a WebAssembly app deploys no native file.
+
+`dotnet run` of a `browser-wasm` console app runs it in Node through .NET's `WasmAppHost`, which
+needs a `runtimeconfig.template.json` naming the host, as .NET's `wasmconsole` template has one.
+Without it, `dotnet run` stops with "no perHostConfigs found". The `asmwasmapp` template
+carries one:
+
+```json
+{ "wasmHostProperties": { "perHostConfig": [ { "name": "node", "js-path": "main.mjs", "host": "nodejs" } ] } }
+```
+
 An asm *program* (`Exe`) is not delivered to a WebAssembly app: nothing there could start it.
+
+**Timing asm against C# in a browser: measure a publish, or set `WasmDebugLevel` to 0.** A
+browser app's *build* bundle says `debugLevel: -1`, and in Chromium and Firefox .NET then starts
+its runtime with the debugger on: the interpreter keeps every method unoptimized and the
+jiterpreter compiles no hot loop. Measured with `samples/Crc32C.Browser` in headless Chrome: its
+C# ran at 5 to 7 MB/s with the debugger on (0 traces compiled) and 134 MB/s without. Node never
+turns the debugger on, so the same bundle is fast there. A publish writes `debugLevel: 0`, and
+`<WasmDebugLevel>0</WasmDebugLevel>` makes a build do the same.
 
 ### Standalone modules
 
@@ -307,17 +407,25 @@ Each was measured with the bundled LLVM 23.1.5 and .NET 10.0.15:
 - **`libc` builds no module.** The bundled wasm-ld links no C library, so a `libc` `Library` or
   `Exe` for WebAssembly is **ASM0016**. A `libc` `StaticLibrary` builds: the .NET app that links
   it brings the C library (Emscripten's, or wasi-libc).
-- **No `PROTO` or `STRUCT` lines yet.** A `STRUCT` line stops the build the same way ("STRUCT
-  is not read from WebAssembly sources yet"): the SDK lays structs out for the native RIDs only.
-  The C# bindings' `PROTO` lines (see
-  [Writing NASM](writing-nasm.md#proto-a-functions-c-prototype)) are read from COFF, ELF and
-  Mach-O objects only. In a wasm source, `PROTO` stops the build with
-  "PROTO is not read from WebAssembly sources yet". The wasm RIDs write no API file, and a
-  library's API file describes its other RIDs, so a .NET WebAssembly app gets no generated
-  bindings: it writes its `[DllImport]` declarations itself. llvm-mc reports this error, like
-  any `.error` of a macro, at `<instantiation>`; the note after it, "while in macro
-  instantiation", names the source line.
-
+- **No `STRUCT` lines yet.** A `STRUCT` line stops the build ("STRUCT is not read from
+  WebAssembly sources yet"). The SDK hands native sources a struct's offsets as assembler
+  constants, and llvm-mc's wasm writer refuses every constant, even a `.L` one: `i32.const .LX`
+  becomes a relocation, never an immediate (measured). With one API for every RID, a library
+  whose `PROTO` lines take its structs cannot build wasm RIDs yet.
+- **An untyped `select` does not assemble.** llvm-mc 23.1.5's type checker refuses even a plain
+  three-operand `select` ("type mismatch, expected [i32] but got [i32, i32]"). Write an `if` with a
+  result:
+  ```asm
+  if i32
+      local.get 0
+  else
+      i32.const 46
+  end_if
+  ```
+- **`.set` cannot be redefined.** llvm-mc's wasm target stops with "LLVM ERROR: .set redefinition
+  is not supported", even for a `.L` name, so a macro cannot keep a counter or a flag in a
+  symbol. A label (defined once) and a macro that is purged and defined again can stand in, as
+  the PROTO guard does.
 
 ## Diagnostics
 
@@ -330,5 +438,8 @@ Each was measured with the bundled LLVM 23.1.5 and .NET 10.0.15:
 | `ASM0021` | A `.asm` file qualified for WebAssembly. | WebAssembly goes in `.s` files. |
 | `ASM0023` | A wasm RID with no source qualified for it. | Add `name.wasm.s`, or remove the RID. |
 | `ASM0030` | A pattern in a module's `ExportsFile`. | List exact names. |
+| `ASM0131` | A `PROTO` line for no function this image offers: no `FUNCTION` of that name, a `LOCAL_FUNCTION`, or a `HIDDEN_FUNCTION` of a module. | Declare the function with `FUNCTION`. |
+| `ASM0132` | A `PROTO` line that lowers to another wasm type than its `FUNCTION` declares (`int64_t` is `i64`, `double` is `f64`). | Make them agree. |
+| `ASM0133` | The library's RIDs declare a function differently, WebAssembly included: one `PROTO` line in `add.asm` and none in `add.wasm.s`. | Declare it the same way in every RID's source. |
 | `ASM0054` | A .NET WebAssembly app links asm projects or an asm package, and .NET has no native WebAssembly build for the app's .NET version: the app would build without the asm code. | The workload the message names (`wasm-tools`, `wasi-experimental`, or `wasm-tools-net10` for a `net10.0` app on a later SDK), or the SDK of the app's own .NET. |
 | `ASM0005` | `AsmToolchain=System` without `AsmLinkerCommand` for a linked wasm output. | `AsmLinkerCommand=wasm-ld`, with `AsmArchiverCommand=llvm-ar`. |

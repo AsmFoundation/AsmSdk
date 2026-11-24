@@ -42,6 +42,7 @@ public sealed class WasmBinary
         var imports = new List<WasmEntry>();
         var exports = new List<WasmEntry>();
         var custom = new List<string>();
+        var payloads = new Dictionary<string, List<byte>>(StringComparer.Ordinal);
         var ids = new List<int>();
         int position = 8;
         while (position < bytes.Length)
@@ -59,8 +60,20 @@ public sealed class WasmBinary
             switch (id)
             {
                 case 0:
-                    custom.Add(ReadName(bytes, ref cursor));
+                {
+                    string name = ReadName(bytes, ref cursor);
+                    custom.Add(name);
+                    // Several sections of one name read as one payload, in order, as the SDK
+                    // reads its records (ObjectSections.ReadWasm).
+                    if (!payloads.TryGetValue(name, out List<byte>? payload))
+                    {
+                        payloads[name] = payload = new List<byte>();
+                    }
+
+                    payload.AddRange(new ArraySegment<byte>(bytes, cursor, end - cursor));
                     break;
+                }
+
                 case 2:
                     for (uint count = ReadUnsigned(bytes, ref cursor), i = 0; i < count; i++)
                     {
@@ -90,6 +103,7 @@ public sealed class WasmBinary
         Imports = imports;
         Exports = exports;
         CustomSections = custom;
+        _customPayloads = payloads.ToDictionary(p => p.Key, p => p.Value.ToArray(), StringComparer.Ordinal);
         SectionIds = ids;
     }
 
@@ -99,8 +113,23 @@ public sealed class WasmBinary
     /// <summary>Everything the binary exports, in order (a relocatable object exports nothing).</summary>
     public IReadOnlyList<WasmEntry> Exports { get; }
 
+    /// <summary>Each custom section's payload (after its name), by name.</summary>
+    private readonly Dictionary<string, byte[]> _customPayloads;
+
     /// <summary>The names of the custom sections ("name", "linking", ".debug_info", ...).</summary>
     public IReadOnlyList<string> CustomSections { get; }
+
+    /// <summary>
+    /// The NUL-terminated text records of a custom section, in order: what asmsdk-wasm.inc writes
+    /// into "asmapi" ("proto ...", "fn ..."), as JavaScript's WebAssembly.Module.customSections
+    /// would hand them over.
+    /// </summary>
+    /// <param name="name">The custom section's name.</param>
+    /// <returns>The records; empty when the binary has no such section.</returns>
+    public IReadOnlyList<string> CustomRecords(string name) =>
+        _customPayloads.TryGetValue(name, out byte[]? payload)
+            ? System.Text.Encoding.UTF8.GetString(payload).Split('\0', StringSplitOptions.RemoveEmptyEntries)
+            : Array.Empty<string>();
 
     /// <summary>The id of every section, in order (1 type, 2 import, 3 function, 7 export, 10 code, 11 data, ...).</summary>
     public IReadOnlyList<int> SectionIds { get; }

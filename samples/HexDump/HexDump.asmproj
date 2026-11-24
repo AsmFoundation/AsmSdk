@@ -1,16 +1,22 @@
 <Project Sdk="AsmFoundation.Sdk">
   <!--
-    HexDump: an xxd-style hex dump with no libc at all, hexdump [file]. Builds
-    bin/<Configuration>/freestanding/linux-x64/hexdump, a static executable of a few kilobytes: no
-    interpreter, no DT_NEEDED, nothing to install next to it.
+    HexDump: an xxd-style hex dump with no libc at all, hexdump [file], for two platforms:
+      linux-x64   main.asm, bin/<Configuration>/freestanding/linux-x64/hexdump: a static
+                  executable of a few kilobytes (no interpreter, no DT_NEEDED)
+      wasi-wasm   main.wasi.s, bin/<Configuration>/freestanding/wasi-wasm/hexdump.wasm: a WASI
+                  command that wasmtime (or any WASI host) runs, and "dotnet run -r wasi-wasm"
+                  starts there
 
-    What it shows: a freestanding program (the default TargetFramework) entered at _start, using
-    only the syscall instruction, and doing what libc would otherwise do for it: buffered
-    output, retrying interrupted system calls, finishing short writes, messages for errno values.
+    What it shows: a freestanding program (the default TargetFramework) entered at _start that
+    does what libc would otherwise do for it: buffered output, finishing short writes, messages
+    for errno values. main.asm uses the syscall instruction only, and retries the calls a signal
+    interrupted; main.wasi.s calls the WASI functions it imports, and opens files under the
+    folder its host preopened. Both print the same bytes.
   -->
   <PropertyGroup>
-    <!-- Linux x64 only: the code makes Linux system calls (or links glibc). -->
-    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+    <!-- Linux x64 (main.asm makes Linux system calls) and WASI (main.wasi.s): each RID builds
+         the source qualified for it. -->
+    <RuntimeIdentifiers>linux-x64;wasi-wasm</RuntimeIdentifiers>
     <OutputType>Exe</OutputType>
     <AssemblyName>hexdump</AssemblyName>
   </PropertyGroup>

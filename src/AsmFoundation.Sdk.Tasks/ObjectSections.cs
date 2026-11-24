@@ -6,8 +6,9 @@ namespace AsmFoundation.Sdk.Tasks;
 
 /// <summary>
 /// Reads one named section's bytes from an object file of any format the SDK's assemblers write:
-/// COFF (win-x64, win-arm64), 64-bit little-endian ELF (Linux) and 64-bit Mach-O (macOS). Just
-/// enough of each format to find a section by name; not a general object reader.
+/// COFF (win-x64, win-arm64), 64-bit little-endian ELF (Linux), 64-bit Mach-O (macOS) and
+/// WebAssembly (browser-wasm, wasi-wasm). Just enough of each format to find a section by name;
+/// not a general object reader.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -20,11 +21,19 @@ namespace AsmFoundation.Sdk.Tasks;
 /// Each format names the section its own way: COFF and ELF by section name (".asmapi"), Mach-O
 /// by segment and section ("__DWARF", "__asmapi"), the names asmsdk.inc and asmsdk-gnu.inc
 /// write. A name longer than COFF's eight characters is looked up in the string table, as COFF
-/// stores it ("/offset").
+/// stores it ("/offset"). WebAssembly holds the records in a custom section named without the
+/// dot ("asmapi"): llvm-mc turns asmsdk-wasm.inc's <c>.section .custom_section.asmapi</c> into a
+/// custom section of the rest of the name (measured with llvm-mc 23.1.5).
 /// </para>
 /// </remarks>
 internal static class ObjectSections
 {
+    /// <summary>A WebAssembly binary's magic, "\0asm", as a little-endian 32-bit value.</summary>
+    private const uint WasmMagic = 0x6D736100;
+
+    /// <summary>A WebAssembly binary's version: 1, for modules and relocatable objects alike.</summary>
+    private const uint WasmVersion = 1;
+
     /// <summary>COFF's machine field for x86-64.</summary>
     private const ushort CoffMachineAmd64 = 0x8664;
 
@@ -41,13 +50,13 @@ internal static class ObjectSections
     /// Reads a section of an object file, found by its name in whichever format the file is.
     /// </summary>
     /// <param name="path">The object file.</param>
-    /// <param name="name">The section's name in COFF and ELF (".asmapi").</param>
+    /// <param name="name">The section's name in COFF and ELF (".asmapi"); WebAssembly's custom section is the same name without its leading dot.</param>
     /// <param name="machOSegment">The segment that holds it in Mach-O ("__DWARF").</param>
     /// <param name="machOSection">Its section name in Mach-O ("__asmapi").</param>
     /// <returns>The section's bytes; null when the object has no such section.</returns>
     /// <exception cref="IOException">The file cannot be read.</exception>
     /// <exception cref="UnauthorizedAccessException">The file cannot be opened.</exception>
-    /// <exception cref="InvalidDataException">The file is none of the three formats, or its headers point outside it.</exception>
+    /// <exception cref="InvalidDataException">The file is none of the four formats, or its headers point outside it.</exception>
     internal static byte[]? Read(string path, string name, string machOSegment, string machOSection)
     {
         byte[] data = File.ReadAllBytes(path);
@@ -66,7 +75,97 @@ internal static class ObjectSections
             return ReadCoff(data, name, path);
         }
 
-        throw new InvalidDataException($"{path} is not a COFF, ELF64 or Mach-O 64 object file");
+        if (data.Length >= 8 && U32(data, 0) == WasmMagic)
+        {
+            return ReadWasm(data, name.TrimStart('.'), path);
+        }
+
+        throw new InvalidDataException($"{path} is not a COFF, ELF64, Mach-O 64 or WebAssembly object file");
+    }
+
+    /// <summary>
+    /// Finds a WebAssembly object's custom section by name: the payload after its name, or the
+    /// payloads of every custom section of that name, in order, when there are several.
+    /// </summary>
+    /// <param name="data">The file's bytes.</param>
+    /// <param name="name">The custom section's name ("asmapi").</param>
+    /// <param name="path">The file, for messages.</param>
+    /// <returns>The section's bytes, or null when the object has no custom section of that name.</returns>
+    /// <exception cref="InvalidDataException">Not version 1, or a section or its name runs past the end of the file.</exception>
+    /// <remarks>
+    /// The format is a sequence of sections, each an id byte and a LEB128 size; a custom section
+    /// (id 0) starts with its name, a LEB128 length and UTF-8 bytes. llvm-mc merges every
+    /// <c>.custom_section.asmapi</c> fragment of a source into one section in source order
+    /// (measured), but the binary format allows several sections of one name, and the records
+    /// are text that concatenates: reading them all keeps a later writer's split harmless.
+    /// </remarks>
+    private static byte[]? ReadWasm(byte[] data, string name, string path)
+    {
+        if (U32(data, 4) != WasmVersion)
+        {
+            throw new InvalidDataException($"{path} is a WebAssembly binary of version {U32(data, 4)}, not 1");
+        }
+
+        MemoryStream? found = null;
+        int position = 8;
+        while (position < data.Length)
+        {
+            byte id = data[position++];
+            ulong size = Leb128(data, ref position, path);
+            if (size > (ulong)(data.Length - position))
+            {
+                throw new InvalidDataException($"{path}: a WebAssembly section runs past the end of the file");
+            }
+
+            int end = position + (int)size;
+            if (id == 0)
+            {
+                ulong nameLength = Leb128(data, ref position, path);
+                if (nameLength > (ulong)(end - position))
+                {
+                    throw new InvalidDataException($"{path}: a WebAssembly custom section's name runs past its section");
+                }
+
+                string sectionName = Encoding.UTF8.GetString(data, position, (int)nameLength);
+                position += (int)nameLength;
+                if (sectionName == name)
+                {
+                    found ??= new MemoryStream();
+                    found.Write(data, position, end - position);
+                }
+            }
+
+            position = end;
+        }
+
+        return found?.ToArray();
+    }
+
+    /// <summary>Reads an unsigned LEB128 value (WebAssembly's sizes and counts) and moves past it.</summary>
+    /// <param name="data">The file's bytes.</param>
+    /// <param name="position">Where the value starts; on return, the byte after it.</param>
+    /// <param name="path">The file, for messages.</param>
+    /// <returns>The value.</returns>
+    /// <exception cref="InvalidDataException">The value runs past the end of the file, or past the 35 bits a WebAssembly u32 may use.</exception>
+    private static ulong Leb128(byte[] data, ref int position, string path)
+    {
+        ulong value = 0;
+        for (int shift = 0; shift < 35; shift += 7)
+        {
+            if (position >= data.Length)
+            {
+                throw new InvalidDataException($"{path}: a WebAssembly size runs past the end of the file");
+            }
+
+            byte part = data[position++];
+            value |= (ulong)(part & 0x7F) << shift;
+            if ((part & 0x80) == 0)
+            {
+                return value;
+            }
+        }
+
+        throw new InvalidDataException($"{path}: a WebAssembly size is longer than five bytes");
     }
 
     /// <summary>Finds a section of an ELF64 little-endian object by name (through the section-name string table).</summary>

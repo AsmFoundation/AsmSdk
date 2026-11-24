@@ -19,6 +19,8 @@ dotnet test
 | Assembly Console App | `asmexe` | a program on the platform's C library; `dotnet run` builds and runs it |
 | Assembly Static Library | `asmstatic` | a static library with a public `include/` folder, for other assembly projects |
 | Assembly + .NET Solution | `asmnet` | a `.slnx` with a C# console app, the assembly library, and xunit tests |
+| Assembly WebAssembly Library | `asmwasm` | a WebAssembly library (`add.wasm.s`) for `browser-wasm` and `wasi-wasm`, and a `run.mjs` that calls it from Node |
+| Assembly + .NET WebAssembly Solution | `asmwasmapp` | a `.slnx` with a .NET `browser-wasm` app and the WebAssembly library it calls (needs the `wasm-tools` workload) |
 
 - **Builds for this machine first.** A project that lists no `RuntimeIdentifiers` builds for the
   build machine's platform. List the platforms to ship in the project:
@@ -30,5 +32,8 @@ dotnet test
   `<ProjectReference Include="../Native/Native.asmproj" />`.
 - **`--sdk-version`** picks the AsmFoundation.Sdk version the projects name; it defaults to this
   package's version.
+- **WebAssembly:** `dotnet new asmwasm -n Calc`, `dotnet build`, then `node Calc/run.mjs` prints
+  `add_ints(40, 2) = 42`. `dotnet new asmwasmapp -n Calc` makes the .NET side too:
+  `dotnet workload install wasm-tools`, then `dotnet run --project Calc/Calc.App`.
 
 Documentation: <https://asmfoundation.github.io/AsmSdk/>.

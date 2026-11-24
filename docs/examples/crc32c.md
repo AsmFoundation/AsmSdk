@@ -283,6 +283,107 @@ public static unsafe partial class Crc32C
 - **The library loads at the first call.** On a platform none of the seven builds serves
   (32-bit x86, for one), that call throws `DllNotFoundException`.
 
+## In WebAssembly
+
+> [!NOTE]
+> **Not released yet:** WebAssembly is on the main branch only (see
+> [WebAssembly](../guide/webassembly.md)).
+
+The project lists two more RIDs, `browser-wasm` and `wasi-wasm`, and a third source,
+`crc32c.wasm.s`, that builds them: the same five exports, the same checksums, as a WebAssembly
+module (`crc32c.wasm`) and the archive a .NET WebAssembly app links (`crc32c.a`). `dotnet pack`
+puts both under `native/<rid>/freestanding/` in the package, next to the seven native libraries.
+
+WebAssembly has no CRC instruction and no carry-less multiply, not in SIMD128 and not in
+relaxed SIMD, so there is one real path, a table one. It is the fast table method, not the x64
+fallback's byte at a time: **slicing-by-8**, eight 256-entry tables that advance the checksum 8
+bytes per step. Each step is eight independent lookups, which the engine can overlap; one table
+would make a chain of eight dependent ones.
+
+```asm
+        ADDRESS tables          // the tables' address (asmsdk-wasm.inc)
+        local.get 3             // the first 4 bytes, xor the checksum
+        i32.const 255
+        i32.and
+        i32.const 2
+        i32.shl
+        i32.add
+        i32.load 7168           // T7[one & 255]: the load's offset immediate picks the table
+```
+
+- **The tables are computed at the first call.** NASM builds the x64 table while it assembles;
+  WebAssembly has no assembler constants at all (see
+  [the footguns](../guide/webassembly.md#footguns)), so `crc32c_init` fills the 8 KB once, into
+  zero-filled memory, before the first checksum: 2,048 values, about 10 µs in Node 22 (V8).
+- **`crc32c_implementation` returns 1,** portable. `crc32c_append` and `crc32c_append_portable`
+  run the same function; the two hardware exports trap (`unreachable`), as a hardware path
+  faults on an x64 CPU without the instructions. `Crc32C.IsSupported` is false for both there,
+  so `Crc32C.Net` never calls them.
+- **The polynomial is a plain `i32.const 0x82F63B78`.** WebAssembly's constants are signed;
+  llvm-mc wraps a value above `0x7FFFFFFF` to the same 32 bits (`-2097792136` gives identical
+  bytes).
+
+[`samples/Crc32C.Browser`](https://github.com/AsmFoundation/AsmSdk/tree/main/samples/Crc32C.Browser)
+is a .NET WebAssembly app with one `ProjectReference`, to `Crc32C.Net`. The consumer targets build
+`Crc32C.asmproj` for `browser-wasm` and link its archive into the app's runtime, so the
+unchanged `[LibraryImport("crc32c")]` calls reach `crc32c.wasm.s`. It runs in Node (V8, Chrome's
+engine) or a browser:
+
+```text
+$ dotnet run -c Release -- verify
+Crc32C.Browser: browser-wasm, .NET 10.0.15, interpreter, libcrc32c path Portable
+verified: 123456789 = 0xE3069283; asm, .NET and C# agree on lengths 0-4096 at alignments 0-7, and on a chained append
+```
+
+| Mode | What it does |
+|---|---|
+| `verify` | checks the library against .NET's own CRC-32C (`BitOperations.Crc32C`, a software path on WebAssembly) and against the same slicing-by-8 written in C# |
+| `bench` | times all three in the same engine, in paired rounds |
+| `hash <file>` | what the page shows, for one file: each implementation's checksum and throughput |
+| the page | `index.html` in the bundle: choose or drop a file, and the browser checksums it all three ways |
+
+The page and `hash` start the runtime without `Main` and call one `[JSExport]` method,
+`Page.Hash`, with the file's bytes. To open the page, serve the bundle folder over HTTP (a browser
+loads no module or WebAssembly from `file://`), for example:
+
+```sh
+python -m http.server 8000 --directory bin/Release/net10.0/browser-wasm/AppBundle
+```
+
+`bench` measures both of .NET's ways to run the C#: Mono's interpreter, a .NET WebAssembly app's
+default, and ahead-of-time compilation (`dotnet publish -c Release -p:RunAOTCompilation=true`:
+.NET compiles a WebAssembly app ahead of time only when it publishes it, and a build with the
+property set still interprets). The app needs the `wasm-tools` workload, so it is not in
+`Samples.slnx`.
+
+**Measured** on one performance core of an i9-13900K, in Node 22.14 and Chrome 156, three runs
+each ([results](https://github.com/AsmFoundation/AsmSdk/tree/main/samples/Crc32C.Browser/results/2026-11-24-i9-13900K)),
+at 1 MiB:
+
+| C# runs | asm | .NET `BitOperations.Crc32C` | C# slicing-by-8 |
+|---|---:|---:|---:|
+| interpreted, Node | **1237 MB/s** | 186 MB/s (asm 6.66x) | 239 MB/s (asm 5.18x) |
+| interpreted, Chrome | **1247 MB/s** | 73 MB/s (asm 17.1x) | 157 MB/s (asm 7.97x) |
+| AOT, Node | 1236 MB/s | 280 MB/s (asm 4.42x) | **1267 MB/s** (asm 0.98x) |
+| AOT, Chrome | **1249 MB/s** | 290 MB/s (asm 4.32x) | 1181 MB/s (asm 1.06x) |
+
+- **Against .NET's CRC-32C, the method wins:** .NET has no CRC instruction on WebAssembly and
+  reads one table once per byte, where slicing-by-8 makes eight independent reads per 8 bytes.
+- **Against the same method in C#, AOT is a tie:** from 4 KiB up, the asm is 0.98 to 1.07 times
+  the AOT-compiled C#. Hand-writing it pays only against the interpreter, .NET's default, where
+  the asm is 4.9 to 8.0 times faster.
+- **At 64 bytes the call weighs as much as the work** (the asm reaches a fifth of its large-input
+  speed when interpreted C# calls it); see the results for every size.
+
+> [!TIP]
+> **Measure a publish, or set `WasmDebugLevel` to 0.** A .NET browser app's *build* bundle says
+> `debugLevel: -1`, and in Chromium and Firefox the runtime then starts with its debugger on: the
+> interpreter keeps every method unoptimized, and the jiterpreter (which compiles hot interpreted
+> loops to WebAssembly) compiles nothing. Measured in headless Chrome: the C# slicing-by-8 ran at
+> 5 to 7 MB/s, with 0 traces compiled, against 134 MB/s with `debugLevel: 0`. Node never turns
+> the debugger on, so it hides the difference. `Crc32C.Browser` sets `WasmDebugLevel` to 0 in
+> Release; a publish does it by default.
+
 ## How it is checked
 
 - **[Its own tests](testing-and-benchmarks.md):** 21 xunit tests run every path against a C#
@@ -293,4 +394,6 @@ public static unsafe partial class Crc32C
   the exact exported names and their version, no `DT_NEEDED` and no text relocation, the
   constants NASM computed (`0x170076FA`, `0xDD7E3B0C`, `0x0D3B6092`, `0x9E4ADDF8` and the
   table's first entries), the packages with their seven RIDs, and the library's tests and
-  benchmark check on the machine running them.
+  benchmark check on the machine running them. On main, the package also carries the two wasm
+  RIDs' module and archive, and `Crc32C.Browser` runs `verify` in Node wherever the
+  `wasm-tools` workload is (CI: Linux x64 and Windows x64).

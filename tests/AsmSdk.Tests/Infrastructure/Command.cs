@@ -92,7 +92,47 @@ internal static class Command
     /// <param name="environment">Variables to set (a null value removes the variable); null to inherit the test process's environment unchanged.</param>
     /// <returns>The exit status and the captured output; exit status -1 when it timed out and was killed.</returns>
     /// <exception cref="System.ComponentModel.Win32Exception">The program could not be started (not found).</exception>
-    private static CommandResult Run(ProcessStartInfo start, IReadOnlyDictionary<string, string?>? environment)
+    /// <summary>
+    /// Runs a program with bytes on its standard input, as a shell's "&lt; file" gives them, and
+    /// captures its output: for a program whose input path is the point of the test (a WASI
+    /// command reading fd 0 under wasmtime, where no shell is at hand on every OS).
+    /// </summary>
+    /// <param name="fileName">The program (a path, or a name found on PATH).</param>
+    /// <param name="arguments">Its arguments, each passed as one argument.</param>
+    /// <param name="standardInput">Everything the program reads from standard input; the stream is closed after it, so the program sees its end.</param>
+    /// <param name="workingDirectory">The working directory; null for the repository root.</param>
+    /// <returns>The exit status and the captured output. Never throws for a non-zero exit: tests check.</returns>
+    /// <exception cref="System.ComponentModel.Win32Exception">The program could not be started (not found).</exception>
+    /// <remarks>
+    /// The input is written from a task while the outputs are read: written first in full, a
+    /// large input would deadlock against a child that fills its output pipe before it reads on.
+    /// A child that exits without reading it all closes the pipe, which the writer then ignores.
+    /// </remarks>
+    public static CommandResult RunWithInput(string fileName, IEnumerable<string> arguments, byte[] standardInput, string? workingDirectory = null)
+    {
+        var start = new ProcessStartInfo(fileName)
+        {
+            WorkingDirectory = workingDirectory ?? Repo.Root,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        foreach (string argument in arguments)
+        {
+            start.ArgumentList.Add(argument);
+        }
+
+        return Run(start, null, standardInput);
+    }
+
+    /// <summary>Starts a process, waits for it (killing its tree on timeout) and captures both outputs.</summary>
+    /// <param name="start">How to start it (both outputs redirected; standard input too when there is input to give).</param>
+    /// <param name="environment">Variables to set (a null value removes the variable), or null.</param>
+    /// <param name="standardInput">Bytes for its standard input, or null when it is not redirected.</param>
+    /// <returns>The exit status and the captured output.</returns>
+    /// <exception cref="System.ComponentModel.Win32Exception">The program could not be started.</exception>
+    private static CommandResult Run(ProcessStartInfo start, IReadOnlyDictionary<string, string?>? environment, byte[]? standardInput = null)
     {
         if (environment is not null)
         {
@@ -112,6 +152,24 @@ internal static class Command
         using Process process = Process.Start(start)!;
         Task<string> stdout = process.StandardOutput.ReadToEndAsync();
         Task<string> stderr = process.StandardError.ReadToEndAsync();
+        Task? input = null;
+        if (standardInput is not null)
+        {
+            input = Task.Run(() =>
+            {
+                try
+                {
+                    process.StandardInput.BaseStream.Write(standardInput, 0, standardInput.Length);
+                    process.StandardInput.Close();
+                }
+                catch (IOException)
+                {
+                    // The child exited (or closed its input) before reading everything: what it
+                    // did is in its exit status and output, which the test checks.
+                }
+            });
+        }
+
         if (!process.WaitForExit(Timeout))
         {
             process.Kill(entireProcessTree: true);
@@ -120,7 +178,9 @@ internal static class Command
         }
 
         // WaitForExit(TimeSpan) does not wait for the redirected streams; the reads finish
-        // when the child closes its ends, right after it exits.
+        // when the child closes its ends, right after it exits. The input writer ends as the
+        // child does (its pipe closes), so waiting for it only collects it.
+        input?.Wait(TimeSpan.FromSeconds(10));
         return new CommandResult(process.ExitCode, stdout.Result, stderr.Result);
     }
 

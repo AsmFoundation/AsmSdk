@@ -1,0 +1,18 @@
+<Project Sdk="AsmFoundation.Sdk/ASMSDK_VERSION">
+  <!--
+    AsmWasmApp.1.Native: the WebAssembly assembly library that AsmWasmApp.1.App calls. add.wasm.s
+    is the code, in LLVM's WebAssembly assembly. Built for browser-wasm, the app's runtime: its
+    archive (AsmWasmApp.1.Native.a) is linked into the app's dotnet.native.wasm when the app
+    builds, and its module (AsmWasmApp.1.Native.wasm) serves JavaScript too.
+
+    A WASI app (RuntimeIdentifier wasi-wasm, the wasi-experimental workload and the WASI SDK)
+    takes it as well once its RID is listed here:
+      <RuntimeIdentifiers>browser-wasm;wasi-wasm</RuntimeIdentifiers>
+
+    The SDK version is the one on the first line; change it there to upgrade.
+    Documentation: https://asmfoundation.github.io/AsmSdk/guide/webassembly.html
+  -->
+  <PropertyGroup>
+    <RuntimeIdentifiers>browser-wasm</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

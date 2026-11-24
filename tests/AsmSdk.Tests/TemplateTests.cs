@@ -22,8 +22,8 @@ namespace AsmSdk.Tests;
 /// </remarks>
 public sealed class TemplateTests(SdkUnderTest sdk)
 {
-    /// <summary>The four templates' short names, as dotnet new lists them.</summary>
-    private static readonly string[] ShortNames = ["asmexe", "asmlib", "asmnet", "asmstatic"];
+    /// <summary>The six templates' short names, as dotnet new lists them.</summary>
+    private static readonly string[] ShortNames = ["asmexe", "asmlib", "asmnet", "asmstatic", "asmwasm", "asmwasmapp"];
 
     /// <summary>
     /// An MSBuild or NuGet warning line ("warning NU5128: ..."): dotnet pack prints no warning
@@ -46,11 +46,11 @@ public sealed class TemplateTests(SdkUnderTest sdk)
     }
 
     /// <summary>
-    /// The package holds the four templates under content/, each with its .template.config
+    /// The package holds the six templates under content/, each with its .template.config
     /// (which NuGet would leave out, starting with a dot, unless told), and nothing compiled.
     /// </summary>
     [Fact]
-    public void The_package_holds_the_four_templates()
+    public void The_package_holds_the_six_templates()
     {
         Assert.Equal(
             new SortedSet<string>(StringComparer.Ordinal)
@@ -69,6 +69,13 @@ public sealed class TemplateTests(SdkUnderTest sdk)
                 "content/asmstatic/.template.config/dotnetcli.host.json", "content/asmstatic/.template.config/template.json",
                 "content/asmstatic/AsmStatic.1.asmproj", "content/asmstatic/include/AsmStatic.1.inc",
                 "content/asmstatic/mul.asm", "content/asmstatic/mul.s",
+                "content/asmwasm/.template.config/dotnetcli.host.json", "content/asmwasm/.template.config/template.json",
+                "content/asmwasm/AsmWasm.1.asmproj", "content/asmwasm/add.wasm.s", "content/asmwasm/run.mjs",
+                "content/asmwasmapp/.template.config/dotnetcli.host.json", "content/asmwasmapp/.template.config/template.json",
+                "content/asmwasmapp/AsmWasmApp.1.App/AsmWasmApp.1.App.csproj", "content/asmwasmapp/AsmWasmApp.1.App/Program.cs",
+                "content/asmwasmapp/AsmWasmApp.1.App/main.mjs", "content/asmwasmapp/AsmWasmApp.1.App/runtimeconfig.template.json",
+                "content/asmwasmapp/AsmWasmApp.1.Native/AsmWasmApp.1.Native.asmproj", "content/asmwasmapp/AsmWasmApp.1.Native/add.wasm.s",
+                "content/asmwasmapp/AsmWasmApp.1.slnx",
             },
             SdkUnderTest.PackageEntries(Package));
     }
@@ -207,20 +214,7 @@ public sealed class TemplateTests(SdkUnderTest sdk)
     public void Every_template_builds_for_all_eight_rids()
     {
         string output = Install();
-        File.WriteAllText(Path.Combine(output, "nuget.config"), $"""
-            <?xml version="1.0" encoding="utf-8"?>
-            <configuration>
-              <packageSources>
-                <clear />
-                <add key="local" value="{Path.Combine(Repo.Artifacts, "packages")}" />
-                <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
-              </packageSources>
-              <packageSourceMapping>
-                <packageSource key="local"><package pattern="AsmFoundation.*" /></packageSource>
-                <packageSource key="nuget.org"><package pattern="*" /></packageSource>
-              </packageSourceMapping>
-            </configuration>
-            """);
+        WriteLocalFeedConfig(output);
         string allRids = string.Join(';', CrossPlatformTests.PlatformCode.Keys);
         foreach ((string template, string name) in new[] { ("asmlib", "Lib8"), ("asmexe", "Exe8"), ("asmstatic", "Static8") })
         {
@@ -262,6 +256,85 @@ public sealed class TemplateTests(SdkUnderTest sdk)
             }
         }
     }
+
+    /// <summary>
+    /// asmwasm builds its library for both WebAssembly runtimes on any build machine, nothing
+    /// installed: a module per RID that exports add_ints, and an archive beside it. Its run.mjs
+    /// then calls the module from Node, as the template's README says: "dotnet build", then
+    /// "node run.mjs" prints add_ints(40, 2) = 42 (where Node exists).
+    /// </summary>
+    [Fact]
+    public void The_webassembly_library_template_builds_and_runs_in_node()
+    {
+        string output = Install();
+        WriteLocalFeedConfig(output);
+        CommandResult created = DotnetNew(output, "asmwasm", "-n", "Calc");
+        Assert.True(created.ExitCode == 0, created.Tail());
+        CommandResult build = Dotnet(output, "build", Path.Combine("Calc", "Calc.asmproj"), "-nologo", "-nodeReuse:false");
+        Assert.True(build.ExitCode == 0, build.Tail());
+        foreach (string rid in new[] { "browser-wasm", "wasi-wasm" })
+        {
+            string module = Path.Combine(output, "Calc", "bin", "Debug", "freestanding", rid, "Calc.wasm");
+            Assert.True(File.Exists(module), $"{rid}: no {module}");
+            Assert.Contains("add_ints", WasmBinary.Read(module).ExportedFunctions);
+            Assert.True(File.Exists(Path.Combine(output, "Calc", "bin", "Debug", "freestanding", rid, "Calc.a")), $"{rid}: no archive");
+        }
+
+        if (!Command.OnPath("node"))
+        {
+            Assert.Skip("No Node on PATH to run run.mjs here (the library built and was checked above)");
+        }
+
+        CommandResult run = Command.Run("node", [Path.Combine("Calc", "run.mjs")], output);
+        Assert.True(run.ExitCode == 0, run.Output);
+        Assert.Equal("add_ints(40, 2) = 42", run.StdOut.Trim());
+    }
+
+    /// <summary>
+    /// asmwasmapp makes a solution whose .NET browser-wasm app links the WebAssembly library and
+    /// calls it, and "dotnet run" runs it in Node, as the README says. The name has dots
+    /// (Demo.Wasm): the P/Invoke module, "Demo.Wasm.Native", reaches the app's P/Invoke table with
+    /// them. Needs .NET's native WebAssembly build for net10.0 (the wasm-tools workload, CI's
+    /// Linux x64 and Windows x64 runners), as the other .NET WebAssembly app tests do.
+    /// </summary>
+    [Fact]
+    public void The_webassembly_app_template_links_the_library_and_runs()
+    {
+        WebAssemblyTests.RequireForWasmApps(Command.OnPath("node"), "No Node on PATH to run the browser-wasm app here", "browser-wasm");
+        string output = Install();
+        WriteLocalFeedConfig(output);
+        CommandResult created = DotnetNew(output, "asmwasmapp", "-n", "Demo.Wasm");
+        Assert.True(created.ExitCode == 0, created.Tail());
+        string app = Path.Combine(output, "Demo.Wasm", "Demo.Wasm.App", "Demo.Wasm.App.csproj");
+        WebAssemblyTests.RequireWasmNativeBuild(sdk, app, "UsingBrowserRuntimeWorkload");
+        CommandResult build = Dotnet(output, "build", Path.Combine("Demo.Wasm", "Demo.Wasm.slnx"), "-nologo", "-nodeReuse:false");
+        Assert.True(build.ExitCode == 0, build.Tail());
+        CommandResult run = Dotnet(output, "run", "--project", Path.Combine("Demo.Wasm", "Demo.Wasm.App"), "--no-build");
+        Assert.True(run.ExitCode == 0, run.Output);
+        Assert.Contains("add_ints(40, 2) = 42", run.StdOut.Split('\n').Select(line => line.TrimEnd('\r')));
+    }
+
+    /// <summary>
+    /// Writes the nuget.config a work folder's projects restore through: the SDK under test from
+    /// the local feed (the inline version names it), everything else from nuget.org.
+    /// </summary>
+    /// <param name="folder">The work folder.</param>
+    /// <exception cref="IOException">The file cannot be written.</exception>
+    private static void WriteLocalFeedConfig(string folder) =>
+        File.WriteAllText(Path.Combine(folder, "nuget.config"), $"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <configuration>
+              <packageSources>
+                <clear />
+                <add key="local" value="{Path.Combine(Repo.Artifacts, "packages")}" />
+                <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+              </packageSources>
+              <packageSourceMapping>
+                <packageSource key="local"><package pattern="AsmFoundation.*" /></packageSource>
+                <packageSource key="nuget.org"><package pattern="*" /></packageSource>
+              </packageSourceMapping>
+            </configuration>
+            """);
 
     /// <summary>
     /// Makes a fresh work folder (an empty global.json in it, see the remarks) and installs the

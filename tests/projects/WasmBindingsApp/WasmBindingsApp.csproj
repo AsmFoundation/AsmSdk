@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A .NET browser-wasm app that calls an asm library through the generated C# bindings alone
+    (WebAssemblyTests): no [LibraryImport] written by hand. WasmApi is built for this app's RID,
+    browser-wasm; its build writes the API file from the records of add.wasm.s (the PROTO line,
+    and the "fn" record with the function's wasm type), the consumer targets hand it to the
+    generator, and the generator writes Wasmapi.Add.AddInts in this project's RootNamespace. The
+    archive is linked into dotnet.native.wasm as every WebAssembly app's asm references are. It
+    prints "<RuntimeIdentifier> bindings <add_ints(40, 2)>", which answers
+    "browser-wasm bindings 42".
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <WasmMainJSPath>../WasmBrowserApp/main.mjs</WasmMainJSPath>
+    <!-- A test program: tests/projects/Directory.Build.props sends packages to the local feed,
+         which this one never is. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../WasmApi/WasmApi.asmproj" />
+  </ItemGroup>
+</Project>

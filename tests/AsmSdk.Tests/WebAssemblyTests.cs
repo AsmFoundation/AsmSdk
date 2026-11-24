@@ -74,29 +74,57 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
 
     /// <summary>
     /// How the .NET WebAssembly app tests treat a machine that cannot run them, from
-    /// <c>ASMSDK_TEST_WASM_APPS</c>: auto (the default: run, or skip with the reason), required
-    /// (fail instead of skipping: CI's Linux x64 runner installs the workloads, and there a skip
-    /// would hide that the apps were never linked), none (skip).
+    /// <c>ASMSDK_TEST_WASM_APPS</c>: <c>auto</c> (the default: run, or skip with the reason),
+    /// <c>required</c> (fail instead of skipping, for both runtimes), <c>none</c> (skip), or the
+    /// RIDs whose app tests are required, separated by <c>;</c> or <c>,</c>, the others staying
+    /// <c>auto</c>. CI's Linux x64 runner says <c>required</c> (it installs both workloads); its
+    /// Windows x64 runner says <c>browser-wasm</c>: SDK 11.0.100 there gives a net10.0 WASI app no
+    /// native build at all, so only the browser app tests can be required of it.
     /// </summary>
-    /// <exception cref="InvalidOperationException">ASMSDK_TEST_WASM_APPS holds an unknown value (thrown by the initializer).</exception>
-    private static string WasmAppsMode { get; } = Environment.GetEnvironmentVariable("ASMSDK_TEST_WASM_APPS") switch
+    /// <exception cref="InvalidOperationException">ASMSDK_TEST_WASM_APPS names something else (thrown by the initializer).</exception>
+    private static readonly (bool None, HashSet<string> Required) WasmApps = ParseWasmApps(Environment.GetEnvironmentVariable("ASMSDK_TEST_WASM_APPS"));
+
+    /// <summary>Reads ASMSDK_TEST_WASM_APPS (see <see cref="WasmApps"/>).</summary>
+    /// <param name="value">The variable's value, or null when unset.</param>
+    /// <returns>Whether every app test is skipped, and the RIDs whose app tests must run.</returns>
+    /// <exception cref="InvalidOperationException">The value is no mode and names a RID other than browser-wasm and wasi-wasm.</exception>
+    private static (bool None, HashSet<string> Required) ParseWasmApps(string? value)
     {
-        null or "auto" => "auto",
-        "required" => "required",
-        "none" => "none",
-        string other => throw new InvalidOperationException($"ASMSDK_TEST_WASM_APPS={other}: expected auto, required or none"),
-    };
+        var required = new HashSet<string>(StringComparer.Ordinal);
+        switch (value)
+        {
+            case null or "" or "auto":
+                return (false, required);
+            case "none":
+                return (true, required);
+            case "required":
+                return (false, ["browser-wasm", "wasi-wasm"]);
+        }
+
+        foreach (string rid in value.Split([';', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (rid is not ("browser-wasm" or "wasi-wasm"))
+            {
+                throw new InvalidOperationException($"ASMSDK_TEST_WASM_APPS={value}: expected auto, required, none, or the RIDs browser-wasm and wasi-wasm");
+            }
+
+            required.Add(rid);
+        }
+
+        return (false, required);
+    }
 
     /// <summary>
     /// Lets a .NET WebAssembly app test go on when a prerequisite holds; otherwise skips it with
-    /// the reason, or fails it when the run is required (<see cref="WasmAppsMode"/>).
+    /// the reason, or fails it when the run is required for its RID (<see cref="WasmApps"/>).
     /// </summary>
     /// <param name="holds">Whether the prerequisite is met.</param>
     /// <param name="reason">What is missing, for the skip or failure message.</param>
+    /// <param name="rid">The app's runtime: browser-wasm or wasi-wasm.</param>
     /// <exception cref="Exception">Xunit's skip exception; an assertion failure when the run is required.</exception>
-    private static void RequireForWasmApps(bool holds, string reason)
+    internal static void RequireForWasmApps(bool holds, string reason, string rid)
     {
-        if (WasmAppsMode == "none")
+        if (WasmApps.None)
         {
             Assert.Skip("ASMSDK_TEST_WASM_APPS=none");
         }
@@ -106,19 +134,20 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
             return;
         }
 
-        if (WasmAppsMode == "required")
+        if (WasmApps.Required.Contains(rid))
         {
-            Assert.Fail(reason + " (ASMSDK_TEST_WASM_APPS=required)");
+            Assert.Fail($"{reason} (ASMSDK_TEST_WASM_APPS requires the {rid} app tests)");
         }
 
         Assert.Skip(reason);
     }
 
     /// <summary>
-    /// Requires .NET's native WebAssembly build for a .NET app of tests/projects, as .NET itself
-    /// decides it for the app's target framework and RID (see <see cref="RequireForWasmApps"/>).
+    /// Requires .NET's native WebAssembly build for a .NET app, as .NET itself decides it for the
+    /// app's target framework and RID (see <see cref="RequireForWasmApps"/>).
     /// </summary>
-    /// <param name="app">The app's project name (tests/projects/&lt;app&gt;/&lt;app&gt;.csproj).</param>
+    /// <param name="sdk">The SDK under test, whose dotnet and environment evaluate the app.</param>
+    /// <param name="project">The app's project file.</param>
     /// <param name="property">UsingBrowserRuntimeWorkload (browser-wasm) or UsingWasiRuntimeWorkload (wasi-wasm).</param>
     /// <exception cref="Exception">Xunit's skip exception; an assertion failure when the run is required.</exception>
     /// <remarks>
@@ -127,23 +156,31 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
     /// SDK 11.0.100 with Visual Studio's wasm-tools, which serves net11.0 only: a name check
     /// passed there, and the app built without its AppBundle (CI run 45275929352). The property
     /// is the switch .NET's own imports test, and the one the SDK's ASM0054 check reads, so these
-    /// tests run exactly where the apps can be linked. Evaluation only, once per app.
+    /// tests run exactly where the apps can be linked. Evaluation only, once per project.
     /// </remarks>
-    private void RequireWasmNativeBuild(string app, string property)
+    internal static void RequireWasmNativeBuild(SdkUnderTest sdk, string project, string property)
     {
-        if (WasmAppsMode == "none")
+        string rid = property == "UsingWasiRuntimeWorkload" ? "wasi-wasm" : "browser-wasm";
+        if (WasmApps.None)
         {
             Assert.Skip("ASMSDK_TEST_WASM_APPS=none");
         }
 
-        string project = Repo.TestProjectPath(app, app + ".csproj");
-        CommandResult answer = sdk.Once($"{app} {property}", () => sdk.DotnetCommand("msbuild", project, $"-getProperty:{property}", "-nologo"));
+        CommandResult answer = sdk.Once($"{project} {property}", () => sdk.DotnetCommand("msbuild", project, $"-getProperty:{property}", "-nologo"));
         CommandResult version = sdk.Once("dotnet --version", () => sdk.DotnetCommand("--version"));
         RequireForWasmApps(answer.ExitCode == 0 && answer.StdOut.Trim() == "true",
-            $"The dotnet on PATH ({version.StdOut.Trim()}) has no native WebAssembly build for {app}: {property} is '{answer.StdOut.Trim()}' " +
+            $"The dotnet on PATH ({version.StdOut.Trim()}) has no native WebAssembly build for {Path.GetFileName(project)}: {property} is '{answer.StdOut.Trim()}' " +
             $"(exit {answer.ExitCode}). It needs the wasm-tools workload for browser-wasm, or wasi-experimental and WASI_SDK_PATH for wasi-wasm, " +
-            "of the app's .NET version (net10.0: wasm-tools-net10 on a later SDK)");
+            "of the app's .NET version (net10.0: wasm-tools-net10 on a later SDK)",
+            rid);
     }
+
+    /// <summary>Requires .NET's native WebAssembly build for a .NET app of tests/projects (see the static overload).</summary>
+    /// <param name="app">The app's project name (tests/projects/&lt;app&gt;/&lt;app&gt;.csproj).</param>
+    /// <param name="property">UsingBrowserRuntimeWorkload (browser-wasm) or UsingWasiRuntimeWorkload (wasi-wasm).</param>
+    /// <exception cref="Exception">Xunit's skip exception; an assertion failure when the run is required.</exception>
+    private void RequireWasmNativeBuild(string app, string property) =>
+        RequireWasmNativeBuild(sdk, Repo.TestProjectPath(app, app + ".csproj"), property);
 
     /// <summary>
     /// Every library build writes, per wasm RID, a module (wasmlib.wasm) that exports exactly the
@@ -451,7 +488,7 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
     [Fact]
     public void A_browser_wasm_dotnet_app_links_asm_projects()
     {
-        RequireForWasmApps(Command.OnPath("node"), "No Node on PATH to run the browser-wasm app here");
+        RequireForWasmApps(Command.OnPath("node"), "No Node on PATH to run the browser-wasm app here", "browser-wasm");
         RequireWasmNativeBuild("WasmBrowserApp", "UsingBrowserRuntimeWorkload");
         CommandResult build = sdk.Dotnet("build", Repo.TestProjectPath("WasmBrowserApp", "WasmBrowserApp.csproj"), "-c", "Release");
         Assert.True(build.ExitCode == 0, build.Tail());
@@ -473,7 +510,7 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
     [Fact]
     public void A_browser_wasm_dotnet_app_links_an_asm_package()
     {
-        RequireForWasmApps(Command.OnPath("node"), "No Node on PATH to run the browser-wasm app here");
+        RequireForWasmApps(Command.OnPath("node"), "No Node on PATH to run the browser-wasm app here", "browser-wasm");
         RequireWasmNativeBuild("WasmBrowserPackageApp", "UsingBrowserRuntimeWorkload");
         CommandResult pack = PackWasmLibrary();
         Assert.True(pack.ExitCode == 0, pack.Tail());
@@ -494,11 +531,11 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
     [Fact]
     public void A_wasi_dotnet_app_links_asm_projects()
     {
-        RequireForWasmApps(Command.OnPath("wasmtime"), "No wasmtime on PATH to run the WASI app here (https://wasmtime.dev)");
+        RequireForWasmApps(Command.OnPath("wasmtime"), "No wasmtime on PATH to run the WASI app here (https://wasmtime.dev)", "wasi-wasm");
         RequireWasmNativeBuild("WasiApp", "UsingWasiRuntimeWorkload");
         string? wasiSdk = Environment.GetEnvironmentVariable("WASI_SDK_PATH");
         RequireForWasmApps(!string.IsNullOrEmpty(wasiSdk) && Directory.Exists(wasiSdk),
-            "No WASI SDK in WASI_SDK_PATH (.NET 10's WASI build needs wasi-sdk 25.0)");
+            "No WASI SDK in WASI_SDK_PATH (.NET 10's WASI build needs wasi-sdk 25.0)", "wasi-wasm");
 
         CommandResult build = sdk.Dotnet("build", Repo.TestProjectPath("WasiApp", "WasiApp.csproj"), "-c", "Release");
         Assert.True(build.ExitCode == 0, build.Tail());
@@ -557,39 +594,101 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
     }
 
     /// <summary>
-    /// A library of native and WebAssembly RIDs with PROTO lines in its native sources builds,
-    /// and its API file (the C# bindings' input) describes the RIDs that can declare: the SDK
-    /// reads the records from COFF, ELF and Mach-O objects only, so the browser-wasm build reads
-    /// none (it used to stop on its wasm objects with ASM0135) and the merge leaves it out (it
-    /// would have found add_ints missing there, ASM0133).
+    /// A library of native and WebAssembly RIDs, with the same PROTO line in its .asm and its
+    /// .wasm.s, has one API (the owner's choice of 2026-11-24, "one API for every RID"): each RID
+    /// writes its API file, the wasm one from the records of the object's "asmapi" custom section,
+    /// and the merged file holds the function both declare. The module keeps the records ("records
+    /// kept in the module"): the shipped .wasm carries the PROTO line and the "fn" record with the
+    /// function's wasm type, and Node reads them with WebAssembly.Module.customSections, the way
+    /// a JavaScript host learns the module's API.
     /// </summary>
     [Fact]
-    public void A_library_of_native_and_wasm_rids_merges_the_api_of_its_native_rids()
+    public void A_library_of_native_and_wasm_rids_has_one_api()
     {
         Build("WasmApi");
         string merged = Repo.TestProjectPath("WasmApi", "bin", "Release", "freestanding", "wasmapi.api.json");
         Assert.True(File.Exists(merged), "No merged API file");
-        Assert.Contains("\"add_ints\"", File.ReadAllText(merged), StringComparison.Ordinal);
+        Assert.Contains("\"prototype\": \"int32_t add_ints(int32_t a, int32_t b)\"", File.ReadAllText(merged), StringComparison.Ordinal);
         Assert.True(File.Exists(Output("WasmApi", "linux-x64", "wasmapi.api.json")), "linux-x64 wrote no API file");
-        Assert.False(File.Exists(Output("WasmApi", "browser-wasm", "wasmapi.api.json")), "browser-wasm wrote an API file");
-        // The module still exports the function: only the bindings' records are native-only.
-        Assert.Contains("add_ints", WasmBinary.Read(Output("WasmApi", "browser-wasm", "wasmapi.wasm")).ExportedFunctions);
+        string wasmApi = Output("WasmApi", "browser-wasm", "wasmapi.api.json");
+        Assert.True(File.Exists(wasmApi), "browser-wasm wrote no API file");
+        Assert.Contains("\"runtimeIdentifier\": \"browser-wasm\"", File.ReadAllText(wasmApi), StringComparison.Ordinal);
+
+        string module = Output("WasmApi", "browser-wasm", "wasmapi.wasm");
+        Assert.Contains("add_ints", WasmBinary.Read(module).ExportedFunctions);
+        Assert.Equal(new[] { "proto int32_t add_ints(int32_t a, int32_t b)", "fn 1 add_ints (i32, i32) -> (i32)" }, WasmBinary.Read(module).CustomRecords("asmapi"));
+
+        RequireNode();
+        string script = "const m = new WebAssembly.Module(require('fs').readFileSync(process.argv[1]));"
+                        + "for (const s of WebAssembly.Module.customSections(m, 'asmapi'))"
+                        + " console.log(new TextDecoder().decode(s).split('\\0').filter(r => r).join(' | '));";
+        CommandResult node = Command.Run("node", ["-e", script, module], Repo.Root);
+        Assert.True(node.ExitCode == 0, node.Output);
+        Assert.Equal("proto int32_t add_ints(int32_t a, int32_t b) | fn 1 add_ints (i32, i32) -> (i32)", node.StdOut.Trim());
     }
 
     /// <summary>
-    /// A PROTO line in a WebAssembly source stops the build with the reason (asmsdk-wasm.inc's
-    /// .error), instead of llvm-mc's "invalid instruction" or a line left unchecked: WebAssembly
-    /// RIDs declare nothing to the bindings yet. llvm-mc reports an .error of a macro at
-    /// "&lt;instantiation&gt;" (the macro's expansion) and names the source line in the note that
-    /// follows, "while in macro instantiation", which the line-marker wrapper makes the source's
-    /// own path and line (measured with llvm-mc 23.1.5; every GNU macro's .error is reported so).
+    /// A PROTO line inside a function body stops the build with the guard's message. llvm-mc's
+    /// wasm parser cannot return to the section a record leaves it in, so the record would take
+    /// the rest of the body with it (measured: the module linked, and the function had lost its
+    /// end). llvm-mc reports an .error of a macro at "&lt;instantiation&gt;" and names the source line
+    /// in the note that follows, "while in macro instantiation", which the line-marker wrapper
+    /// makes the source's own path and line (measured with llvm-mc 23.1.5).
     /// </summary>
     [Fact]
-    public void A_proto_line_in_a_wasm_source_stops_the_build()
+    public void A_proto_inside_a_wasm_function_stops_the_build()
     {
         CommandResult build = sdk.BuildTestProject("WasmProto");
         Assert.True(build.ExitCode != 0, $"WasmProto built: {build.Tail()}");
-        Assert.Contains("PROTO is not read from WebAssembly sources yet", build.StdOut, StringComparison.Ordinal);
-        Assert.Contains("proto.wasm.s:3:1: note: while in macro instantiation", build.StdOut, StringComparison.Ordinal);
+        Assert.Contains("PROTO and the function macros go between functions: answer has no ENDFUNCTION yet", build.StdOut, StringComparison.Ordinal);
+        Assert.Contains("proto.wasm.s:5:1: note: while in macro instantiation", build.StdOut, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// What a WebAssembly PROTO line must agree with stops the build with its code, at the line:
+    /// its type lowered to wasm against FUNCTION's whole type (ASM0132, exact where native code
+    /// compares a count), a function no module exports (ASM0131), and a native RID that declares
+    /// what the wasm RID does not (ASM0133: one API for every RID, WebAssembly included).
+    /// </summary>
+    /// <param name="apiCase">The case folder of tests/projects/WasmApiErrors.</param>
+    /// <param name="code">The diagnostic it must stop with.</param>
+    /// <param name="text">A part of the message that names the cause.</param>
+    /// <param name="line">The line the diagnostic must point at, printed "file.wasm.s(line)" (the SDK logs no column); 0 for a message that names no source line (the comparison's).</param>
+    [Theory]
+    [InlineData("signature", "ASM0132", "lowers to the WebAssembly type (i64) -> (i64)", 4)]
+    [InlineData("local", "ASM0131", "inner is a LOCAL_FUNCTION", 3)]
+    [InlineData("drift", "ASM0133", "browser-wasm: not declared", 0)]
+    public void A_wrong_wasm_proto_stops_the_build(string apiCase, string code, string text, int line)
+    {
+        // A configuration per case keeps each case's outputs apart, as ApiTests does.
+        CommandResult build = sdk.Dotnet("build", Repo.TestProject("WasmApiErrors"), "-c", $"Wasm{apiCase}", $"-p:ApiCase={apiCase}");
+        Assert.True(build.ExitCode != 0, $"case {apiCase} built: {build.Tail()}");
+        Assert.Contains($"error {code}", build.StdOut, StringComparison.Ordinal);
+        Assert.Contains(text, build.StdOut, StringComparison.Ordinal);
+        if (line > 0)
+        {
+            Assert.Contains($".wasm.s({line})", build.StdOut, StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>
+    /// A .NET browser-wasm app calls an asm library through the generated C# bindings alone: the
+    /// library's browser-wasm build writes its API file from the wasm records, the consumer
+    /// targets hand it to the generator (the app's reference is built for the app's RID), and
+    /// Wasmapi.Add.AddInts links into dotnet.native.wasm with the archive. Before WebAssembly
+    /// RIDs wrote API files, such an app got no bindings (3e9a958).
+    /// </summary>
+    [Fact]
+    public void A_browser_wasm_dotnet_app_calls_the_generated_bindings()
+    {
+        RequireForWasmApps(Command.OnPath("node"), "No Node on PATH to run the browser-wasm app here", "browser-wasm");
+        RequireWasmNativeBuild("WasmBindingsApp", "UsingBrowserRuntimeWorkload");
+        CommandResult build = sdk.Dotnet("build", Repo.TestProjectPath("WasmBindingsApp", "WasmBindingsApp.csproj"), "-c", "Release");
+        Assert.True(build.ExitCode == 0, build.Tail());
+        string bundle = Repo.TestProjectPath("WasmBindingsApp", "bin", "Release", "net10.0", "browser-wasm", "AppBundle");
+        Assert.True(Directory.Exists(bundle), $"No AppBundle after the build: {build.Tail()}");
+        CommandResult run = Command.Run("node", ["main.mjs"], bundle);
+        Assert.True(run.ExitCode == 0, run.Output);
+        Assert.Contains("browser-wasm bindings 42", run.StdOut.Split('\n').Select(l => l.TrimEnd('\r')));
     }
 }

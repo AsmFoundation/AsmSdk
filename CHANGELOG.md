@@ -79,7 +79,57 @@ Each SDK release names the one it was tested with.
     - a bare `.text` does nothing in llvm-mc's wasm parser;
     - `.bss` and `.rodata` are unknown directives;
     - `.int32` takes one value;
-    - wasmtime refuses misaligned WASI pointers.
+    - wasmtime refuses misaligned WASI pointers;
+    - llvm-mc's type checker refuses an untyped `select`, and `.set` cannot be redefined.
+  - **C# bindings for WebAssembly** (the owner's choices of 2026-11-24: records kept in the
+    module, one API for every RID):
+    - **Records.** `PROTO` and the function macros of `asmsdk-wasm.inc` write their records into
+      the object's `asmapi` custom section, and the SDK reads them like `.asmapi`.
+    - **An exact check.** A function's record carries its whole wasm type, so **ASM0132** compares
+      the PROTO line, lowered to wasm (pointers and the integers of 32 bits or fewer are `i32`,
+      `int64_t` is `i64`, `float` `f32`, `double` `f64`), with that type.
+    - **One API.** The wasm RIDs join **ASM0133**'s comparison with the native RIDs.
+    - **Self-describing modules.** wasm-ld keeps the section in the module (even with
+      `--strip-all`), so JavaScript reads the API with `WebAssembly.Module.customSections`.
+    - **Bindings for .NET WebAssembly apps.** Such an app gets generated bindings from its RID's
+      API file.
+    - **The placement guard.** A `PROTO` or `FUNCTION` inside a function body stops the build: a
+      record written there took the rest of the body with it (measured: the module linked
+      without the function's `end`). llvm-mc's wasm parser has no `.pushsection`, so
+      `ENDFUNCTION` defines a `.L` label and `FUNCTION` redefines a macro that tests it.
+    - **Not yet: `STRUCT`.** It stays an error in wasm sources, because its offsets would be
+      constants, which the wasm writer refuses even with `.L` names.
+  - **Templates `asmwasm` and `asmwasmapp`:**
+    - `asmwasm` is a WebAssembly library, with a `run.mjs` that calls it from Node.
+    - `asmwasmapp` is a solution: a .NET browser-wasm app and the library it calls. `dotnet run`
+      works through `WasmAppHost`, which needs the app's `runtimeconfig.template.json` naming
+      Node; without it, the run stops with "no perHostConfigs found" (measured).
+  - **Samples:**
+    - `samples/HexDump` gains a WASI build, `main.wasi.s`: 2.5 KB, byte-identical to `xxd`. It
+      opens files with `path_open` under the preopened folder, and gives main.asm's words for
+      its errors (a directory is found with `fd_filestat_get`).
+    - `samples/Crc32C` gains `crc32c.wasm.s`, slicing-by-8 with tables computed on the first
+      call. WebAssembly has no CRC instruction, so the hardware exports trap.
+    - `samples/Crc32C.Browser`, a .NET browser-wasm app, checks the library against
+      `BitOperations.Crc32C` and the same slicing-by-8 in C#, then times all three. Its page
+      (`index.html`, a `[JSExport]` method) checksums a file the visitor drops, all three ways.
+      Measured at 1 MiB on one pinned performance core, in Node 22 and Chrome 156
+      (`results/2026-11-24-i9-13900K`): the asm runs at 1.24 GB/s, 4.3 to 4.4 times
+      `BitOperations.Crc32C` with AOT-compiled C# and 6.7 to 17 times with the interpreter.
+      Against the same slicing-by-8 in C#, AOT is a tie (0.98 to 1.06 times), and the
+      interpreter 5.2 to 8.0 times slower.
+    - **Measured trap:** a .NET browser app's *build* bundle says `debugLevel: -1`. In Chromium
+      and Firefox .NET then starts its debugger, which keeps the interpreter unoptimized; the
+      jiterpreter compiles nothing. The C# ran at 5 to 7 MB/s, against 134 MB/s with
+      `debugLevel: 0`. `Crc32C.Browser` sets `WasmDebugLevel` to 0 in Release, and the guide says
+      to time a publish. Also measured: AOT happens at `dotnet publish` only.
+  - **Fixed on the way:** an asm library that reaches a .NET WebAssembly app through a .NET
+    library (`Crc32C.Browser` through `Crc32C.Net`) is linked into the app like a direct
+    reference. The native layout steps now skip a WebAssembly app, which deploys no native file:
+    they had stopped it with ASM0040, finding no native build for `browser-wasm`.
+  - **CI:** the Windows x64 runner installs `wasm-tools-net10` and runs the browser-wasm app
+    tests. `ASMSDK_TEST_WASM_APPS` takes a RID list, so Windows requires the browser apps alone:
+    .NET 11.0.100 gives a `net10.0` WASI app no native build.
 - **Programs get the asm shared libraries they link.** A program that links an asm shared
   library (a `ProjectReference`, or a package) gets it in each RID's output folder, with the
   run path that finds it there:
@@ -337,8 +387,8 @@ Each SDK release names the one it was tested with.
   binary; the RID outer build's `AsmMergeApi` checks that every RID declares the same functions
   the same way (**ASM0133**, naming each RID's prototype and source) and writes the library's
   file in `bin/<Configuration>/<tfm>/`. No `PROTO` line, no file. The WebAssembly RIDs (also
-  unreleased) take no part yet: their objects carry no records, and a `PROTO` line in a wasm
-  source is an error. The design (the owner's choices
+  unreleased) take part like the others: their objects carry the records in an `asmapi` custom
+  section (see the WebAssembly entry). The design (the owner's choices
   of 2026-11-23, approved as a spec): catalog `asmsdk/plans/csharp-bindings.md`; the C# generator
   is the next phase.
 - **A NativeAOT publish links a referenced static library by itself.** A `PublishAot` project

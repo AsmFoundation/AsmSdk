@@ -90,9 +90,16 @@ jobs:
   - a .NET WebAssembly app's build needs `dotnet workload install wasm-tools` (browser) or
     `wasi-experimental` with the WASI SDK 25.0 in `WASI_SDK_PATH` (WASI). On Linux, install the
     .NET SDK into a folder the runner owns (`DOTNET_INSTALL_DIR` for `setup-dotnet`), because
-    a workload installs into the SDK's own folder.
+    a workload installs into the SDK's own folder;
+  - the workload belongs to the app's .NET version, not the SDK's. GitHub's Windows images come
+    with SDK 11.0.100 and Visual Studio's `wasm-tools`, which serves `net11.0` only: a `net10.0`
+    browser app there needs `dotnet workload install wasm-tools-net10`, and without it the SDK
+    stops the build with ASM0054 instead of letting .NET build the app without its asm code. A
+    `net10.0` WASI app has no workload on SDK 11.0.100 at all: pin SDK 10 in `global.json` for
+    it.
 
-  AsmSdk's own CI does all three (see [WebAssembly](webassembly.md)).
+  AsmSdk's own CI does all of this (see [WebAssembly](webassembly.md)): Linux x64 links both
+  kinds of app, Windows x64 the browser ones.
 
 ## Versioning
 

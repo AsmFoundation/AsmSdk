@@ -1,0 +1,35 @@
+machine load before: 25%
+2026-11-24T07:19:56Z
+(guard: coreguard pid 47056 on CPU 3, High priority, power throttling off: True)
+Chrome/156.0.8078.82 (V8 15.6.75.27)
+pinned 11 chrome processes to CPU 2
+done 0
+Crc32C.Browser: browser-wasm, .NET 10.0.15, AOT, libcrc32c path Portable
+verified: 123456789 = 0xE3069283; asm, .NET and C# agree on lengths 0-4096 at alignments 0-7, and on a chained append
+
+64 bytes, 11 paired rounds of about 60 ms each (checksum fold 0x7852EE4C):
+| implementation | median MB/s | min | max |
+|---|---:|---:|---:|
+| asm (crc32c.wasm.s) | 787.9 | 681.2 | 792.4 |
+| .NET BitOperations.Crc32C | 252.4 | 110.2 | 253.3 |
+| C# slicing-by-8 | 730.6 | 559.7 | 735.3 |
+asm / .NET BitOperations.Crc32C: median 3.13x (rounds 2.70x to 7.13x)
+asm / C# slicing-by-8: median 1.08x (rounds 0.93x to 1.40x)
+
+4096 bytes, 11 paired rounds of about 60 ms each (checksum fold 0x17548000):
+| implementation | median MB/s | min | max |
+|---|---:|---:|---:|
+| asm (crc32c.wasm.s) | 1277.2 | 1239.6 | 1277.2 |
+| .NET BitOperations.Crc32C | 289.2 | 288.3 | 289.7 |
+| C# slicing-by-8 | 1169.1 | 1165.3 | 1175.0 |
+asm / .NET BitOperations.Crc32C: median 4.41x (rounds 4.28x to 4.43x)
+asm / C# slicing-by-8: median 1.09x (rounds 1.06x to 1.10x)
+
+1048576 bytes, 11 paired rounds of about 60 ms each (checksum fold 0xA13B43DC):
+| implementation | median MB/s | min | max |
+|---|---:|---:|---:|
+| asm (crc32c.wasm.s) | 1248.7 | 922.4 | 1253.1 |
+| .NET BitOperations.Crc32C | 289.8 | 250.0 | 290.3 |
+| C# slicing-by-8 | 1180.7 | 1045.5 | 1186.7 |
+asm / .NET BitOperations.Crc32C: median 4.32x (rounds 3.18x to 4.64x)
+asm / C# slicing-by-8: median 1.06x (rounds 0.78x to 1.13x)

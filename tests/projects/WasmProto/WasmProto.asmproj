@@ -1,8 +1,10 @@
 <Project Sdk="AsmFoundation.Sdk">
   <!--
-    A PROTO line in a WebAssembly source (WebAssemblyTests): asmsdk-wasm.inc's PROTO is an
-    .error that says why, at the line, since the SDK reads the bindings' records from native
-    objects only. Without that macro llvm-mc would stop on an unknown instruction instead.
+    A PROTO line inside a function body (WebAssemblyTests). llvm-mc's wasm parser cannot return
+    to the section it left, so a record written there would take the rest of the body with it
+    (measured: the module linked, the function had lost its end). asmsdk-wasm.inc's guard stops
+    it instead: "answer has no ENDFUNCTION yet", with the line in the "while in macro
+    instantiation" note.
   -->
   <PropertyGroup>
     <RuntimeIdentifiers>browser-wasm</RuntimeIdentifiers>

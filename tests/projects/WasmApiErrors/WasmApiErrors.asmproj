@@ -1,0 +1,21 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    Wrong PROTO lines in WebAssembly sources, one case per folder under cases/, picked with
+    -p:ApiCase=<folder> (WebAssemblyTests builds each in a configuration of its own). Each must
+    stop the build with its code, at the PROTO line:
+      signature  ASM0132  PROTO int64_t twice(int64_t v) lowers to (i64) -> (i64), and its
+                          FUNCTION declares (i32) -> (i32): the wasm type is compared whole
+      local      ASM0131  a PROTO for a LOCAL_FUNCTION, which no module exports
+      drift      ASM0133  linux-x64's add.asm declares add_ints, browser-wasm's add.wasm.s
+                          does not: one API for every RID, WebAssembly included
+  -->
+  <PropertyGroup>
+    <AssemblyName>wasmapierrors</AssemblyName>
+    <RuntimeIdentifiers>browser-wasm</RuntimeIdentifiers>
+    <RuntimeIdentifiers Condition="'$(ApiCase)' == 'drift'">linux-x64;browser-wasm</RuntimeIdentifiers>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="cases/$(ApiCase)/*.asm;cases/$(ApiCase)/*.s" />
+  </ItemGroup>
+</Project>

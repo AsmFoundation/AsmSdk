@@ -181,8 +181,9 @@ let .NET's own RID rules choose the library.
 >   imports whose class names would clash.
 > - **Libraries only.** A referenced asm program gets no bindings, even with `PROTO` lines (its
 >   API file describes what it exports to its plugins): a program is started, never loaded.
->   A .NET WebAssembly app gets none yet either, because the WebAssembly RIDs write no API file
->   (see [WebAssembly](webassembly.md)); it declares its imports by hand, as above.
+>   A .NET WebAssembly app gets them as any app does: its asm reference is built for its RID,
+>   whose `PROTO` lines are checked against each function's whole wasm type (see
+>   [WebAssembly](webassembly.md#proto-the-c-bindings)).
 
 ## Where the binaries go: BinariesCopyPath
 

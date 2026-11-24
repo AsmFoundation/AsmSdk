@@ -27,6 +27,8 @@ dotnet new install AsmFoundation.Templates
 | Assembly Console App | `asmexe` | a program on the platform's C library, which `dotnet run` builds and runs |
 | Assembly Static Library | `asmstatic` | a static library with a public `include/` folder, for other asm projects |
 | Assembly + .NET Solution | `asmnet` | a `.slnx` with a C# console app, the asm library it calls through `[LibraryImport]`, and xunit v3 tests |
+| Assembly WebAssembly Library (not released yet) | `asmwasm` | a WebAssembly library for `browser-wasm` and `wasi-wasm` (`add.wasm.s`), and a `run.mjs` that calls its module from Node (see [WebAssembly](webassembly.md)) |
+| Assembly + .NET WebAssembly Solution (not released yet) | `asmwasmapp` | a `.slnx` with a .NET `browser-wasm` app and the WebAssembly library it calls; `dotnet run` runs it in Node (needs the `wasm-tools` workload) |
 
 - **`--sdk-version <version>`** sets the AsmFoundation.Sdk version the projects name on their
   first line. It defaults to the templates package's own version, which is released with the

@@ -32,6 +32,17 @@ is built for all seven RIDs. The `Hello.*` samples, WordCount and HexDump are Li
 `Samples.slnx` holds them all except the two under `consumers/`, which sit outside the solution
 because the packages they use must be packed first.
 
+> [!NOTE]
+> **Not released yet, on main:** [WebAssembly](../guide/webassembly.md). Crc32C also builds
+> `browser-wasm` and `wasi-wasm` (`crc32c.wasm.s`, slicing-by-8), HexDump also builds
+> `wasi-wasm` (`main.wasi.s`, a WASI command of about 2.5 KB), and one more sample uses them:
+>
+> | Sample | Shows |
+> |---|---|
+> | [`Crc32C.Browser`](../examples/crc32c.md#in-webassembly) | the Crc32C library in a .NET WebAssembly app, through the unchanged `Crc32C.Net`: checks it against .NET's own CRC-32C, times both in Node and Chrome with the C# interpreted and AOT-compiled, and has a page that checksums a dropped file |
+>
+> `Crc32C.Browser` needs the `wasm-tools` workload, so it is outside `Samples.slnx` too.
+
 ## How they are checked
 
 [`tests/AsmSdk.Tests`](https://github.com/AsmFoundation/AsmSdk/tree/main/tests/AsmSdk.Tests),
@@ -71,7 +82,12 @@ The .NET programs (Crc32C's tests, its benchmark's check, the NuGet consumer) ru
 every machine: their portable output carries every RID's library. The Linux x64 programs run
 natively on Linux x64, and elsewhere through WSL or Docker when available. Where neither is,
 those tests are skipped with the reason (`ASMSDK_TEST_RUN` and `ASMSDK_TEST_DOTNET_RUN`
-choose explicitly). Only the .NET SDK is needed:
+choose explicitly). On main (not released yet), `WebAssemblyTests` and the WebAssembly cases of
+`ExampleTests` run the modules in Node and the WASI programs in wasmtime wherever those are on
+`PATH`, and link the .NET WebAssembly apps where the workloads are; `ASMSDK_TEST_WASM_APPS`
+chooses for the apps: `auto` (run, or skip with the reason), `required` (fail instead of
+skipping), `none`, or the RIDs whose app tests must run (`browser-wasm`, as on CI's Windows x64).
+Only the .NET SDK is needed:
 
 ```sh
 dotnet run toolchain/fetch.cs -- --rid win-x64                 # or win-arm64, linux-x64, linux-arm64, osx-arm64: stages the tools

@@ -1,0 +1,59 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Crc32C.Browser: the Crc32C sample in a .NET WebAssembly app. Crc32C.Net's C# API calls
+    libcrc32c, which this browser-wasm build links into the app's runtime: crc32c.wasm.s, the
+    WebAssembly half of the library (slicing-by-8; WebAssembly has no CRC instruction). In Node
+    (V8, Chrome's engine) or a browser, it checks the library against .NET's own CRC-32C
+    (BitOperations.Crc32C, a software path on WebAssembly) and against the same slicing-by-8 written
+    in C#, then times all three in the same engine: results/ holds the measured numbers.
+
+    Needs the wasm-tools workload (dotnet workload install wasm-tools). Not in Samples.slnx: the
+    samples build on every CI machine, and this one links only where the workload is (ExampleTests
+    builds it there). The bundle is bin/<Configuration>/net10.0/browser-wasm/AppBundle; in Node,
+    "dotnet run -c Release" passes what follows the usual double dash to main.mjs there:
+      verify        every implementation against the others, lengths 0-4096, alignments 0-7
+      bench         paired rounds: the median and range of each, and the ratios
+      hash <file>   the page's report for one file (node main.mjs hash <file>, in the bundle)
+    In a browser, index.html is the page: a file chosen or dropped is checksummed by all three,
+    with each one's throughput. Serve the bundle folder over HTTP and open it.
+    "dotnet publish -c Release -p:RunAOTCompilation=true" compiles the C# ahead of time to
+    WebAssembly instead of interpreting it (Mono's interpreter is the default of a .NET WebAssembly
+    app): both are measured. AOT happens at publish only; a build with the property set still
+    interprets, and says so.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <WasmMainJSPath>main.mjs</WasmMainJSPath>
+    <IsPackable>false</IsPackable>
+    <!-- Which compilation the numbers come from, said in the output: the interpreter, or AOT.
+         The label takes .NET's own condition for compiling ahead of time (WasmApp.Common.targets,
+         _WasmShouldAOT): RunAOTCompilation, in the nested publish that dotnet publish starts
+         (WasmBuildingForNestedPublish), or after a build with RunAOTCompilationAfterBuild. Measured:
+         a dotnet build with RunAOTCompilation=true alone gave a dotnet.native.wasm byte-identical
+         to one without it; and _IsPublishing cannot tell, because the nested publish, where the
+         assemblies are compiled for the bundle, clears it. -->
+    <DefineConstants Condition="'$(RunAOTCompilation)' == 'true' and ('$(WasmBuildingForNestedPublish)' == 'true' or '$(RunAOTCompilationAfterBuild)' == 'true')">$(DefineConstants);WASM_AOT</DefineConstants>
+    <!-- A Release build measures what users run. A build's bundle otherwise says debugLevel -1,
+         and in Chromium and Firefox (where .NET supports its debugger) the runtime then starts
+         with the debugger on: the interpreter keeps every method unoptimized and the jiterpreter
+         compiles nothing. Measured in headless Chrome: the C# ran at 5-7 MB/s (0 traces jitted)
+         against 160-200 MB/s in Node, where .NET never enables the debugger; a publish says 0.
+         0 = no debugger, interpreter optimizations on (WasmApp.Common.targets). Debug keeps it. -->
+    <WasmDebugLevel Condition="'$(Configuration)' == 'Release'">0</WasmDebugLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The C# API; it references Crc32C.asmproj, which the consumer targets build for browser-wasm
+         and link into this app's runtime (the P/Invoke module "crc32c", the library's name). -->
+    <ProjectReference Include="../Crc32C.Net/Crc32C.Net.csproj" />
+    <!-- The page, copied into the bundle beside main.mjs (WasmMainJSPath deploys only the script). -->
+    <WasmExtraFilesToDeploy Include="index.html" />
+    <!-- results/ holds measurements and the harness that took them, coreguard.cs among it: a
+         file-based app of its own (top-level statements, #: directives), never part of this app. -->
+    <Compile Remove="results/**" />
+  </ItemGroup>
+</Project>

@@ -564,8 +564,14 @@
     (GetAsmNativeRuntimeAssets, from the same builds the references already ran) and what its
     .NET references know (GetAsmNativeAssets, recursively), each with RuntimeIdentifier,
     AsmProject, AsmLibraryName, AsmLibraryVersion, AsmImportName and AsmSymbols.
+    Nothing for a .NET WebAssembly consumer (not released yet): it links its asm code into its
+    runtime and deploys no native file, and the native builds a .NET library reports (an asm
+    library it references, portable, every native RID) serve no wasm RID, so laying them out
+    stopped the app with ASM0040 (measured: Crc32C.Browser through Crc32C.Net). With nothing
+    known, the layout, copy and deps.json steps below have nothing to do, and a project that
+    references this one learns of no file from it either.
   -->
-  <Target Name="_AsmCollectKnownNativeAssets" Condition="'$(UsingAsmFoundationSdk)' != 'true'">
+  <Target Name="_AsmCollectKnownNativeAssets" Condition="'$(UsingAsmFoundationSdk)' != 'true' and '$(_AsmConsumerIsWasm)' != 'true'">
     <ItemGroup>
       <_AsmProjectReferenceForAssets Include="@(_MSBuildProjectReferenceExistent)" Condition="'%(Extension)' == '.asmproj'" />
       <_AsmDotnetReferenceForAssets Include="@(_MSBuildProjectReferenceExistent)" Condition="'%(Extension)' != '.asmproj'" />

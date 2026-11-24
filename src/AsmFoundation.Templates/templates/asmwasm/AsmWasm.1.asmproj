@@ -1,0 +1,23 @@
+<Project Sdk="AsmFoundation.Sdk/ASMSDK_VERSION">
+  <!--
+    AsmWasm.1: a WebAssembly library written in assembly. "dotnet build" builds it for both
+    WebAssembly runtimes on any build machine (the SDK brings llvm-mc and wasm-ld; nothing to
+    install), under bin/<Configuration>/freestanding/<rid>/:
+      AsmWasm.1.wasm   the module: JavaScript and WASI hosts instantiate it and call its exports
+      AsmWasm.1.a      the archive: a .NET WebAssembly app (Blazor, wasmbrowser) links it
+    add.wasm.s is the code, in LLVM's WebAssembly assembly. "node run.mjs" calls it.
+
+    Call it from a .NET WebAssembly app (RuntimeIdentifier browser-wasm or wasi-wasm, with the
+    wasm-tools workload): add <ProjectReference Include="../AsmWasm.1/AsmWasm.1.asmproj" /> to
+    its .csproj, then declare each function on a static partial class:
+      [LibraryImport("AsmWasm.1", EntryPoint = "add_ints")]
+      internal static partial int AddInts(int a, int b);
+    The "asmwasmapp" template sets such an app up for you.
+
+    The SDK version is the one on the first line; change it there to upgrade.
+    Documentation: https://asmfoundation.github.io/AsmSdk/guide/webassembly.html
+  -->
+  <PropertyGroup>
+    <RuntimeIdentifiers>browser-wasm;wasi-wasm</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

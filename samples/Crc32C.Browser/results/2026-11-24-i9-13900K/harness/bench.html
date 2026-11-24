@@ -1,0 +1,28 @@
+<!doctype html>
+<!-- Measurement page: copied into a copy of the app bundle by bench-chrome.mjs. Runs
+     Crc32C.Browser's Main with the mode in ?mode= (bench by default) and keeps what it prints in
+     window.benchOutput; the title says when it is done. With ?wait=1 it starts the runtime, then
+     waits for window.go, so that the driver can pin the renderer process first. -->
+<html lang="en">
+<head><meta charset="utf-8"><title>running</title><link rel="icon" href="data:,"></head>
+<body>
+<script type="module">
+  const lines = [];
+  for (const level of ['log', 'info', 'warn', 'error', 'debug']) {
+    const original = console[level].bind(console);
+    console[level] = (...args) => { lines.push((level === 'log' ? '' : `[${level}] `) + args.join(' ')); original(...args); };
+  }
+  const query = new URLSearchParams(location.search);
+  const { dotnet } = await import('./_framework/dotnet.js');
+  const runtime = await dotnet.withApplicationArguments(query.get('mode') ?? 'bench').create();
+  if (query.has('wait')) {
+    document.title = 'waiting';
+    while (!window.go) await new Promise((r) => setTimeout(r, 50));
+  }
+  document.title = 'running';
+  const code = await runtime.runMain();
+  window.benchOutput = lines.join('\n');
+  document.title = `done ${code}`;
+</script>
+</body>
+</html>
