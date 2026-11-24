@@ -63,9 +63,10 @@ Each SDK release names the one it was tested with.
       native WebAssembly build for the app's .NET version. The message names the fix. Without
       that build .NET compiles the app as plain IL, ignores `NativeFileReference`, and says
       nothing. Measured on GitHub's windows-2025 image: SDK 11.0.100 with Visual Studio's
-      `wasm-tools`, which serves `net11.0`, built a `net10.0` app with no `AppBundle`. Fixes:
-      - `wasm-tools-net10` for a browser app on a later SDK;
-      - the app's own SDK for a WASI app: .NET 11.0.100's WASI build serves only `net11.0`.
+      `wasm-tools`, which serves `net11.0`, built a `net10.0` app with no `AppBundle`. The fix
+      is the SDK of the app's own .NET (`global.json`) with its workload, for both runtimes:
+      SDK 11.0.100's `wasm-tools-net10` let .NET's own targets stop every `net10.0` browser
+      app, with asm code or without (measured), and its WASI build serves only `net11.0`.
   - **Measured end to end** in `WebAssemblyTests`, with .NET 10.0.15, Node 22 and wasmtime 39:
     - the modules run in Node;
     - the WASI program runs in wasmtime and through `dotnet run`, and exits with its
@@ -127,9 +128,14 @@ Each SDK release names the one it was tested with.
     library (`Crc32C.Browser` through `Crc32C.Net`) is linked into the app like a direct
     reference. The native layout steps now skip a WebAssembly app, which deploys no native file:
     they had stopped it with ASM0040, finding no native build for `browser-wasm`.
-  - **CI:** the Windows x64 runner installs `wasm-tools-net10` and runs the browser-wasm app
-    tests. `ASMSDK_TEST_WASM_APPS` takes a RID list, so Windows requires the browser apps alone:
-    .NET 11.0.100 gives a `net10.0` WASI app no native build.
+  - **CI:** the Windows x64 runner installs the .NET 10 SDK into a folder of its own, with both
+    WebAssembly workloads and the WASI SDK, and requires every .NET WebAssembly app test, as
+    Linux x64 does. Measured on the way: its image's SDK 11.0.100 with `wasm-tools-net10` did
+    not build a `net10.0` browser app (.NET's ManagedToNativeGenerator: "Could not find
+    assembly 'System.Private.CoreLib'"; on a clean install, an app with no asm code stopped with
+    "WasmAssembliesToBundle item is empty"), so ASM0054 and the guides no longer suggest it.
+    `ASMSDK_TEST_WASM_APPS` also takes a RID list, for a machine that links one runtime's apps
+    only.
 - **Programs get the asm shared libraries they link.** A program that links an asm shared
   library (a `ProjectReference`, or a package) gets it in each RID's output folder, with the
   run path that finds it there:

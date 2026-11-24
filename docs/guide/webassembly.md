@@ -269,9 +269,11 @@ through the package's props, with no AsmFoundation.Sdk in the app.
 
 What the app's build needs, for the app's own .NET version:
 
-- `browser-wasm`: the `wasm-tools` workload (`dotnet workload install wasm-tools`). A `net10.0`
-  app on a later SDK needs `wasm-tools-net10` instead: a workload serves its SDK's .NET unless
-  its name says otherwise.
+- `browser-wasm`: the `wasm-tools` workload (`dotnet workload install wasm-tools`) of the SDK of
+  the app's own .NET: for a `net10.0` app, a .NET 10 SDK (pin it in `global.json`). A later SDK
+  names the earlier .NET's workload `wasm-tools-net10`, but SDK 11.0.100 with it did not build a
+  `net10.0` browser app: .NET's own targets stopped every one, with asm code or without
+  (measured on GitHub's Windows image and on a clean install).
 - `wasi-wasm`: the `wasi-experimental` workload, and the WASI SDK in `WASI_SDK_PATH`. .NET 10
   needs WASI SDK 25.0 exactly. Build a WASI app with the SDK of its own .NET (pin it in
   `global.json`): .NET 11.0.100's WASI build gives a `net10.0` app no native build, whatever
@@ -441,5 +443,5 @@ Each was measured with the bundled LLVM 23.1.5 and .NET 10.0.15:
 | `ASM0131` | A `PROTO` line for no function this image offers: no `FUNCTION` of that name, a `LOCAL_FUNCTION`, or a `HIDDEN_FUNCTION` of a module. | Declare the function with `FUNCTION`. |
 | `ASM0132` | A `PROTO` line that lowers to another wasm type than its `FUNCTION` declares (`int64_t` is `i64`, `double` is `f64`). | Make them agree. |
 | `ASM0133` | The library's RIDs declare a function differently, WebAssembly included: one `PROTO` line in `add.asm` and none in `add.wasm.s`. | Declare it the same way in every RID's source. |
-| `ASM0054` | A .NET WebAssembly app links asm projects or an asm package, and .NET has no native WebAssembly build for the app's .NET version: the app would build without the asm code. | The workload the message names (`wasm-tools`, `wasi-experimental`, or `wasm-tools-net10` for a `net10.0` app on a later SDK), or the SDK of the app's own .NET. |
+| `ASM0054` | A .NET WebAssembly app links asm projects or an asm package, and .NET has no native WebAssembly build for the app's .NET version: the app would build without the asm code. | The workload the message names (`wasm-tools`, `wasi-experimental`) on the SDK of the app's own .NET; on a later SDK, that .NET's SDK in `global.json`. |
 | `ASM0005` | `AsmToolchain=System` without `AsmLinkerCommand` for a linked wasm output. | `AsmLinkerCommand=wasm-ld`, with `AsmArchiverCommand=llvm-ar`. |

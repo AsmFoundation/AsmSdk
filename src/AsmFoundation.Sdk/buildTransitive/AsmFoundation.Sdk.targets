@@ -362,9 +362,10 @@
     _AsmCheckWasmNativeBuild: a .NET WebAssembly app that links asm projects needs .NET's native
     WebAssembly build (Emscripten for browser-wasm, the WASI SDK's clang for wasi-wasm), and that
     build is a workload of the app's TARGET FRAMEWORK, not of the SDK: wasm-tools and
-    wasi-experimental serve the SDK's own .NET version, wasm-tools-net10 and
-    wasi-experimental-net10 serve a net10.0 app on a later SDK (the workload IDs of .NET's
-    manifests, 10.0.100 and 11.0.100 bands). Without it .NET imports none of its WebAssembly build
+    wasi-experimental serve the SDK's own .NET version, and wasm-tools-net10 and
+    wasi-experimental-net10 are meant for a net10.0 app on a later SDK (the workload IDs of
+    .NET's manifests, 10.0.100 and 11.0.100 bands; see below for what they did). Without it .NET
+    imports none of its WebAssembly build
     targets, so the app builds as plain IL: NativeFileReference is ignored (.NET only warns, and
     only for items it already has, while _AsmAddWasmNativeFileReferences, which adds them before
     that build's first step, never runs), and every P/Invoke into the asm code fails when the app
@@ -384,11 +385,16 @@
     workload is still missing, .NET stops the build itself (its workload resolver names the
     workload), so nothing is said twice. The tests reach this error on a machine that has the
     workloads by setting the switch false, which is what a machine without them evaluates.
-    The fix differs by runtime. A later SDK names the browser workload of an earlier .NET with a
-    -net<major> suffix (wasm-tools-net10 on SDK 11). Its WASI targets serve only the SDK's own
-    .NET: .NET 11.0.100's WorkloadManifest.Wasi.targets computes WasiNativeWorkloadAvailable for
-    TargetsCurrent and TargetsNet9 only, so a net10.0 WASI app gets no native build there even
-    with wasi-experimental-net10 installed; the SDK of the app's own .NET (global.json) does it.
+    The fix: the workload on the app's own SDK, or, on a later SDK, the SDK of the app's own .NET
+    (global.json) with its workload. A later SDK names the browser workload of an earlier .NET
+    with a -net<major> suffix (wasm-tools-net10 on SDK 11), but it did not build such an app:
+    measured with SDK 11.0.100 and wasm-tools-net10 (2026-11-24), .NET's own targets stopped
+    every net10.0 browser app, ours (ManagedToNativeGenerator: "Could not find assembly
+    'System.Private.CoreLib'", GitHub's windows-2025 image, CI run 45351481101) and one with no
+    asm code at all ("WasmAssembliesToBundle item is empty", a clean install on Windows 11). Its
+    WASI targets serve only the SDK's own .NET: .NET 11.0.100's WorkloadManifest.Wasi.targets
+    computes WasiNativeWorkloadAvailable for TargetsCurrent and TargetsNet9 only, so a net10.0
+    WASI app gets no native build there even with wasi-experimental-net10 installed.
     Right after the references are configured, before any is built: the asm projects would be
     built for nothing. A package reference makes the same check through the package's props
     (AsmWritePackageProps), because a package works without these targets.
@@ -406,7 +412,7 @@
       <_AsmWasmAppDotnetMajor>$([MSBuild]::GetTargetFrameworkVersion('$(TargetFramework)', 1))</_AsmWasmAppDotnetMajor>
       <_AsmWasmSdkMajor>$(NETCoreSdkVersion.Split('.')[0])</_AsmWasmSdkMajor>
       <_AsmWasmFix>dotnet workload install $(_AsmWasmWorkload)</_AsmWasmFix>
-      <_AsmWasmFix Condition="'$(_AsmWasmAppDotnetMajor)' != '$(_AsmWasmSdkMajor)' and '$(RuntimeIdentifier)' == 'browser-wasm'">dotnet workload install $(_AsmWasmWorkload)-net$(_AsmWasmAppDotnetMajor), or build with a .NET $(_AsmWasmAppDotnetMajor) SDK (global.json) and its $(_AsmWasmWorkload) workload</_AsmWasmFix>
+      <_AsmWasmFix Condition="'$(_AsmWasmAppDotnetMajor)' != '$(_AsmWasmSdkMajor)' and '$(RuntimeIdentifier)' == 'browser-wasm'">build it with a .NET $(_AsmWasmAppDotnetMajor) SDK (global.json) and its $(_AsmWasmWorkload) workload, since a later SDK's $(_AsmWasmWorkload)-net$(_AsmWasmAppDotnetMajor) did not build such an app (measured with SDK 11.0.100: .NET's own targets stopped it)</_AsmWasmFix>
       <_AsmWasmFix Condition="'$(_AsmWasmAppDotnetMajor)' != '$(_AsmWasmSdkMajor)' and '$(RuntimeIdentifier)' == 'wasi-wasm'">build it with a .NET $(_AsmWasmAppDotnetMajor) SDK (global.json) and its $(_AsmWasmWorkload) workload, since a later SDK's WASI build serves only its own .NET</_AsmWasmFix>
     </PropertyGroup>
     <Error Code="ASM0054"

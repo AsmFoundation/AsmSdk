@@ -77,9 +77,9 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
     /// <c>ASMSDK_TEST_WASM_APPS</c>: <c>auto</c> (the default: run, or skip with the reason),
     /// <c>required</c> (fail instead of skipping, for both runtimes), <c>none</c> (skip), or the
     /// RIDs whose app tests are required, separated by <c>;</c> or <c>,</c>, the others staying
-    /// <c>auto</c>. CI's Linux x64 runner says <c>required</c> (it installs both workloads); its
-    /// Windows x64 runner says <c>browser-wasm</c>: SDK 11.0.100 there gives a net10.0 WASI app no
-    /// native build at all, so only the browser app tests can be required of it.
+    /// <c>auto</c>. CI's Linux x64 and Windows x64 runners say <c>required</c>: each installs a
+    /// .NET 10 SDK of its own with both workloads. A RID list suits a machine that can link one
+    /// runtime's apps only, such as SDK 11.0.100, which gives a net10.0 WASI app no native build.
     /// </summary>
     /// <exception cref="InvalidOperationException">ASMSDK_TEST_WASM_APPS names something else (thrown by the initializer).</exception>
     private static readonly (bool None, HashSet<string> Required) WasmApps = ParseWasmApps(Environment.GetEnvironmentVariable("ASMSDK_TEST_WASM_APPS"));
@@ -151,12 +151,14 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
     /// <param name="property">UsingBrowserRuntimeWorkload (browser-wasm) or UsingWasiRuntimeWorkload (wasi-wasm).</param>
     /// <exception cref="Exception">Xunit's skip exception; an assertion failure when the run is required.</exception>
     /// <remarks>
-    /// The question is .NET's, not a workload list's. The workload a net10.0 app needs is
-    /// wasm-tools on SDK 10 but wasm-tools-net10 on SDK 11, and GitHub's windows-2025 image has
-    /// SDK 11.0.100 with Visual Studio's wasm-tools, which serves net11.0 only: a name check
-    /// passed there, and the app built without its AppBundle (CI run 45275929352). The property
-    /// is the switch .NET's own imports test, and the one the SDK's ASM0054 check reads, so these
-    /// tests run exactly where the apps can be linked. Evaluation only, once per project.
+    /// The question is .NET's, not a workload list's. A net10.0 app needs the .NET 10 SDK's
+    /// wasm-tools, and GitHub's windows-2025 image has SDK 11.0.100 with Visual Studio's
+    /// wasm-tools, which serves net11.0 only: a name check passed there, and the app built without
+    /// its AppBundle (CI run 45275929352). SDK 11.0.100's wasm-tools-net10 turns the switch on but
+    /// does not build the app either (CI run 45351481101), so CI's Windows x64 runner installs a
+    /// .NET 10 SDK of its own. The property is the switch .NET's own imports test, and the one
+    /// the SDK's ASM0054 check reads, so these tests run exactly where the apps can be linked.
+    /// Evaluation only, once per project.
     /// </remarks>
     internal static void RequireWasmNativeBuild(SdkUnderTest sdk, string project, string property)
     {
@@ -171,7 +173,7 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
         RequireForWasmApps(answer.ExitCode == 0 && answer.StdOut.Trim() == "true",
             $"The dotnet on PATH ({version.StdOut.Trim()}) has no native WebAssembly build for {Path.GetFileName(project)}: {property} is '{answer.StdOut.Trim()}' " +
             $"(exit {answer.ExitCode}). It needs the wasm-tools workload for browser-wasm, or wasi-experimental and WASI_SDK_PATH for wasi-wasm, " +
-            "of the app's .NET version (net10.0: wasm-tools-net10 on a later SDK)",
+            "of the app's .NET version: for these net10.0 apps, a .NET 10 SDK",
             rid);
     }
 
@@ -584,11 +586,10 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
         Assert.True(build.ExitCode != 0, $"{app} built without .NET's native WebAssembly build: {build.Tail()}");
         Assert.Contains("ASM0054", build.Output);
         // The fix by SDK: the app is net10.0, so SDK 10 names the workload itself, and a later SDK
-        // the -net10 workload (browser) or a .NET 10 SDK (WASI, whose later-SDK build serves only
-        // its own .NET).
+        // a .NET 10 SDK for both runtimes (its wasm-tools-net10 did not build a net10.0 browser
+        // app, measured with 11.0.100, and its WASI build serves only its own .NET).
         string sdkVersion = sdk.Once("dotnet --version", () => sdk.DotnetCommand("--version")).StdOut.Trim();
         string fix = sdkVersion.StartsWith("10.", StringComparison.Ordinal) ? $"dotnet workload install {workload}"
-            : workload == "wasm-tools" ? $"dotnet workload install {workload}-net10"
             : $"build it with a .NET 10 SDK (global.json) and its {workload} workload";
         Assert.Contains(fix, build.Output);
     }

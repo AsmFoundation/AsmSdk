@@ -293,8 +293,10 @@ public sealed class AsmWritePackageProps : Task
     /// <para>
     /// The fix is named as the SDK's consumer targets name it (_AsmCheckWasmNativeBuild, where
     /// the measurements are): wasm-tools or wasi-experimental for an app of the SDK's own .NET;
-    /// on a later SDK, wasm-tools-net&lt;major&gt; or that .NET's SDK for a browser app, and that
-    /// .NET's SDK for a WASI app, whose later-SDK build serves only its own .NET.
+    /// on a later SDK, the SDK of the app's own .NET (global.json) with its workload, for both
+    /// runtimes. A later SDK's wasm-tools-net&lt;major&gt; did not build such a browser app
+    /// (measured with 11.0.100: .NET's own targets stopped even an app with no asm code), and its
+    /// WASI build serves only its own .NET.
     /// </para>
     /// <para>
     /// BeforeTargets PrepareForBuild, one of a build's first steps, so that nothing is compiled
@@ -329,7 +331,7 @@ public sealed class AsmWritePackageProps : Task
                 new XElement(fix, $"dotnet workload install $({workload})"),
                 new XElement(fix,
                     new XAttribute("Condition", $"{earlier} and '$(RuntimeIdentifier)' == 'browser-wasm'"),
-                    $"dotnet workload install $({workload})-net$({appMajor}), or build with a .NET $({appMajor}) SDK (global.json) and its $({workload}) workload"),
+                    $"build it with a .NET $({appMajor}) SDK (global.json) and its $({workload}) workload, since a later SDK's $({workload})-net$({appMajor}) did not build such an app (measured with SDK 11.0.100: .NET's own targets stopped it)"),
                 new XElement(fix,
                     new XAttribute("Condition", $"{earlier} and '$(RuntimeIdentifier)' == 'wasi-wasm'"),
                     $"build it with a .NET $({appMajor}) SDK (global.json) and its $({workload}) workload, since a later SDK's WASI build serves only its own .NET")),
