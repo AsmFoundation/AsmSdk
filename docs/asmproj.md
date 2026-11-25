@@ -395,6 +395,7 @@ Read-only in practice.
 | `_AsmAddBindings` (not released yet) | after `ResolveProjectReferences`, in a C# project for .NET 7 or later | asks each asm library reference (not a program: it is started, never loaded; a WebAssembly app's has no API file yet) for its API file (`GetAsmApiFile`) and adds it as an `AdditionalFiles` item (`AsmApiFile="true"`), the bindings generator (`bindings/netstandard2.0/AsmFoundation.Sdk.Bindings.dll`) as an `Analyzer` item, and `AllowUnsafeBlocks=true`; off with `AsmGenerateBindings=false` in the .NET project |
 | `_AsmLinkStaticLibrariesIntoNativeAot` (not released yet) | after `ResolveProjectReferences` | a `PublishAot` build for one RID: asks each kept `StaticLibrary` reference for its `GetAsmLinkInputs` (from the build that just ran) and adds its archive as a `NativeLibrary` item; its `DirectPInvoke` item (the library's `AssemblyName`) was added with the reference |
 | `_AsmCheckWasmNativeBuild` (not released yet) | after `_AsmConfigureAsmProjectReferences`, in a .NET WebAssembly app with asm references to link | `ASM0054` when .NET's native WebAssembly build is off for the app's .NET version (`UsingBrowserRuntimeWorkload`, `UsingWasiRuntimeWorkload`), before anything is built; the message names the workload, or the SDK, that turns it on. A package of a wasm library makes the same check from its props |
+| `_AsmWarnWasmBuildInterprets` (not released yet) | after `_AsmConfigureAsmProjectReferences`, in a build (not a publish) of a .NET browser app with asm references to link | `ASM0055` (a warning, once per build) when `RunAOTCompilation` is `true` and `RunAOTCompilationAfterBuild` is not: .NET compiles ahead of time only in a publish, so the build interprets the C#. A package of a wasm library makes the same check from its props, and whichever runs first says it |
 | `_AsmAddWasmNativeFileReferences` (not released yet) | before `_InitializeCommonProperties`, the first step of .NET's WebAssembly build | a .NET WebAssembly app: asks each linked asm reference for its `GetAsmLinkInputs` (the archive, or the objects) and adds them as `NativeFileReference` items (`ScanForPInvokes="false"`), with the reference's `AssemblyName` as a P/Invoke module (`_WasmPInvokeModules`) |
 | `GetAsmNativeLibraries`, `GetAsmNativeAssets` | called by a referencing .NET project | the asm libraries this project deploys with its explicit choices; the asm files it knows (its asm references' and, recursively, its .NET references'), matched by full path because the .NET SDK drops custom metadata from the copy items |
 | `_AsmCollectKnownNativeAssets`, `_AsmComputeDeployedNativeAssets` | after the references are built | the asm files this project may receive, and where each goes (`AsmLayOutNativeAssets`: in a RID-specific build only the best-serving RID's, `ASM0044` for two files on one path). Nothing for a .NET WebAssembly app (not released yet), which links its asm code and deploys no native file |
@@ -413,6 +414,15 @@ or the property (`ASM0043`); `_AsmPackageBinariesCopyPath_<id>` moves the packag
 items after `ResolvePackageAssets` (`ASM0044`), and the .NET SDK writes the new `localPath`
 into `deps.json` itself; `_AsmPackageNativeLoader_<id>` writes the package's fallback loader
 for a C# project.
+
+**In a .NET browser app's build** (not released yet): the consumer targets set
+`WasmDebugLevel` when the app sets none, `0` in Release and `-1` in Debug, so that a Release
+build runs without .NET's debugger in Chromium and Firefox; other configurations and every
+publish keep .NET's value. A package of a `browser-wasm` library sets the same from its props,
+in `_AsmWasmDebugLevel_<id>` (before `PrepareForBuild`: props come before the app's project
+body, where its `RuntimeIdentifier` is not known yet), next to `_AsmWarnWasmBuildInterprets_<id>`
+(`ASM0055`) and `_AsmCheckWasmNativeBuild_<id>` (`ASM0054`). See
+[WebAssembly](guide/webassembly.md#in-a-net-webassembly-app).
 
 ## Files the build writes
 
@@ -472,7 +482,8 @@ by `dotnet clean` only if you add it to `FileWrites` too.
 | `ASM0051` (not released yet) | A program to pack keeps libraries in a subfolder, which NuGet would flatten. | Keep them next to the program. |
 | `ASM0052` (not released yet) | A .NET tool's settings file cannot be written. | Check the `obj/` folder's permissions. |
 | `ASM0053` (not released yet) | `PackAsTool` on a project that is not a program, or that has several target frameworks. | `OutputType=Exe`, one `TargetFramework`. |
-| `ASM0054` (not released yet) | A .NET WebAssembly app links asm projects or an asm package, and .NET's native WebAssembly build is off for the app's .NET version, so the app would build without the asm code. | The workload the message names, or the SDK of the app's own .NET (`global.json`). |
+| `ASM0054` (not released yet) | A .NET WebAssembly app links asm projects or an asm package, and .NET's native WebAssembly build is off for the app's .NET version, so the app would build without the asm code. | The workload the message names. On a later SDK: `wasm-tools-net10` for a `Microsoft.NET.Sdk.WebAssembly` app, the SDK of the app's own .NET (`global.json`) for a `Microsoft.NET.Sdk` browser app or a WASI app. |
+| `ASM0055` (warning, not released yet) | A build of a .NET browser app that links asm code sets `RunAOTCompilation`, which .NET acts on only when it publishes: the build interprets the C#. | Time a `dotnet publish`; `<NoWarn>$(NoWarn);ASM0055</NoWarn>` when the property is there for the publishes. |
 | `ASM0060` | A package has no build for the consuming asm project's RID. | Build for a RID the message lists, or use a package packed for yours. |
 | `ASM0061` | The consumer props or targets of a package cannot be written. | Check the `obj/` folder's permissions. |
 | `ASM0070` | A C library stand-in cannot be written. | Check the `obj/` folder's permissions; report it otherwise. |

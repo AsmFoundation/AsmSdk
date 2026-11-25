@@ -22,9 +22,10 @@ namespace AsmSdk.Tests;
 /// <para>
 /// The projects (tests/projects): WasmLibrary (a library: module and archive, both RIDs),
 /// WasmStatic (a static library), WasmObjects (object files), WasmProgram (a WASI command that
-/// links WasmLibrary's archive), WasmExports (an exports file), WasmBrowserApp, WasiApp and
-/// WasmBrowserPackageApp (.NET apps that link them), and the rule projects WasmNasm, WasmNoSource,
-/// WasmConstant, WasmLibc and WasmRules, which must fail with their diagnostics.
+/// links WasmLibrary's archive), WasmExports (an exports file), WasmBrowserApp, WasmWebSdkApp,
+/// WasiApp and WasmBrowserPackageApp (.NET apps that link them: WasmWebSdkApp is the
+/// Microsoft.NET.Sdk.WebAssembly shape of WasmBrowserApp), and the rule projects WasmNasm,
+/// WasmNoSource, WasmConstant, WasmLibc and WasmRules, which must fail with their diagnostics.
 /// </para>
 /// </remarks>
 /// <param name="sdk">The SDK under test (assembly fixture).</param>
@@ -482,10 +483,46 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
         sdk.Once("pack WasmLibrary", () => sdk.Dotnet("pack", Repo.TestProject("WasmLibrary"), "-c", "Release"));
 
     /// <summary>
+    /// The debug level a browser app's runtime starts with: the "debugLevel" of the boot
+    /// configuration .NET wrote, in dotnet.boot.js (an app made with Microsoft.NET.Sdk) or inside
+    /// dotnet.js (Microsoft.NET.Sdk.WebAssembly).
+    /// </summary>
+    /// <param name="bootFile">The file that holds the boot configuration.</param>
+    /// <returns>The value, as written (0, -1).</returns>
+    /// <exception cref="Xunit.Sdk.XunitException">The file has no debugLevel.</exception>
+    private static string BootDebugLevel(string bootFile)
+    {
+        System.Text.RegularExpressions.Match level =
+            System.Text.RegularExpressions.Regex.Match(File.ReadAllText(bootFile), "\"debugLevel\":\\s*(-?\\d+)");
+        Assert.True(level.Success, $"No debugLevel in {bootFile}");
+        return level.Groups[1].Value;
+    }
+
+    /// <summary>
+    /// The four browser apps, by how they get asm code and what they are made with: WasmBrowserApp
+    /// (project references, Microsoft.NET.Sdk), WasmWebSdkApp (project references,
+    /// Microsoft.NET.Sdk.WebAssembly), WasmBrowserPackageApp and WasmWebSdkPackageApp (the same two
+    /// shapes with the package Test.WasmLibrary, whose props stand in for the consumer targets).
+    /// </summary>
+    public static TheoryData<string> BrowserApps => new() { "WasmBrowserApp", "WasmWebSdkApp", "WasmBrowserPackageApp", "WasmWebSdkPackageApp" };
+
+    /// <summary>Packs Test.WasmLibrary first when the app takes it as a package (its name says Package).</summary>
+    /// <param name="app">The browser app.</param>
+    private void PackWasmLibraryFor(string app)
+    {
+        if (app.Contains("Package", StringComparison.Ordinal))
+        {
+            CommandResult pack = PackWasmLibrary();
+            Assert.True(pack.ExitCode == 0, pack.Tail());
+        }
+    }
+
+    /// <summary>
     /// A .NET browser-wasm app links a library, a static library and object files from asm
     /// projects into its runtime and calls each through P/Invoke, under Node: the consumer
     /// targets hand them over as NativeFileReference, with the projects' AssemblyNames as the
-    /// P/Invoke modules (an object file's own name would be "sub.wasm").
+    /// P/Invoke modules (an object file's own name would be "sub.wasm"). Its Release build's boot
+    /// configuration says debugLevel 0, the SDK's default (.NET's own is -1 in every build).
     /// </summary>
     [Fact]
     public void A_browser_wasm_dotnet_app_links_asm_projects()
@@ -498,9 +535,114 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
         // Said here rather than by the process start ("The directory name is invalid"): a build
         // without .NET's native WebAssembly build succeeds without a bundle.
         Assert.True(Directory.Exists(bundle), $"No AppBundle after the build: {build.Tail()}");
+        Assert.Equal("0", BootDebugLevel(Path.Combine(bundle, "_framework", "dotnet.boot.js")));
         CommandResult run = Command.Run("node", ["main.mjs"], bundle);
         Assert.True(run.ExitCode == 0, run.Output);
         Assert.Contains("browser-wasm 42 42 111 42 42 42 42", run.StdOut.Split('\n').Select(line => line.TrimEnd('\r')));
+    }
+
+    /// <summary>
+    /// The same app made with .NET's WebAssembly SDK (WasmWebSdkApp, Microsoft.NET.Sdk.WebAssembly:
+    /// the wasmbrowser template's and Blazor WebAssembly's shape) links the same three into its
+    /// runtime and gives the same answer, under Node through run.mjs, from the build's wwwroot
+    /// folder, where this shape writes the app (fingerprinted files in _framework, the boot
+    /// configuration inside dotnet.js, which says debugLevel 0 in Release here too).
+    /// </summary>
+    [Fact]
+    public void A_webassembly_sdk_app_links_asm_projects()
+    {
+        RequireForWasmApps(Command.OnPath("node"), "No Node on PATH to run the browser-wasm app here", "browser-wasm");
+        RequireWasmNativeBuild("WasmWebSdkApp", "UsingBrowserRuntimeWorkload");
+        CommandResult build = sdk.Dotnet("build", Repo.TestProjectPath("WasmWebSdkApp", "WasmWebSdkApp.csproj"), "-c", "Release");
+        Assert.True(build.ExitCode == 0, build.Tail());
+        string wwwroot = Repo.TestProjectPath("WasmWebSdkApp", "bin", "Release", "net10.0", "wwwroot");
+        string dotnetJs = Path.Combine(wwwroot, "_framework", "dotnet.js");
+        Assert.True(File.Exists(dotnetJs), $"No _framework/dotnet.js after the build: {build.Tail()}");
+        Assert.Equal("0", BootDebugLevel(dotnetJs));
+        CommandResult run = Command.Run("node", ["run.mjs", wwwroot], Repo.TestProjectPath("WasmWebSdkApp"));
+        Assert.True(run.ExitCode == 0, run.Output);
+        Assert.Contains("browser-wasm 42 42 111 42 42 42 42", run.StdOut.Split('\n').Select(line => line.TrimEnd('\r')));
+    }
+
+    /// <summary>
+    /// The SDK's debug level for a browser app's BUILD (the owner's choice of 2026-11-25): 0 in
+    /// Release, -1 in Debug, nothing in a publish (dotnet publish's _IsPublishing, Visual Studio's
+    /// DeployOnBuild, the nested publish build), so that a publish keeps .NET's own 0, and nothing
+    /// in another configuration. For project references the consumer targets set it at
+    /// evaluation, for a package its props in a target before PrepareForBuild: the value is read
+    /// after that target ran (-getProperty with -t), which .NET's boot configuration tasks, run
+    /// later, see too. Evaluation and one early target only: the apps with project references run
+    /// on every machine, with the workloads or without. The package apps need .NET's native
+    /// WebAssembly build, because their props' ASM0054 check runs before PrepareForBuild as well
+    /// and stops them without it (measured with SDK 11.0.100 and no workload).
+    /// </summary>
+    /// <param name="app">The browser app (<see cref="BrowserApps"/>).</param>
+    [Theory]
+    [MemberData(nameof(BrowserApps))]
+    public void A_browser_app_build_gets_the_sdk_debug_level(string app)
+    {
+        if (app.Contains("Package", StringComparison.Ordinal))
+        {
+            RequireWasmNativeBuild(app, "UsingBrowserRuntimeWorkload");
+        }
+
+        PackWasmLibraryFor(app);
+        string project = Repo.TestProjectPath(app, app + ".csproj");
+        (string Arguments, string Expected)[] cases =
+        [
+            ("-p:Configuration=Release", "0"),
+            ("-p:Configuration=Debug", "-1"),
+            ("-p:Configuration=Release -p:_IsPublishing=true", ""),
+            ("-p:Configuration=Debug -p:DeployOnBuild=true", ""),
+            ("-p:Configuration=Release -p:WasmBuildingForNestedPublish=true", ""),
+            ("-p:Configuration=Staging", ""),
+        ];
+        foreach ((string arguments, string expected) in cases)
+        {
+            CommandResult level = sdk.Dotnet(["msbuild", project, "-restore", "-t:PrepareForBuild", "-getProperty:WasmDebugLevel", .. arguments.Split(' ')]);
+            Assert.True(level.ExitCode == 0, $"{app} {arguments}: {level.Output}");
+            Assert.True(level.StdOut.Trim() == expected, $"{app} {arguments}: WasmDebugLevel '{level.StdOut.Trim()}', expected '{expected}'");
+        }
+    }
+
+    /// <summary>
+    /// ASM0055 (the owner's choice of 2026-11-25, "Build warning"): a build of a browser app that
+    /// links asm code, with RunAOTCompilation=true, warns once that it interprets the C# (.NET
+    /// compiles ahead of time only when it publishes), from the consumer targets or a package's
+    /// props; a publish, RunAOTCompilationAfterBuild (a build that does compile) and NoWarn say
+    /// nothing. The warning comes before anything is compiled, so the build stops after the
+    /// references (-t:PrepareForBuild;ResolveProjectReferences). Only where .NET's native
+    /// WebAssembly build is: without its workload .NET itself stops a build that sets
+    /// RunAOTCompilation (NETSDK1147, "the following workloads must be installed:
+    /// wasm-tools-net10", measured with SDK 11.0.100), before any warning of ours.
+    /// </summary>
+    /// <param name="app">The browser app (<see cref="BrowserApps"/>).</param>
+    [Theory]
+    [MemberData(nameof(BrowserApps))]
+    public void A_browser_app_build_that_asks_for_aot_warns_ASM0055(string app)
+    {
+        RequireWasmNativeBuild(app, "UsingBrowserRuntimeWorkload");
+        PackWasmLibraryFor(app);
+        string project = Repo.TestProjectPath(app, app + ".csproj");
+        (string Arguments, int Warnings)[] cases =
+        [
+            ("-p:RunAOTCompilation=true", 1),
+            ("-p:RunAOTCompilation=true -p:_IsPublishing=true", 0),
+            ("-p:RunAOTCompilation=true -p:RunAOTCompilationAfterBuild=true", 0),
+            ("-p:RunAOTCompilation=true -p:NoWarn=ASM0055", 0),
+            ("-p:Configuration=Release", 0),
+        ];
+        foreach ((string arguments, int warnings) in cases)
+        {
+            CommandResult build = sdk.Dotnet(["msbuild", project, "-restore", "-p:Configuration=Release", "-t:PrepareForBuild;ResolveProjectReferences", .. arguments.Split(' ')]);
+            Assert.True(build.ExitCode == 0, $"{app} {arguments}: {build.Tail()}");
+            string[] said = build.StdOut.Split('\n').Where(line => line.Contains("warning ASM0055", StringComparison.Ordinal)).ToArray();
+            Assert.True(said.Length == warnings, $"{app} {arguments}: {said.Length} ASM0055 warnings, expected {warnings}: {build.Tail()}");
+            if (warnings != 0)
+            {
+                Assert.Contains($"{app} sets RunAOTCompilation, but .NET compiles a WebAssembly app ahead of time only when it publishes it: this build interprets the C#.", said[0]);
+            }
+        }
     }
 
     /// <summary>
@@ -520,7 +662,32 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
         Assert.True(build.ExitCode == 0, build.Tail());
         string bundle = Repo.TestProjectPath("WasmBrowserPackageApp", "bin", "Release", "net10.0", "browser-wasm", "AppBundle");
         Assert.True(Directory.Exists(bundle), $"No AppBundle after the build: {build.Tail()}");
+        // The package's own target set the SDK's Release debug level: the app has no AsmFoundation.Sdk.
+        Assert.Equal("0", BootDebugLevel(Path.Combine(bundle, "_framework", "dotnet.boot.js")));
         CommandResult run = Command.Run("node", ["main.mjs"], bundle);
+        Assert.True(run.ExitCode == 0, run.Output);
+        Assert.Contains("browser-wasm 42 42 111 42 42 42", run.StdOut.Split('\n').Select(line => line.TrimEnd('\r')));
+    }
+
+    /// <summary>
+    /// The same package in an app made with .NET's WebAssembly SDK (WasmWebSdkPackageApp): the
+    /// package's props link its archive into this shape's runtime too, and set the Release debug
+    /// level, which this shape writes inside dotnet.js. Run under Node with WasmWebSdkApp's
+    /// run.mjs, from the build's wwwroot folder.
+    /// </summary>
+    [Fact]
+    public void A_webassembly_sdk_app_links_an_asm_package()
+    {
+        RequireForWasmApps(Command.OnPath("node"), "No Node on PATH to run the browser-wasm app here", "browser-wasm");
+        RequireWasmNativeBuild("WasmWebSdkPackageApp", "UsingBrowserRuntimeWorkload");
+        PackWasmLibraryFor("WasmWebSdkPackageApp");
+        CommandResult build = sdk.Dotnet("build", Repo.TestProjectPath("WasmWebSdkPackageApp", "WasmWebSdkPackageApp.csproj"), "-c", "Release");
+        Assert.True(build.ExitCode == 0, build.Tail());
+        string wwwroot = Repo.TestProjectPath("WasmWebSdkPackageApp", "bin", "Release", "net10.0", "wwwroot");
+        string dotnetJs = Path.Combine(wwwroot, "_framework", "dotnet.js");
+        Assert.True(File.Exists(dotnetJs), $"No _framework/dotnet.js after the build: {build.Tail()}");
+        Assert.Equal("0", BootDebugLevel(dotnetJs));
+        CommandResult run = Command.Run("node", ["run.mjs", wwwroot], Repo.TestProjectPath("WasmWebSdkApp"));
         Assert.True(run.ExitCode == 0, run.Output);
         Assert.Contains("browser-wasm 42 42 111 42 42 42", run.StdOut.Split('\n').Select(line => line.TrimEnd('\r')));
     }
@@ -555,12 +722,16 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
     /// code: .NET imports none of its WebAssembly build targets then, ignores NativeFileReference,
     /// and the app would fail at its first call (measured on GitHub's windows-2025 image, CI run
     /// 45275929352). The test turns .NET's native build off with the very switch its imports
-    /// test, so it runs on every machine, with the workloads or without; the fix the error names
-    /// depends on the SDK running it.
+    /// test, so it runs on every machine, with the workloads or without. The fix the error names
+    /// depends on the SDK and, on a later SDK than the app's .NET, on the app's shape (the owner's
+    /// choice of 2026-11-25, "Correct the claim"); each app is built twice, on the SDK running the
+    /// test and as if on the other kind of SDK (NETCoreSdkVersion, the one property the check
+    /// reads for it), so both answers are checked everywhere.
     /// </summary>
     /// <param name="app">The app (tests/projects/&lt;app&gt;/&lt;app&gt;.csproj).</param>
     /// <param name="importSwitch">.NET's import switch for the app's runtime: UsingBrowserRuntimeWorkload or UsingWasiRuntimeWorkload.</param>
     /// <param name="workload">The workload of the SDK's own .NET for that runtime.</param>
+    /// <param name="shape">How the app is made: "console" (Microsoft.NET.Sdk with RuntimeIdentifier browser-wasm), "websdk" (Microsoft.NET.Sdk.WebAssembly) or "wasi".</param>
     /// <remarks>
     /// Not .NET's -p:WasmNativeWorkload=false: it turns WasmNativeWorkloadAvailable off, but an
     /// AppBundle app such as WasmBrowserApp is one .NET marks as needing the native build
@@ -568,30 +739,42 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
     /// props set), and then UsingBrowserRuntimeWorkload stays true and Emscripten still links
     /// (measured with SDK 10.0.404 and wasm-tools: the build succeeded). The import switch as a
     /// global property is what a machine without the workload has: .NET imports none of its
-    /// WebAssembly build targets.
+    /// WebAssembly build targets. The later-SDK texts were checked on SDK 11.0.100 itself too
+    /// (2026-11-25), word for word what -p:NETCoreSdkVersion=11.0.100 gives on SDK 10.
     /// </remarks>
     [Theory]
-    [InlineData("WasmBrowserApp", "UsingBrowserRuntimeWorkload", "wasm-tools")]
-    [InlineData("WasmBrowserPackageApp", "UsingBrowserRuntimeWorkload", "wasm-tools")]
-    [InlineData("WasiApp", "UsingWasiRuntimeWorkload", "wasi-experimental")]
-    public void A_wasm_dotnet_app_without_the_native_build_stops_with_ASM0054(string app, string importSwitch, string workload)
+    [InlineData("WasmBrowserApp", "UsingBrowserRuntimeWorkload", "wasm-tools", "console")]
+    [InlineData("WasmWebSdkApp", "UsingBrowserRuntimeWorkload", "wasm-tools", "websdk")]
+    [InlineData("WasmBrowserPackageApp", "UsingBrowserRuntimeWorkload", "wasm-tools", "console")]
+    [InlineData("WasmWebSdkPackageApp", "UsingBrowserRuntimeWorkload", "wasm-tools", "websdk")]
+    [InlineData("WasiApp", "UsingWasiRuntimeWorkload", "wasi-experimental", "wasi")]
+    public void A_wasm_dotnet_app_without_the_native_build_stops_with_ASM0054(string app, string importSwitch, string workload, string shape)
     {
-        if (app == "WasmBrowserPackageApp")
-        {
-            CommandResult pack = PackWasmLibrary();
-            Assert.True(pack.ExitCode == 0, pack.Tail());
-        }
-
-        CommandResult build = sdk.Dotnet("build", Repo.TestProjectPath(app, app + ".csproj"), "-c", "Release", $"-p:{importSwitch}=false");
-        Assert.True(build.ExitCode != 0, $"{app} built without .NET's native WebAssembly build: {build.Tail()}");
-        Assert.Contains("ASM0054", build.Output);
-        // The fix by SDK: the app is net10.0, so SDK 10 names the workload itself, and a later SDK
-        // a .NET 10 SDK for both runtimes (its wasm-tools-net10 did not build a net10.0 browser
-        // app, measured with 11.0.100, and its WASI build serves only its own .NET).
+        PackWasmLibraryFor(app);
         string sdkVersion = sdk.Once("dotnet --version", () => sdk.DotnetCommand("--version")).StdOut.Trim();
-        string fix = sdkVersion.StartsWith("10.", StringComparison.Ordinal) ? $"dotnet workload install {workload}"
-            : $"build it with a .NET 10 SDK (global.json) and its {workload} workload";
-        Assert.Contains(fix, build.Output);
+        bool runningSdkIsTheApps = sdkVersion.StartsWith("10.", StringComparison.Ordinal);
+        // The SDK running the test, then the other kind: a .NET 10 SDK for these net10.0 apps
+        // names the workload itself; a later one names the fix of the app's shape.
+        foreach ((string extra, bool laterSdk) in new[]
+                 {
+                     ("", !runningSdkIsTheApps),
+                     (runningSdkIsTheApps ? "-p:NETCoreSdkVersion=11.0.100" : "-p:NETCoreSdkVersion=10.0.100", runningSdkIsTheApps),
+                 })
+        {
+            string[] arguments = ["build", Repo.TestProjectPath(app, app + ".csproj"), "-c", "Release", $"-p:{importSwitch}=false"];
+            CommandResult build = sdk.Dotnet(extra.Length == 0 ? arguments : [.. arguments, extra]);
+            Assert.True(build.ExitCode != 0, $"{app} {extra} built without .NET's native WebAssembly build: {build.Tail()}");
+            Assert.Contains("ASM0054", build.Output);
+            string fix = !laterSdk ? $"dotnet workload install {workload}" : shape switch
+            {
+                // Measured with SDK 11.0.100 and wasm-tools-net10: this shape builds, asm code included.
+                "websdk" => $"dotnet workload install {workload}-net10, or build it with a .NET 10 SDK (global.json) and its {workload} workload",
+                // The same SDK did not build this shape, even .NET's own wasmconsole template.
+                "console" => $"build it with a .NET 10 SDK (global.json) and its {workload} workload; a later SDK's {workload}-net10 did not build a net10.0 app made with Microsoft.NET.Sdk and RuntimeIdentifier browser-wasm",
+                _ => $"build it with a .NET 10 SDK (global.json) and its {workload} workload, since a later SDK's WASI build serves only its own .NET",
+            };
+            Assert.True(build.Output.Contains(fix, StringComparison.Ordinal), $"{app} {extra}: no \"{fix}\" in {build.Tail()}");
+        }
     }
 
     /// <summary>

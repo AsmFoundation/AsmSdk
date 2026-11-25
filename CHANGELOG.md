@@ -63,16 +63,40 @@ Each SDK release names the one it was tested with.
       native WebAssembly build for the app's .NET version. The message names the fix. Without
       that build .NET compiles the app as plain IL, ignores `NativeFileReference`, and says
       nothing. Measured on GitHub's windows-2025 image: SDK 11.0.100 with Visual Studio's
-      `wasm-tools`, which serves `net11.0`, built a `net10.0` app with no `AppBundle`. The fix
-      is the SDK of the app's own .NET (`global.json`) with its workload, for both runtimes:
-      SDK 11.0.100's `wasm-tools-net10` let .NET's own targets stop every `net10.0` browser
-      app, with asm code or without (measured), and its WASI build serves only `net11.0`.
+      `wasm-tools`, which serves `net11.0`, built a `net10.0` app with no `AppBundle`. The fix:
+      the workload, on the SDK of the app's own .NET. On a later SDK it depends on how the app is
+      made (the owner's choice of 2026-11-25, "Correct the claim"; measured with SDK 11.0.100 and
+      `wasm-tools-net10`): an app made with `Microsoft.NET.Sdk.WebAssembly` (`wasmbrowser`,
+      Blazor WebAssembly) built and ran with that workload, asm code included, so the message
+      names it; one made with `Microsoft.NET.Sdk` and `RuntimeIdentifier` `browser-wasm`
+      (`wasmconsole`, `asmwasmapp`) did not build with it, .NET's own targets stopping every
+      `net10.0` one, with asm code or without, so the message names the app's own SDK
+      (`global.json`) and says why. A WASI app needs its own SDK too: SDK 11.0.100's WASI build
+      serves only `net11.0`.
+    - `ASM0055` (a warning, the owner's choice of 2026-11-25, "Build warning"): a *build* of a
+      browser app that links asm code, with `RunAOTCompilation=true`, interprets the C#, since
+      .NET compiles ahead of time only when it publishes (measured: the build's
+      `dotnet.native.wasm` was byte-identical to one without the property). Once per build, from
+      the consumer targets or a package's props; never in a publish, nor with
+      `RunAOTCompilationAfterBuild`. `NoWarn` silences it, as it does any MSBuild warning.
+  - **Release builds of browser apps run without .NET's debugger** (the owner's choice of
+    2026-11-25, "SDK default in Release", with Debug set as well). .NET writes `debugLevel: -1`
+    into every build's boot configuration, and in Chromium and Firefox its runtime then starts
+    the debugger, which keeps the interpreter unoptimized. AsmSdk sets `WasmDebugLevel` for the
+    build of a browser app that links asm code, from the consumer targets and from a package's
+    props: `0` in Release, `-1` in Debug. A value the app sets wins; other configurations and
+    every publish keep .NET's. Measured with `Crc32C.Browser` in Chrome: 128 to 158 MB/s for the
+    C# with the default, 11.6 to 12.2 MB/s with `-p:WasmDebugLevel=-1` (unpinned runs). A
+    build's runtime still links .NET's debugger (about 120 KB), never started at level 0: .NET
+    decides what it links before these targets are read.
   - **Measured end to end** in `WebAssemblyTests`, with .NET 10.0.15, Node 22 and wasmtime 39:
     - the modules run in Node;
     - the WASI program runs in wasmtime and through `dotnet run`, and exits with its
       `proc_exit` code;
     - a .NET browser-wasm app links a library, a static library and object files, from
-      projects and from a package, and runs in Node;
+      projects and from a package, and runs in Node; so does the same app made with .NET's
+      WebAssembly SDK (`WasmWebSdkApp`, `WasmWebSdkPackageApp`), and each Release build says
+      `debugLevel: 0`;
     - a .NET wasi-wasm app links them and runs in wasmtime.
 
     Traps found on the way, each documented in the WebAssembly guide:
@@ -122,8 +146,9 @@ Each SDK release names the one it was tested with.
     - **Measured trap:** a .NET browser app's *build* bundle says `debugLevel: -1`. In Chromium
       and Firefox .NET then starts its debugger, which keeps the interpreter unoptimized; the
       jiterpreter compiles nothing. The C# ran at 5 to 7 MB/s, against 134 MB/s with
-      `debugLevel: 0`. `Crc32C.Browser` sets `WasmDebugLevel` to 0 in Release, and the guide says
-      to time a publish. Also measured: AOT happens at `dotnet publish` only.
+      `debugLevel: 0`. `Crc32C.Browser` sets `WasmDebugLevel` to 0 in Release, and the SDK now
+      does the same for every browser app that links asm code (above). Also measured: AOT
+      happens at `dotnet publish` only, which a build now says (ASM0055).
   - **Fixed on the way:** an asm library that reaches a .NET WebAssembly app through a .NET
     library (`Crc32C.Browser` through `Crc32C.Net`) is linked into the app like a direct
     reference. The native layout steps now skip a WebAssembly app, which deploys no native file:
@@ -131,9 +156,11 @@ Each SDK release names the one it was tested with.
   - **CI:** the Windows x64 runner installs the .NET 10 SDK into a folder of its own, with both
     WebAssembly workloads and the WASI SDK, and requires every .NET WebAssembly app test, as
     Linux x64 does. Measured on the way: its image's SDK 11.0.100 with `wasm-tools-net10` did
-    not build a `net10.0` browser app (.NET's ManagedToNativeGenerator: "Could not find
-    assembly 'System.Private.CoreLib'"; on a clean install, an app with no asm code stopped with
-    "WasmAssembliesToBundle item is empty"), so ASM0054 and the guides no longer suggest it.
+    not build AsmSdk's `net10.0` browser apps, all made with `Microsoft.NET.Sdk` (.NET's
+    ManagedToNativeGenerator: "Could not find assembly 'System.Private.CoreLib'"; on a clean
+    install, .NET's own `wasmconsole` app, with no asm code, stopped with
+    "WasmAssembliesToBundle item is empty"). An app made with `Microsoft.NET.Sdk.WebAssembly`
+    builds with it, so ASM0054 names that workload for that shape only.
     `ASMSDK_TEST_WASM_APPS` also takes a RID list, for a machine that links one runtime's apps
     only.
 - **Programs get the asm shared libraries they link.** A program that links an asm shared

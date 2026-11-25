@@ -47,7 +47,9 @@
 #      the asm outputs and run (ASMSDK_TEST_WASM_APPS=required: there they fail rather than
 #      skip). Not the Windows image's SDK 11.0.100: its wasm-tools serves net11.0, and with
 #      wasm-tools-net10 added, .NET's own ManagedToNativeGenerator stopped every net10.0 browser
-#      app ("Could not find assembly 'System.Private.CoreLib'", CI run 45351481101). Elsewhere
+#      app made with Microsoft.NET.Sdk ("Could not find assembly 'System.Private.CoreLib'", CI
+#      run 45351481101), the shape of all but two of these apps (WasmWebSdkApp and
+#      WasmWebSdkPackageApp are Microsoft.NET.Sdk.WebAssembly apps, which it builds). Elsewhere
 #      the app tests are skipped with the reason, by .NET's own verdict. Every runner checks
 #      ASM0054, which an app that links asm code gets when .NET's native build is missing.
 #   The only prerequisite is the .NET SDK: no Python since 0.2.0.

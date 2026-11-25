@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+  <!--
+    WasmBrowserPackageApp's code as an app of .NET's WebAssembly SDK (WebAssemblyTests): it takes
+    WasmLibrary as the PACKAGE Test.WasmLibrary 1.0.0 (the test packs it into the local feed
+    first), whose generated props link the archive into its runtime and make the package's checks
+    (ASM0054, whose fix on a later SDK depends on this shape) and defaults (WasmDebugLevel,
+    ASM0055) without AsmFoundation.Sdk. Main runs under Node through WasmWebSdkApp's run.mjs, from
+    the build's wwwroot folder; it prints what WasmBrowserPackageApp prints,
+      "<RuntimeIdentifier> <wl_add(40, 2)> <wl_twice(21)> <wl_platform()> <wl_table_sum()> <wl_simd(21)> <ws_mul(6, 7)>"
+    which the Release package answers "browser-wasm 42 42 111 42 42 42".
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- A test program: tests/projects/Directory.Build.props sends packages to the local feed,
+         which this one never is. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The same Main as the wasmconsole-shaped package app, so both shapes answer the same line. -->
+    <Compile Include="../WasmBrowserPackageApp/Program.cs" Link="Program.cs" />
+    <PackageReference Include="Test.WasmLibrary" Version="1.0.0" />
+  </ItemGroup>
+</Project>

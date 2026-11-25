@@ -40,9 +40,12 @@ namespace AsmFoundation.Sdk.Tasks;
 /// as the SDK's consumer targets do for a ProjectReference; a package must work without the
 /// SDK. Such an app also gets the consumer targets' check: ASM0054 from a target the props
 /// define, when .NET's native WebAssembly build is missing for the app's target framework (the
-/// app would otherwise build without the package's code). Paths are relative to the props
-/// file, so the package works from any NuGet cache location. Error: ASM0061 (the props cannot
-/// be written or the graph read).
+/// app would otherwise build without the package's code). A browser-wasm app also gets the
+/// consumer targets' build defaults, from targets as well: WasmDebugLevel 0 in a Release build
+/// and -1 in a Debug one, and ASM0055 when a build asks for AOT (see
+/// <see cref="BrowserBuildDefaults"/>). Paths are relative to the props file, so the package
+/// works from any NuGet cache location. Error: ASM0061 (the props cannot be written or the graph
+/// read).
 /// </para>
 /// </remarks>
 public sealed class AsmWritePackageProps : Task
@@ -250,6 +253,17 @@ public sealed class AsmWritePackageProps : Task
             project.Add(WasmNativeBuildCheck(id, IsAsm, wasmRids));
         }
 
+        // A browser app's build defaults, as the consumer targets set them for a ProjectReference:
+        // only for a package that has a browser-wasm archive, the one kind of package whose code a
+        // browser app links into its runtime.
+        if (wasmRids.Contains("browser-wasm", StringComparer.OrdinalIgnoreCase))
+        {
+            foreach (XElement target in BrowserBuildDefaults(id, IsAsm))
+            {
+                project.Add(target);
+            }
+        }
+
         project.Add(new XElement("Target",
             new XAttribute("Name", $"_AsmCheckPackage_{id}"),
             new XAttribute("BeforeTargets", "AsmPrepare"),
@@ -292,11 +306,15 @@ public sealed class AsmWritePackageProps : Task
     /// </para>
     /// <para>
     /// The fix is named as the SDK's consumer targets name it (_AsmCheckWasmNativeBuild, where
-    /// the measurements are): wasm-tools or wasi-experimental for an app of the SDK's own .NET;
-    /// on a later SDK, the SDK of the app's own .NET (global.json) with its workload, for both
-    /// runtimes. A later SDK's wasm-tools-net&lt;major&gt; did not build such a browser app
-    /// (measured with 11.0.100: .NET's own targets stopped even an app with no asm code), and its
-    /// WASI build serves only its own .NET.
+    /// the measurements are): wasm-tools or wasi-experimental for an app of the SDK's own .NET.
+    /// On a later SDK it depends on the app: a browser app made with Microsoft.NET.Sdk.WebAssembly
+    /// (UsingMicrosoftNETSdkWebAssembly) builds with the later SDK's
+    /// wasm-tools-net&lt;major&gt;, so the message names it, with the app's own SDK as the
+    /// alternative; one made with Microsoft.NET.Sdk and RuntimeIdentifier browser-wasm did not
+    /// build with it (measured with 11.0.100: .NET's own targets stopped even its wasmconsole
+    /// template, which has no asm code), so the message names the app's own SDK (global.json)
+    /// and says why. A WASI app needs the app's own SDK too: a later SDK's WASI build serves only
+    /// its own .NET.
     /// </para>
     /// <para>
     /// BeforeTargets PrepareForBuild, one of a build's first steps, so that nothing is compiled
@@ -329,9 +347,13 @@ public sealed class AsmWritePackageProps : Task
                 new XElement(appMajor, "$([MSBuild]::GetTargetFrameworkVersion('$(TargetFramework)', 1))"),
                 new XElement(sdkMajor, "$(NETCoreSdkVersion.Split('.')[0])"),
                 new XElement(fix, $"dotnet workload install $({workload})"),
+                // A later SDK, by the app's shape: the same two texts as the consumer targets'.
                 new XElement(fix,
-                    new XAttribute("Condition", $"{earlier} and '$(RuntimeIdentifier)' == 'browser-wasm'"),
-                    $"build it with a .NET $({appMajor}) SDK (global.json) and its $({workload}) workload, since a later SDK's $({workload})-net$({appMajor}) did not build such an app (measured with SDK 11.0.100: .NET's own targets stopped it)"),
+                    new XAttribute("Condition", $"{earlier} and '$(RuntimeIdentifier)' == 'browser-wasm' and '$(UsingMicrosoftNETSdkWebAssembly)' == 'true'"),
+                    $"dotnet workload install $({workload})-net$({appMajor}), or build it with a .NET $({appMajor}) SDK (global.json) and its $({workload}) workload"),
+                new XElement(fix,
+                    new XAttribute("Condition", $"{earlier} and '$(RuntimeIdentifier)' == 'browser-wasm' and '$(UsingMicrosoftNETSdkWebAssembly)' != 'true'"),
+                    $"build it with a .NET $({appMajor}) SDK (global.json) and its $({workload}) workload; a later SDK's $({workload})-net$({appMajor}) did not build a $(TargetFramework) app made with Microsoft.NET.Sdk and RuntimeIdentifier browser-wasm, as this one is (measured with SDK 11.0.100, .NET's own wasmconsole template too), though it built one made with Microsoft.NET.Sdk.WebAssembly"),
                 new XElement(fix,
                     new XAttribute("Condition", $"{earlier} and '$(RuntimeIdentifier)' == 'wasi-wasm'"),
                     $"build it with a .NET $({appMajor}) SDK (global.json) and its $({workload}) workload, since a later SDK's WASI build serves only its own .NET")),
@@ -341,6 +363,66 @@ public sealed class AsmWritePackageProps : Task
                     $"$(MSBuildProjectName) links the package {PackageId} {PackageVersion} into its $(RuntimeIdentifier) runtime, which only .NET's native WebAssembly build does, " +
                     $"and this .NET SDK ($(NETCoreSdkVersion)) has none for $(TargetFramework): $({fix}). " +
                     "Without it the app would build without the package's asm code, and every call into it would fail when the app runs.")));
+    }
+
+    /// <summary>
+    /// The two targets that give a browser app's BUILD the consumer targets' defaults (the
+    /// owner's choices of 2026-11-25): WasmDebugLevel 0 in Release and -1 in Debug when the app
+    /// sets none, so that a Release build runs without .NET's debugger in a browser, and ASM0055
+    /// when the build asks for AOT, which .NET does only when it publishes.
+    /// </summary>
+    /// <param name="id">The property-name-safe package id, which keeps these targets' names apart from other packages'.</param>
+    /// <param name="isAsm">The condition that is true in an asm project (which runs no browser app).</param>
+    /// <returns>The two Target elements, debug level first.</returns>
+    /// <remarks>
+    /// <para>
+    /// Targets, not properties: NuGet imports a package's props before the project, where a
+    /// browser app made with Microsoft.NET.Sdk has not said its RuntimeIdentifier yet, so an
+    /// evaluation-time condition could not tell a browser app from any other. A property a target
+    /// sets is seen by every later task: .NET writes the boot configuration from WasmDebugLevel in
+    /// tasks that run after the build (WasmAppBuilder, GenerateWasmBootJson). Its relink decides
+    /// whether the runtime carries the debugger at evaluation (_WasmDebuggerSupport), so a build's
+    /// runtime still carries it, as .NET's own builds do; with debugLevel 0 it is never started.
+    /// The consumer targets' comments hold the measurements.
+    /// </para>
+    /// <para>
+    /// Builds only, by .NET's own test (WasmBuildOnlyAfterPublish): not with _IsPublishing
+    /// (dotnet publish) or DeployOnBuild (Visual Studio), nor in the nested publish build
+    /// (WasmBuildingForNestedPublish). A publish keeps .NET's debug level, 0, with the debugger
+    /// linked out of its runtime, and compiles ahead of time when asked.
+    /// </para>
+    /// <para>
+    /// Footgun: several such packages, or a package and an asm ProjectReference, each bring the
+    /// targets. The debug level is set once (each target tests that it is still empty), and the
+    /// warning is said once (each sets _AsmWasmBuildInterpretsWarned, which the others and the
+    /// consumer targets test). BeforeTargets PrepareForBuild, one of a build's first steps,
+    /// before anything that reads them.
+    /// </para>
+    /// </remarks>
+    private static IEnumerable<XElement> BrowserBuildDefaults(string id, string isAsm)
+    {
+        const string IsBrowserBuild =
+            "'$(RuntimeIdentifier)' == 'browser-wasm' and '$(_IsPublishing)' != 'true' and '$(DeployOnBuild)' != 'true' and '$(WasmBuildingForNestedPublish)' != 'true'";
+        yield return new XElement("Target",
+            new XAttribute("Name", $"_AsmWasmDebugLevel_{id}"),
+            new XAttribute("BeforeTargets", "PrepareForBuild"),
+            new XAttribute("Condition", $"!({isAsm}) and {IsBrowserBuild} and '$(WasmDebugLevel)' == ''"),
+            new XElement("PropertyGroup",
+                new XElement("WasmDebugLevel", new XAttribute("Condition", "'$(Configuration)' == 'Release'"), "0"),
+                new XElement("WasmDebugLevel", new XAttribute("Condition", "'$(Configuration)' == 'Debug'"), "-1")));
+        yield return new XElement("Target",
+            new XAttribute("Name", $"_AsmWarnWasmBuildInterprets_{id}"),
+            new XAttribute("BeforeTargets", "PrepareForBuild"),
+            new XAttribute("Condition",
+                $"!({isAsm}) and {IsBrowserBuild} and '$(RunAOTCompilation)' == 'true' and '$(RunAOTCompilationAfterBuild)' != 'true' and '$(_AsmWasmBuildInterpretsWarned)' != 'true'"),
+            // The consumer targets' text, word for word: the same warning, from whichever comes first.
+            new XElement("Warning",
+                new XAttribute("Code", "ASM0055"),
+                new XAttribute("Text",
+                    "$(MSBuildProjectName) sets RunAOTCompilation, but .NET compiles a WebAssembly app ahead of time only when it publishes it: " +
+                    "this build interprets the C#. Time a dotnet publish; NoWarn ASM0055 silences this.")),
+            new XElement("PropertyGroup",
+                new XElement("_AsmWasmBuildInterpretsWarned", "true")));
     }
 
     /// <summary>Whether a packed RID is one of the WebAssembly RIDs, whose archives a .NET app links.</summary>

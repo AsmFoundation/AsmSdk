@@ -94,11 +94,14 @@ jobs:
   - the workload belongs to the app's .NET version, so the runner needs that .NET's SDK.
     GitHub's Windows images come with SDK 11.0.100 and Visual Studio's `wasm-tools`, which
     serves `net11.0` only: without more, the SDK stops a `net10.0` app with ASM0054 instead of
-    letting .NET build it without its asm code. `wasm-tools-net10` on that SDK does not help:
-    .NET's own targets then stopped every `net10.0` browser app (measured in CI and on a clean
-    install), and a `net10.0` WASI app has no workload on SDK 11.0.100 at all. Install the .NET
-    10 SDK into a folder of the runner's own (`DOTNET_INSTALL_DIR` for `setup-dotnet`), where it
-    is the `dotnet` on `PATH` and its workloads install without administrator rights.
+    letting .NET build it without its asm code. `wasm-tools-net10` on that SDK serves only an
+    app made with `Microsoft.NET.Sdk.WebAssembly` (the `wasmbrowser` template, Blazor
+    WebAssembly), which built and ran with it; .NET's own targets stopped every `net10.0` app made
+    with `Microsoft.NET.Sdk` and `RuntimeIdentifier` `browser-wasm` (the `wasmconsole` shape,
+    AsmSdk's own apps; measured in CI and on a clean install), and a `net10.0` WASI app has no
+    workload on SDK 11.0.100 at all. For those, install the .NET 10 SDK into a folder of the
+    runner's own (`DOTNET_INSTALL_DIR` for `setup-dotnet`), where it is the `dotnet` on `PATH`
+    and its workloads install without administrator rights.
 
   AsmSdk's own CI does all of this (see [WebAssembly](webassembly.md)): Linux x64 and Windows
   x64 link both kinds of app.

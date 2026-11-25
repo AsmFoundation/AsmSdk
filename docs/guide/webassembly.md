@@ -270,10 +270,17 @@ through the package's props, with no AsmFoundation.Sdk in the app.
 What the app's build needs, for the app's own .NET version:
 
 - `browser-wasm`: the `wasm-tools` workload (`dotnet workload install wasm-tools`) of the SDK of
-  the app's own .NET: for a `net10.0` app, a .NET 10 SDK (pin it in `global.json`). A later SDK
-  names the earlier .NET's workload `wasm-tools-net10`, but SDK 11.0.100 with it did not build a
-  `net10.0` browser app: .NET's own targets stopped every one, with asm code or without
-  (measured on GitHub's Windows image and on a clean install).
+  the app's own .NET. A later SDK names the earlier .NET's workload with a suffix
+  (`wasm-tools-net10` on SDK 11), and whether that works depends on how the app is made
+  (measured with SDK 11.0.100 and `wasm-tools-net10`):
+  - an app made with **`Microsoft.NET.Sdk.WebAssembly`** (the `wasmbrowser` template, Blazor
+    WebAssembly) built and ran, asm code included: a later SDK with `wasm-tools-net10` works;
+  - an app made with **`Microsoft.NET.Sdk` and `RuntimeIdentifier` `browser-wasm`** (the
+    `wasmconsole` template, the `asmwasmapp` template, `Crc32C.Browser`) did not build: .NET's
+    own targets stopped every `net10.0` one, with asm code or without ("WasmAssembliesToBundle
+    item is empty" on Windows 11, "Could not find assembly 'System.Private.CoreLib'" on GitHub's
+    Windows image). Build it with the SDK of its own .NET: for a `net10.0` app, a .NET 10 SDK
+    (pin it in `global.json`).
 - `wasi-wasm`: the `wasi-experimental` workload, and the WASI SDK in `WASI_SDK_PATH`. .NET 10
   needs WASI SDK 25.0 exactly. Build a WASI app with the SDK of its own .NET (pin it in
   `global.json`): .NET 11.0.100's WASI build gives a `net10.0` app no native build, whatever
@@ -282,7 +289,10 @@ What the app's build needs, for the app's own .NET version:
 
 Without that native build, .NET builds the app as plain IL. It never links the asm code, and every
 call into the code would fail once the app runs. So an app that links asm projects, or an asm
-package, stops with **ASM0054**, which names the fix.
+package, stops with **ASM0054**, which names the fix for the app's shape: on a later SDK,
+`dotnet workload install wasm-tools-net10` (or the app's own SDK) for a
+`Microsoft.NET.Sdk.WebAssembly` app, and the app's own SDK for a `Microsoft.NET.Sdk` one, with
+the reason.
 
 **Generated bindings.** When the asm sources carry `PROTO` lines (see
 [PROTO](#proto-the-c-bindings)), the app needs no `[LibraryImport]` at all: the asm project's
@@ -308,13 +318,38 @@ carries one:
 
 An asm *program* (`Exe`) is not delivered to a WebAssembly app: nothing there could start it.
 
-**Timing asm against C# in a browser: measure a publish, or set `WasmDebugLevel` to 0.** A
-browser app's *build* bundle says `debugLevel: -1`, and in Chromium and Firefox .NET then starts
-its runtime with the debugger on: the interpreter keeps every method unoptimized and the
+**A Release build runs without .NET's debugger.** .NET writes `debugLevel: -1` into the boot
+configuration of every browser app *build*, Release too, and in Chromium and Firefox its runtime
+then starts with the debugger on: the interpreter keeps every method unoptimized and the
 jiterpreter compiles no hot loop. Measured with `samples/Crc32C.Browser` in headless Chrome: its
 C# ran at 5 to 7 MB/s with the debugger on (0 traces compiled) and 134 MB/s without. Node never
-turns the debugger on, so the same bundle is fast there. A publish writes `debugLevel: 0`, and
-`<WasmDebugLevel>0</WasmDebugLevel>` makes a build do the same.
+turns the debugger on, so the same bundle is fast there. So AsmSdk sets `WasmDebugLevel` for the
+build of a browser app that links asm code, through project references and packages alike:
+
+| Build | `WasmDebugLevel` | What the runtime does |
+|---|---|---|
+| Release | `0` | no debugger; the interpreter optimizes and the jiterpreter compiles |
+| Debug | `-1` | the debugger, without its logging (.NET's own value for a build) |
+| another configuration | .NET's | `-1` |
+| any publish | .NET's | `0`, and the debugger is linked out of the runtime |
+
+A value the app sets itself, in its project, a `Directory.Build.props` or on the command line,
+wins. With the default in place, `Crc32C.Browser`'s C# ran at 128 to 158 MB/s in a Release
+build in Chrome, against 11.6 to 12.2 MB/s with `-p:WasmDebugLevel=-1` (unpinned runs,
+2026-11-25). A build's runtime still carries .NET's debugger, as .NET's own builds do, because
+.NET decides what it links before AsmSdk's targets are read: about 120 KB of
+`dotnet.native.wasm`, never started at level 0. Debugging a Release build in a browser takes
+`<WasmDebugLevel>-1</WasmDebugLevel>`.
+
+**AOT happens at publish only, and a build says so.** `RunAOTCompilation=true` compiles the C#
+ahead of time only when the app is published: a `dotnet build` with it gave a
+`dotnet.native.wasm` byte-identical to one without, and its C# is interpreted. A build of a
+browser app that links asm code, with the property set, warns **ASM0055** ("this build
+interprets the C#"), so that nobody times interpreted C# believing it is AOT; time a
+`dotnet publish`. A project that keeps the property for its publishes, as Blazor projects often
+do, silences it with `<NoWarn>$(NoWarn);ASM0055</NoWarn>`. A publish says nothing, and neither
+does a build with `RunAOTCompilationAfterBuild=true`, which compiles every untrimmed assembly
+(174, about 5 minutes here, after which .NET's own `llvm-size` step failed on Windows: MSB3073).
 
 ### Standalone modules
 
@@ -443,5 +478,6 @@ Each was measured with the bundled LLVM 23.1.5 and .NET 10.0.15:
 | `ASM0131` | A `PROTO` line for no function this image offers: no `FUNCTION` of that name, a `LOCAL_FUNCTION`, or a `HIDDEN_FUNCTION` of a module. | Declare the function with `FUNCTION`. |
 | `ASM0132` | A `PROTO` line that lowers to another wasm type than its `FUNCTION` declares (`int64_t` is `i64`, `double` is `f64`). | Make them agree. |
 | `ASM0133` | The library's RIDs declare a function differently, WebAssembly included: one `PROTO` line in `add.asm` and none in `add.wasm.s`. | Declare it the same way in every RID's source. |
-| `ASM0054` | A .NET WebAssembly app links asm projects or an asm package, and .NET has no native WebAssembly build for the app's .NET version: the app would build without the asm code. | The workload the message names (`wasm-tools`, `wasi-experimental`) on the SDK of the app's own .NET; on a later SDK, that .NET's SDK in `global.json`. |
+| `ASM0054` | A .NET WebAssembly app links asm projects or an asm package, and .NET has no native WebAssembly build for the app's .NET version: the app would build without the asm code. | The workload the message names (`wasm-tools`, `wasi-experimental`) on the SDK of the app's own .NET. On a later SDK: `wasm-tools-net10` for a `Microsoft.NET.Sdk.WebAssembly` app; the app's own SDK in `global.json` for a `Microsoft.NET.Sdk` browser app or a WASI app. |
+| `ASM0055` (warning) | A build of a browser app that links asm code sets `RunAOTCompilation`: .NET compiles ahead of time only when it publishes, so this build interprets the C#. | Time a `dotnet publish`; `<NoWarn>$(NoWarn);ASM0055</NoWarn>` when the property is there for the publishes. |
 | `ASM0005` | `AsmToolchain=System` without `AsmLinkerCommand` for a linked wasm output. | `AsmLinkerCommand=wasm-ld`, with `AsmArchiverCommand=llvm-ar`. |

@@ -376,13 +376,15 @@ at 1 MiB:
   speed when interpreted C# calls it); see the results for every size.
 
 > [!TIP]
-> **Measure a publish, or set `WasmDebugLevel` to 0.** A .NET browser app's *build* bundle says
-> `debugLevel: -1`, and in Chromium and Firefox the runtime then starts with its debugger on: the
-> interpreter keeps every method unoptimized, and the jiterpreter (which compiles hot interpreted
-> loops to WebAssembly) compiles nothing. Measured in headless Chrome: the C# slicing-by-8 ran at
-> 5 to 7 MB/s, with 0 traces compiled, against 134 MB/s with `debugLevel: 0`. Node never turns
-> the debugger on, so it hides the difference. `Crc32C.Browser` sets `WasmDebugLevel` to 0 in
-> Release; a publish does it by default.
+> **Time a Release build or a publish, never a Debug build.** .NET writes `debugLevel: -1` into a
+> browser app's *build* bundle, and in Chromium and Firefox the runtime then starts with its
+> debugger on: the interpreter keeps every method unoptimized, and the jiterpreter (which
+> compiles hot interpreted loops to WebAssembly) compiles nothing. Measured in headless Chrome:
+> the C# slicing-by-8 ran at 5 to 7 MB/s, with 0 traces compiled, against 134 MB/s with
+> `debugLevel: 0`. Node never turns the debugger on, so it hides the difference. The SDK sets
+> `WasmDebugLevel` to 0 in the Release build of every browser app that links asm code, and -1 in
+> Debug ([WebAssembly](../guide/webassembly.md#in-a-net-webassembly-app)); `Crc32C.Browser` also
+> sets it itself, as it did when these numbers were taken. A publish says 0 on its own.
 
 ## How it is checked
 

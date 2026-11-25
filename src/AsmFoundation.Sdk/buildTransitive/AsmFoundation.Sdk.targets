@@ -25,6 +25,9 @@
         object-files project is built for that RID and LINKED into the app's runtime, as
         NativeFileReference items (_AsmAddWasmNativeFileReferences); nothing is copied, laid out
         or listed in deps.json, and [DllImport("<its AssemblyName>")] reaches its functions.
+        A browser app's build also gets WasmDebugLevel 0 in Release and -1 in Debug (no
+        debugger in a Release build), and ASM0055 when it sets RunAOTCompilation, which only a
+        publish acts on (see below).
 
     Where their libraries go (BinariesCopyPath), for build and publish alike:
       <ProjectReference Include="../Calc/Calc.asmproj" BinariesCopyPath="native/{rid}" />
@@ -112,6 +115,41 @@
     <_AsmNativeLibraryLoaderPath>$(IntermediateOutputPath)AsmNativeLibraryLoader.g.cs</_AsmNativeLibraryLoaderPath>
     <!-- Pack: asm references with PrivateAssets="all" go into this package. -->
     <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);_AsmEmbedNativeAssetsInPackage</TargetsForTfmSpecificContentInPackage>
+    <!-- A build, not a publish, by .NET's own test (WasmApp.Common.targets, WasmBuildOnlyAfterPublish:
+         "VS uses DeployOnBuild, and sdk sets _IsPublishing"), and not the nested publish build that
+         a WebAssembly publish starts (WasmBuildingForNestedPublish, which clears both). The
+         WasmDebugLevel default and ASM0055 below act on builds only. -->
+    <_AsmConsumerIsWasmBuild Condition="'$(_IsPublishing)' != 'true' and '$(DeployOnBuild)' != 'true' and '$(WasmBuildingForNestedPublish)' != 'true'">true</_AsmConsumerIsWasmBuild>
+  </PropertyGroup>
+
+  <!--
+    The debug level of a .NET browser app's BUILD (the owner's choice of 2026-11-25): 0 in
+    Release, -1 in Debug, unless the project, a Directory.Build.props or the command line sets
+    WasmDebugLevel itself (these targets come after the project, so its own value is seen here).
+    Other configurations keep .NET's default.
+    Why: .NET writes debugLevel -1 into every build's boot configuration, Release too, and its
+    runtime then starts its debugger in Chromium and Firefox (never in Node): the interpreter
+    keeps every method unoptimized and the jiterpreter compiles nothing. Measured with
+    Crc32C.Browser in headless Chrome 156: the C# ran at 5-7 MB/s with the debugger on (0 traces
+    compiled) and 134 MB/s with debugLevel 0 (18), so a Release build timed in a browser showed
+    the asm code 137-208 times faster than the C#, against 7-15 times. 0 = no debugger,
+    interpreter optimizations on; -1 = debugger on without debug logging (.NET's
+    WasmApp.Common.targets), so a Debug build still debugs in the browser.
+    Builds only: a publish keeps .NET's choice, 0 in every configuration (measured: a Debug
+    publish of WasmBrowserApp said debugLevel 0), with the debugger linked out of its runtime;
+    -1 there would turn on a debugger the runtime does not have.
+    Footgun: .NET decides whether a relinked runtime carries its debugger (_WasmDebuggerSupport)
+    as its targets are imported, before these, so a build's runtime still carries it, as .NET's
+    own builds do; with debugLevel 0 it is never started. The boot configuration is written by
+    tasks that read WasmDebugLevel when they run (WasmAppBuilder for an app made with
+    Microsoft.NET.Sdk, GenerateWasmBootJson for one made with Microsoft.NET.Sdk.WebAssembly), so
+    both get this value. A package of a wasm library sets the same default from its props, in a
+    target (AsmWritePackageProps): props come before the project, where an app's
+    RuntimeIdentifier is not known yet.
+  -->
+  <PropertyGroup Condition="'$(UsingAsmFoundationSdk)' != 'true' and '$(RuntimeIdentifier)' == 'browser-wasm' and '$(_AsmConsumerIsWasmBuild)' == 'true' and '$(WasmDebugLevel)' == ''">
+    <WasmDebugLevel Condition="'$(Configuration)' == 'Release'">0</WasmDebugLevel>
+    <WasmDebugLevel Condition="'$(Configuration)' == 'Debug'">-1</WasmDebugLevel>
   </PropertyGroup>
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmSelectRuntimeIdentifier" AssemblyFile="$(_AsmConsumerTasksAssembly)" Condition="'$(UsingAsmFoundationSdk)' != 'true'" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmAddNativeAssetsToDepsFile" AssemblyFile="$(_AsmConsumerTasksAssembly)" Condition="'$(UsingAsmFoundationSdk)' != 'true'" />
@@ -385,14 +423,21 @@
     workload is still missing, .NET stops the build itself (its workload resolver names the
     workload), so nothing is said twice. The tests reach this error on a machine that has the
     workloads by setting the switch false, which is what a machine without them evaluates.
-    The fix: the workload on the app's own SDK, or, on a later SDK, the SDK of the app's own .NET
-    (global.json) with its workload. A later SDK names the browser workload of an earlier .NET
-    with a -net<major> suffix (wasm-tools-net10 on SDK 11), but it did not build such an app:
-    measured with SDK 11.0.100 and wasm-tools-net10 (2026-11-24), .NET's own targets stopped
-    every net10.0 browser app, ours (ManagedToNativeGenerator: "Could not find assembly
-    'System.Private.CoreLib'", GitHub's windows-2025 image, CI run 45351481101) and one with no
-    asm code at all ("WasmAssembliesToBundle item is empty", a clean install on Windows 11). Its
-    WASI targets serve only the SDK's own .NET: .NET 11.0.100's WorkloadManifest.Wasi.targets
+    The fix: the workload on the app's own SDK. On a later SDK it depends on how the browser app
+    is made (the owner's choice of 2026-11-25, "Correct the claim"). A later SDK names the browser
+    workload of an earlier .NET with a -net<major> suffix (wasm-tools-net10 on SDK 11), and
+    measured with SDK 11.0.100 and wasm-tools-net10 (2026-11-24/25, Windows 11, private installs):
+      Microsoft.NET.Sdk with RuntimeIdentifier browser-wasm (the wasmconsole template, all of
+        AsmSdk's own browser apps): .NET's own targets stopped every net10.0 app, ours
+        (ManagedToNativeGenerator: "Could not find assembly 'System.Private.CoreLib'", GitHub's
+        windows-2025 image, CI run 45351481101; "WasmAssembliesToBundle item is empty" on
+        Windows 11) and the template's, which has no asm code. The fix is the SDK of the app's
+        own .NET (global.json) with its workload.
+      Microsoft.NET.Sdk.WebAssembly (UsingMicrosoftNETSdkWebAssembly: the wasmbrowser template,
+        Blazor WebAssembly): the template built, with and without WasmBuildNative, and so did
+        WasmWebSdkApp, which links WasmLibrary, WasmStatic and WasmObjects, and ran under Node.
+        The fix is that workload, or the app's own SDK.
+    Its WASI targets serve only the SDK's own .NET: .NET 11.0.100's WorkloadManifest.Wasi.targets
     computes WasiNativeWorkloadAvailable for TargetsCurrent and TargetsNet9 only, so a net10.0
     WASI app gets no native build there even with wasi-experimental-net10 installed.
     Right after the references are configured, before any is built: the asm projects would be
@@ -412,12 +457,46 @@
       <_AsmWasmAppDotnetMajor>$([MSBuild]::GetTargetFrameworkVersion('$(TargetFramework)', 1))</_AsmWasmAppDotnetMajor>
       <_AsmWasmSdkMajor>$(NETCoreSdkVersion.Split('.')[0])</_AsmWasmSdkMajor>
       <_AsmWasmFix>dotnet workload install $(_AsmWasmWorkload)</_AsmWasmFix>
-      <_AsmWasmFix Condition="'$(_AsmWasmAppDotnetMajor)' != '$(_AsmWasmSdkMajor)' and '$(RuntimeIdentifier)' == 'browser-wasm'">build it with a .NET $(_AsmWasmAppDotnetMajor) SDK (global.json) and its $(_AsmWasmWorkload) workload, since a later SDK's $(_AsmWasmWorkload)-net$(_AsmWasmAppDotnetMajor) did not build such an app (measured with SDK 11.0.100: .NET's own targets stopped it)</_AsmWasmFix>
+      <!-- A later SDK, by the app's shape (see above): Microsoft.NET.Sdk.WebAssembly builds with the
+           later SDK's workload for the app's .NET; Microsoft.NET.Sdk with RuntimeIdentifier
+           browser-wasm needs the app's own SDK, and the message says why, since installing the
+           workload it would otherwise try leads to .NET's own failure instead. -->
+      <_AsmWasmFix Condition="'$(_AsmWasmAppDotnetMajor)' != '$(_AsmWasmSdkMajor)' and '$(RuntimeIdentifier)' == 'browser-wasm' and '$(UsingMicrosoftNETSdkWebAssembly)' == 'true'">dotnet workload install $(_AsmWasmWorkload)-net$(_AsmWasmAppDotnetMajor), or build it with a .NET $(_AsmWasmAppDotnetMajor) SDK (global.json) and its $(_AsmWasmWorkload) workload</_AsmWasmFix>
+      <_AsmWasmFix Condition="'$(_AsmWasmAppDotnetMajor)' != '$(_AsmWasmSdkMajor)' and '$(RuntimeIdentifier)' == 'browser-wasm' and '$(UsingMicrosoftNETSdkWebAssembly)' != 'true'">build it with a .NET $(_AsmWasmAppDotnetMajor) SDK (global.json) and its $(_AsmWasmWorkload) workload; a later SDK's $(_AsmWasmWorkload)-net$(_AsmWasmAppDotnetMajor) did not build a $(TargetFramework) app made with Microsoft.NET.Sdk and RuntimeIdentifier browser-wasm, as this one is (measured with SDK 11.0.100, .NET's own wasmconsole template too), though it built one made with Microsoft.NET.Sdk.WebAssembly</_AsmWasmFix>
       <_AsmWasmFix Condition="'$(_AsmWasmAppDotnetMajor)' != '$(_AsmWasmSdkMajor)' and '$(RuntimeIdentifier)' == 'wasi-wasm'">build it with a .NET $(_AsmWasmAppDotnetMajor) SDK (global.json) and its $(_AsmWasmWorkload) workload, since a later SDK's WASI build serves only its own .NET</_AsmWasmFix>
     </PropertyGroup>
     <Error Code="ASM0054"
            Condition="'$(_AsmWasmNativeBuild)' != 'true'"
            Text="$(MSBuildProjectName) links @(_AsmWasmLinkedLibrary->'%(Filename)', ', ') into its $(RuntimeIdentifier) runtime, which only .NET's native WebAssembly build does, and this .NET SDK ($(NETCoreSdkVersion)) has none for $(TargetFramework): $(_AsmWasmFix). Without it the app would build without the asm code, and every call into it would fail when the app runs." />
+  </Target>
+
+  <!--
+    _AsmWarnWasmBuildInterprets: ASM0055, a warning (the owner's choice of 2026-11-25, "Build
+    warning"): a BUILD of a browser app that links asm code, with RunAOTCompilation=true,
+    interprets the app's C#. .NET compiles a WebAssembly app ahead of time only in the nested
+    publish build that a publish starts (_WasmShouldAOT, WasmApp.Common.targets: RunAOTCompilation
+    with WasmBuildingForNestedPublish, or with RunAOTCompilationAfterBuild). Measured with
+    Crc32C.Browser: dotnet build -p:RunAOTCompilation=true gave a dotnet.native.wasm
+    byte-identical to a build without it, and only dotnet publish compiled (7.27 MB against
+    2.88 MB). Timing such a build compares the asm code with interpreted C# while the project file
+    says AOT.
+    Not in a publish (_AsmConsumerIsWasmBuild), nor with RunAOTCompilationAfterBuild, whose build
+    does compile (all 174 untrimmed assemblies, about 5 minutes, and then .NET's own llvm-size
+    step failed on Windows: MSB3073, so the message does not suggest it). Its cost, accepted with
+    the choice: a project that keeps RunAOTCompilation in its file for its publishes, the usual
+    Blazor setup, warns on every build until NoWarn lists ASM0055.
+    One warning per build: a package of a wasm library makes the same check from its props
+    (AsmWritePackageProps), and whichever runs first sets _AsmWasmBuildInterpretsWarned. After the
+    references are configured, when _AsmWasmLinkedLibrary says whether there is asm code to link.
+  -->
+  <Target Name="_AsmWarnWasmBuildInterprets"
+          AfterTargets="_AsmConfigureAsmProjectReferences"
+          Condition="'$(UsingAsmFoundationSdk)' != 'true' and '$(RuntimeIdentifier)' == 'browser-wasm' and '$(_AsmConsumerIsWasmBuild)' == 'true' and '$(RunAOTCompilation)' == 'true' and '$(RunAOTCompilationAfterBuild)' != 'true' and '$(_AsmWasmBuildInterpretsWarned)' != 'true' and '@(_AsmWasmLinkedLibrary)' != ''">
+    <Warning Code="ASM0055"
+             Text="$(MSBuildProjectName) sets RunAOTCompilation, but .NET compiles a WebAssembly app ahead of time only when it publishes it: this build interprets the C#. Time a dotnet publish; NoWarn ASM0055 silences this." />
+    <PropertyGroup>
+      <_AsmWasmBuildInterpretsWarned>true</_AsmWasmBuildInterpretsWarned>
+    </PropertyGroup>
   </Target>
 
   <!--

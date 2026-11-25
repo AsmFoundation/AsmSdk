@@ -43,7 +43,12 @@
          with the debugger on: the interpreter keeps every method unoptimized and the jiterpreter
          compiles nothing. Measured in headless Chrome: the C# ran at 5-7 MB/s (0 traces jitted)
          against 160-200 MB/s in Node, where .NET never enables the debugger; a publish says 0.
-         0 = no debugger, interpreter optimizations on (WasmApp.Common.targets). Debug keeps it. -->
+         0 = no debugger, interpreter optimizations on (WasmApp.Common.targets). Debug keeps it.
+         The SDK's consumer targets now set the same default for every browser app that links
+         asm code (0 in Release, -1 in Debug), and it ran as fast here (2026-11-25). The line
+         stays: the results were measured with it, and set in the project it is seen before .NET
+         decides what to relink, so this build's runtime also leaves .NET's debugger out
+         (dotnet.native.wasm 2,983,165 bytes against 3,105,471 with the SDK's default alone). -->
     <WasmDebugLevel Condition="'$(Configuration)' == 'Release'">0</WasmDebugLevel>
   </PropertyGroup>
   <ItemGroup>

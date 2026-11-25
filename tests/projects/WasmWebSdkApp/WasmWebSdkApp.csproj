@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+  <!--
+    WasmBrowserApp's code as an app of .NET's WebAssembly SDK (WebAssemblyTests): the shape of the
+    wasmbrowser template and of Blazor WebAssembly (Microsoft.NET.Sdk.WebAssembly, which sets
+    RuntimeIdentifier browser-wasm itself and writes the app into wwwroot/_framework), where
+    WasmBrowserApp is the wasmconsole shape (Microsoft.NET.Sdk with RuntimeIdentifier browser-wasm
+    and WasmMainJSPath, an AppBundle folder). The consumer targets link the same three asm
+    projects into its runtime. The two shapes are told apart by ASM0054 on a later SDK (measured
+    with SDK 11.0.100 and wasm-tools-net10: the wasmconsole shape failed to build a net10.0 app,
+    this one built), and both get the SDK's WasmDebugLevel default. run.mjs runs Main under Node
+    from the build's wwwroot folder; it prints what WasmBrowserApp prints,
+      "<RuntimeIdentifier> <wl_add(40, 2)> <wl_twice(21)> <wl_platform()> <wl_table_sum()> <wl_simd(21)> <ws_mul(6, 7)> <wo_sub(50, 8)>"
+    which a Release build answers "browser-wasm 42 42 111 42 42 42 42".
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- A test program: tests/projects/Directory.Build.props sends packages to the local feed,
+         which this one never is. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The same Main as the wasmconsole-shaped app, so both shapes answer the same line. -->
+    <Compile Include="../WasmBrowserApp/Program.cs" Link="Program.cs" />
+    <ProjectReference Include="../WasmLibrary/WasmLibrary.asmproj" />
+    <ProjectReference Include="../WasmStatic/WasmStatic.asmproj" />
+    <ProjectReference Include="../WasmObjects/WasmObjects.asmproj" />
+  </ItemGroup>
+</Project>
