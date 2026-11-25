@@ -1,0 +1,10 @@
+# The Wasm Demos section: three demos, each a WebAssembly module written by hand in assembly and
+# built with AsmSdk (samples/WasmDemos), running in the page.
+- name: Overview
+  href: index.md
+- name: "Life, 16 million cells"
+  href: life.md
+- name: Ray-marched scene
+  href: ray.md
+- name: Particle swarm
+  href: swarm.md

@@ -354,8 +354,11 @@ does a build with `RunAOTCompilationAfterBuild=true`, which compiles every untri
 
 ### Standalone modules
 
-A `Library`'s module is what JavaScript, Node or a WASI host instantiates. It defines and exports
-its own linear memory (`memory`) and imports exactly what `IMPORT_FUNCTION` declared:
+A `Library`'s module is what JavaScript, Node or a WASI host instantiates. The
+[Wasm Demos](../demos/index.md) are three such modules running in this site: Life on 16 million
+cells, a ray-marched scene and a particle swarm, each a single `.wasm.s` file that simulates and
+draws its own frame. A module defines and exports its own linear memory (`memory`) and imports
+exactly what `IMPORT_FUNCTION` declared:
 
 ```js
 const { instance } = await WebAssembly.instantiate(bytes, {
@@ -464,6 +467,11 @@ Each was measured with the bundled LLVM 23.1.5 and .NET 10.0.15:
   is not supported", even for a `.L` name, so a macro cannot keep a counter or a flag in a
   symbol. A label (defined once) and a macro that is purged and defined again can stand in, as
   the PROTO guard does.
+- **`f32.const` takes few decimals.** Short, exact ones assemble (`1.0`, `0.5`, `256.0`). An integer
+  (`f32.const 1`) does not, and neither does any other decimal, even the exact
+  `0.4199999868869781494140625` ("Cannot parse real"). Write a hex float, the form llvm-mc
+  prints: `f32.const 0x1.ae147ap-2` is 0.42 rounded to f32, and Python's `float.hex` gives it.
+  The [Wasm Demos](../demos/index.md) write all their constants this way.
 
 ## Diagnostics
 

@@ -21,4 +21,11 @@
     <Project Path="WordCount/WordCount.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
     <Project Path="HexDump/HexDump.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
   </Folder>
+  <!-- The Wasm Demos' kernels (docs/demos): browser-wasm modules, which every build machine builds
+       with the bundled llvm-mc and wasm-ld. -->
+  <Folder Name="/WasmDemos/">
+    <Project Path="WasmDemos/Life/Life.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+    <Project Path="WasmDemos/Ray/Ray.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+    <Project Path="WasmDemos/Swarm/Swarm.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+  </Folder>
 </Solution>

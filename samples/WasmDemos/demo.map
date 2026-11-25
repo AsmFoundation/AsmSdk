@@ -1,0 +1,27 @@
+/*
+ * The Wasm Demos' exports: the ExportsFile of the three demo kernels (Life, Swarm, Ray), one
+ * interface for all three, so one small page script (docs/demos/demo.js) drives any of them.
+ * wasm-ld exports exactly these names, and the memory, which it always exports; every other
+ * function of a kernel stays inside its module.
+ *
+ *   demo_init(width, height) -> frame   allocate nothing: check the size, set the demo up,
+ *                                       return the address of its RGBA frame (0 if too big)
+ *   demo_theme(dark)                    0 for the light palette, 1 for the dark one
+ *   demo_pointer(x, y, buttons)         the pointer, in frame pixels, and its buttons (bit 0
+ *                                       the main one, bit 1 the secondary one)
+ *   demo_wheel(x, y, delta)             a wheel turn at the pointer (negative: towards you)
+ *   demo_command(command)               the page's buttons: 1 to 3, per demo
+ *   demo_frame() -> work                one step and one drawn frame; the work it did (cells,
+ *                                       particles or rays), for the page's live numbers
+ */
+WASM_DEMOS_1.0 {
+  global:
+    demo_init;
+    demo_theme;
+    demo_pointer;
+    demo_wheel;
+    demo_command;
+    demo_frame;
+  local:
+    *;
+};

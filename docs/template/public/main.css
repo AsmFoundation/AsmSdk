@@ -520,6 +520,30 @@ body[data-layout="landing"] { overflow-x: clip; }
   .asm-list dd { margin-bottom: 0.9rem; }
 }
 
+/* ---------------------------------------------------------------- Wasm Demos (docs/demos) */
+/* A demo: its canvas at the article's width (the module draws a 960 x 540 frame, which CSS scales),
+   a bar with the live figures and the demo's buttons, and a line on what the pointer does. The
+   colours inside the frame are the module's own, chosen from the theme demo.js passes it. */
+.wasm-demo { margin: 1.25rem 0 1.5rem; }
+.wasm-demo canvas {
+  display: block; width: 100%; height: auto; aspect-ratio: 16 / 9;
+  border: 1px solid var(--asm-paper-line); border-radius: 4px; background: var(--asm-paper);
+  touch-action: none; cursor: grab;   /* the pointer drives the demo, not the page's scrolling */
+}
+.wasm-demo canvas:active { cursor: grabbing; }
+/* Life's cells stay square and sharp when the frame is scaled; the other two are smooth images. */
+.wasm-demo canvas.wasm-demo-pixels { image-rendering: pixelated; }
+.wasm-demo-bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.6rem 1rem; margin-top: 0.6rem; }
+.wasm-demo-numbers { font-family: var(--bs-font-monospace); font-size: 0.8rem; color: var(--asm-heading); }
+.wasm-demo-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.wasm-demo-buttons button {
+  font: 600 0.86rem "Archivo", system-ui, sans-serif; color: var(--asm-heading); background: transparent;
+  border: 1.5px solid var(--asm-paper-line); border-radius: 4px; padding: 0.3rem 0.75rem; cursor: pointer;
+}
+.wasm-demo-buttons button:hover { border-color: var(--asm-face); }
+.wasm-demo-buttons button:focus-visible { outline: 2px solid var(--asm-face); outline-offset: 2px; }
+.wasm-demo-help { margin: 0.5rem 0 0; font-size: 0.9rem; color: var(--bs-secondary-color); }
+
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto !important; }
 }

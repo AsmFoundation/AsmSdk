@@ -149,6 +149,29 @@ Each SDK release names the one it was tested with.
       `debugLevel: 0`. `Crc32C.Browser` sets `WasmDebugLevel` to 0 in Release, and the SDK now
       does the same for every browser app that links asm code (above). Also measured: AOT
       happens at `dotnet publish` only, which a build now says (ASM0055).
+    - **The Wasm Demos** (the owner's choices of 2026-11-25): three `browser-wasm` modules
+      written by hand, running in the documentation site under its new **Wasm Demos** section
+      (`docs/demos`), "only wasm": each module simulates, draws every pixel of its frame, picks
+      its colours (light or dark, as the site's theme) and handles the pointer; the page's
+      `demo.js` only starts it and copies the frame to a canvas. Beside each demo: live figures
+      on one core, the kernel's source, and how to build one. `samples/WasmDemos`:
+      - `Life`: Conway's Life on a 4096 x 4096 torus, bit-sliced (128 cells per `v128`, full
+        adders on bit-planes), with pan, zoom (8 pixels per cell to 8 cells per pixel) and
+        drawing; 3.3 KB. Under Node on an i9-13900K, a generation of all 16,777,216 cells takes
+        about 1.3 ms (13 billion cells a second, one core).
+      - `Ray`: three spheres and a floor with soft shadows, marched four rays per `f32x4` with
+        lane masks, in passes of 8, 4, 2 and 1 pixels; 4.9 KB. The full picture (688,560 rays)
+        takes about 130 ms under Node.
+      - `Swarm`: 120,000 particles pulled to the pointer, four per `f32x4`, with a fading density
+        image; 2.5 KB; about 2.8 ms a frame under Node.
+      - `check.mjs` holds each against a reference: Life's generations cell for cell against
+        Conway's rule, the swarm's step bit for bit against single precision, the ray picture bit
+        for bit against a renderer that repeats every f32 operation. ExampleTests runs it, and
+        checks that the modules the site serves are the build's, byte for byte.
+      - Found on the way, now in `asmsdk-wasm.inc`, the guide and the troubleshooting page:
+        `f32.const` takes a decimal only when it is short and exact ("Cannot parse real",
+        otherwise), so constants are hex floats; and a `local.tee` whose value nothing takes is
+        a "type mismatch" at the end of its loop.
   - **Fixed on the way:** an asm library that reaches a .NET WebAssembly app through a .NET
     library (`Crc32C.Browser` through `Crc32C.Net`) is linked into the app like a direct
     reference. The native layout steps now skip a WebAssembly app, which deploys no native file:

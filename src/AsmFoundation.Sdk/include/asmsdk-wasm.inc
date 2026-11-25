@@ -114,7 +114,14 @@
 //     provide it when it instantiates the module.
 //   - Locals are typed per function (.local), and the operand stack must be
 //     empty but for the results at ENDFUNCTION: llvm-mc's type checker reports
-//     "type mismatch" at the line where it stops agreeing.
+//     "type mismatch" at the line where it stops agreeing (a local.tee whose
+//     value nothing takes is the usual cause; an untyped select is refused too,
+//     so choose with if/else or with arithmetic).
+//   - f32.const and f64.const take a decimal only when it is short and exact:
+//     "1.0", "0.5" and "256.0" assemble, "1", "0.42" and even the exact
+//     "0.4199999868869781494140625" stop with "Cannot parse real". Write such a
+//     number as a hex float, the form llvm-mc prints: f32.const 0x1.ae147ap-2
+//     is 0.42 (Python's float.hex of the value rounded to f32 gives it).
 //   - The names here are upper case; "call" is the instruction, "CALL" the
 //     macro.
 //   - PROTO and the function macros go between functions, never inside one:

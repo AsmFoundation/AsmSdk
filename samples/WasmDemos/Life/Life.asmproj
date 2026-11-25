@@ -1,0 +1,21 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    Life: the kernel of the "Life, 16 million cells" Wasm Demo (docs/demos/life.md). Conway's Life
+    on a 4096 by 4096 board that wraps around, stepped by bit-sliced SIMD (one v128 holds 128
+    cells, and the neighbour counts are added as bit-planes with full adders), and drawn by the
+    module itself into an RGBA frame the page copies to its canvas. Everything the demo does is
+    in life.wasm.s; the page only starts the module and hands it the pointer (docs/demos/demo.js).
+      bin/<Configuration>/freestanding/browser-wasm/life.wasm
+    The module the docs serve, docs/demos/life.wasm, is this build's output, copied by hand;
+    ExampleTests checks that the two are byte for byte the same, and that the kernel steps a
+    glider, a blinker and a random board exactly as Life's rules say.
+  -->
+  <PropertyGroup>
+    <RuntimeIdentifiers>browser-wasm</RuntimeIdentifiers>
+    <AssemblyName>life</AssemblyName>
+    <!-- The demo interface (demo_init, demo_theme, demo_pointer, demo_wheel, demo_command,
+         demo_frame) and the memory: the kernel's helpers stay inside the module. -->
+    <ExportsFile>../demo.map</ExportsFile>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+</Project>

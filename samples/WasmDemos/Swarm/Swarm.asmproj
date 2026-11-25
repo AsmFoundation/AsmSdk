@@ -1,0 +1,20 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    Swarm: the kernel of the "Particle swarm" Wasm Demo (docs/demos/swarm.md). 120,000 particles
+    pulled towards the pointer (or a slow figure of eight when the pointer is away), four per
+    f32x4 instruction, each splatted into a fading density image that the module colours into
+    the RGBA frame the page shows. Everything the demo does is in swarm.wasm.s, sine and cosine
+    included (WebAssembly has no such instruction: they are polynomials here); the page only
+    starts the module and hands it the pointer (docs/demos/demo.js).
+      bin/<Configuration>/freestanding/browser-wasm/swarm.wasm
+    The docs serve docs/demos/swarm.wasm, a copy of this build's output that ExampleTests keeps
+    byte for byte the same, after checking the kernel's physics against a reference.
+  -->
+  <PropertyGroup>
+    <RuntimeIdentifiers>browser-wasm</RuntimeIdentifiers>
+    <AssemblyName>swarm</AssemblyName>
+    <!-- The demo interface, shared by the three kernels: ../demo.map. -->
+    <ExportsFile>../demo.map</ExportsFile>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+</Project>

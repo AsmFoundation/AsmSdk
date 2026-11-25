@@ -1,0 +1,21 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    Ray: the kernel of the "Ray-marched scene" Wasm Demo (docs/demos/ray.md). Three spheres and a
+    checkered floor with soft shadows, drawn without the GPU: each pixel's ray is marched through
+    the scene's distance field, four rays per f32x4 instruction, with lane masks for the rays
+    that have already hit something. The picture refines in passes (blocks of 8, 4, 2 pixels,
+    then every pixel), a share of each pass per frame, so the camera can move while it draws.
+    Everything is in ray.wasm.s, sine and cosine included (polynomials: WebAssembly has no such
+    instruction); the page only starts the module and hands it the pointer (docs/demos/demo.js).
+      bin/<Configuration>/freestanding/browser-wasm/ray.wasm
+    The docs serve docs/demos/ray.wasm, a copy of this build's output that ExampleTests keeps
+    byte for byte the same, after checking the picture against a reference renderer.
+  -->
+  <PropertyGroup>
+    <RuntimeIdentifiers>browser-wasm</RuntimeIdentifiers>
+    <AssemblyName>ray</AssemblyName>
+    <!-- The demo interface, shared by the three kernels: ../demo.map. -->
+    <ExportsFile>../demo.map</ExportsFile>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+</Project>

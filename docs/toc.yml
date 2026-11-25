@@ -3,6 +3,8 @@
   href: guide/
 - name: Examples
   href: examples/
+- name: Wasm Demos
+  href: demos/
 - name: Reference
   href: asmproj.md
 - name: Toolchain

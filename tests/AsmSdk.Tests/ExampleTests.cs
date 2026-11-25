@@ -497,6 +497,70 @@ public sealed class ExampleTests(SdkUnderTest sdk)
         Assert.Contains("usage: node main.mjs hash <file>", usage.StdErr, StringComparison.Ordinal);
     }
 
+    // ---- The Wasm Demos (docs/demos): three kernels in hand-written WebAssembly ----
+
+    /// <summary>The three demo kernels, by project (samples/WasmDemos/&lt;name&gt;) and module name.</summary>
+    private static readonly (string Project, string Module)[] WasmDemos = [("Life", "life"), ("Swarm", "swarm"), ("Ray", "ray")];
+
+    /// <summary>A demo kernel's module as the samples' build wrote it.</summary>
+    /// <param name="project">The project's folder and name (Life, Swarm, Ray).</param>
+    /// <param name="module">The module's name (life, swarm, ray).</param>
+    /// <returns>The full path of the .wasm file.</returns>
+    private static string WasmDemoModule(string project, string module) =>
+        Repo.Sample("WasmDemos", project, "bin", "Release", "freestanding", "browser-wasm", module + ".wasm");
+
+    /// <summary>
+    /// The demo kernels do what their pages say, under Node (samples/WasmDemos/check.mjs): Life
+    /// steps the whole 4096 x 4096 torus exactly as a cell-by-cell reference does (three
+    /// generations of a random board, a glider across the wrapped corner, a blinker), and draws,
+    /// pans and zooms; the swarm's step equals a single-precision reference bit for bit for all
+    /// 120,000 particles, pulled and pushed, and its hand-written sine follows Math.sin; the ray
+    /// marcher's finished picture equals a reference renderer that repeats its every f32
+    /// operation, bit for bit, also after a turn, a zoom and in the dark colours. Every machine:
+    /// the modules are built by the bundled tools, and Node runs them.
+    /// </summary>
+    [Fact]
+    public void Wasm_demo_kernels_pass_their_checks()
+    {
+        RequireSamples();
+        if (!Command.OnPath("node"))
+        {
+            Assert.Skip("No Node on PATH to run the Wasm Demos' kernels here");
+        }
+
+        CommandResult run = Command.Run("node", ["check.mjs", .. WasmDemos.Select(d => WasmDemoModule(d.Project, d.Module))], Repo.Sample("WasmDemos"));
+        Assert.True(run.ExitCode == 0, run.Output);
+        Assert.Contains("all passed", run.StdOut, StringComparison.Ordinal);
+        Assert.DoesNotContain("FAIL", run.StdOut, StringComparison.Ordinal);
+        // Each kernel's checks ran: a missing module argument would skip its group silently.
+        foreach ((_, string module) in WasmDemos)
+        {
+            Assert.Contains($"ok {module}: ", run.StdOut, StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>
+    /// The documentation site serves the modules this repository builds: docs/demos/&lt;module&gt;.wasm
+    /// is a copy of the samples' Release build, byte for byte (AsmSdk's WebAssembly builds are
+    /// reproducible), so a change to a kernel that is not copied to the docs fails here, naming
+    /// the copy to make. And the overview page's sizes are the modules' own, to the 0.1 KB it gives.
+    /// </summary>
+    [Fact]
+    public void Wasm_demos_on_the_docs_site_are_the_built_modules()
+    {
+        RequireSamples();
+        string overview = File.ReadAllText(Path.Combine(Repo.Root, "docs", "demos", "index.md"));
+        foreach ((string project, string module) in WasmDemos)
+        {
+            string built = WasmDemoModule(project, module), served = Path.Combine(Repo.Root, "docs", "demos", module + ".wasm");
+            Assert.True(File.Exists(served), $"docs/demos/{module}.wasm is missing");
+            Assert.True(File.ReadAllBytes(built).AsSpan().SequenceEqual(File.ReadAllBytes(served)),
+                $"docs/demos/{module}.wasm is not this build's module: copy {Repo.Relative(built)} there");
+            string size = (new FileInfo(built).Length / 1000.0).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
+            Assert.Contains($"`{module}.wasm`, {size} KB", overview, StringComparison.Ordinal);
+        }
+    }
+
     /// <summary>
     /// Builds Crc32C.Browser in Release once per run and returns its bundle folder, or skips (fails,
     /// when required) where Node or .NET's native WebAssembly build is missing.
