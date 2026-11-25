@@ -23,4 +23,13 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Build.Utilities.Core" Version="17.7.2" PrivateAssets="all" ExcludeAssets="runtime" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- The bindings generator's emitter, model and shape rules, compiled here too: the SDK
+         writes a library's baseline itself (AsmWriteBindings) until the app uses [AsmLibrary],
+         and it must write exactly what the generator would. Shared source, not a reference:
+         the generator assembly references Roslyn, which an MSBuild task must not load. -->
+    <Compile Include="../AsmFoundation.Sdk.Bindings/CSharpEmitter.cs" Link="Bindings/CSharpEmitter.cs" />
+    <Compile Include="../AsmFoundation.Sdk.Bindings/ApiModel.cs" Link="Bindings/ApiModel.cs" />
+    <Compile Include="../AsmFoundation.Sdk.Bindings/Shapes.cs" Link="Bindings/Shapes.cs" />
+  </ItemGroup>
 </Project>

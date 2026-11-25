@@ -1,12 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
-    Wrong [AsmLibrary] attributes, one case per file under cases/, picked with
-    -p:BindingsCase=<name> (BindingsTests builds each in a configuration of its own). Each stops
-    the build with the generator's code at the attribute or class:
-      unknownlib   ASM0140  a library this project does not reference
-      unknownfile  ASM0141  a file the library does not have
-      twice        ASM0142  two classes take add.asm, the second without AliasBinding
-      notpartial   ASM0143  a class that is not partial
+    Wrong [AsmLibrary] attributes and project settings, one case per file under cases/, picked
+    with -p:BindingsCase=<name> (BindingsTests builds each in a configuration of its own). Each
+    stops the build with its code; the generator's at the attribute or class:
+      unknownlib       ASM0140  a library this project does not reference
+      unknownfile      ASM0141  a file the library does not have
+      twice            ASM0142  two classes take add.asm, the second without AliasBinding
+      notpartial       ASM0143  a class that is not partial
+      badshape         ASM0146  DefaultVirtual on a baseline whose classes stay static
+      defaultsonclass  ASM0146  a Default* option on a class
+    and the SDK's task's (no code mentions the attribute, so no generator runs):
+      badproperty      ASM0146  AsmBindingsVisibility Publik
+      unknownitem      ASM0140  an AsmBindings item for nolib
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -21,5 +26,12 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../ApiProto/ApiProto.asmproj" />
+  </ItemGroup>
+  <!-- The project file's cases. -->
+  <PropertyGroup Condition="'$(BindingsCase)' == 'badproperty'">
+    <AsmBindingsVisibility>Publik</AsmBindingsVisibility>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(BindingsCase)' == 'unknownitem'">
+    <AsmBindings Include="nolib" Namespace="Nowhere" />
   </ItemGroup>
 </Project>

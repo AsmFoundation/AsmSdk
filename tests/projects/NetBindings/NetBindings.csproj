@@ -1,10 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
-    A C# program that calls the asm library ApiProto through the generated bindings alone
-    (BindingsTests): no [LibraryImport] written by hand, and no AllowUnsafeBlocks either (the
-    consumer targets set it when bindings are generated). The default class is named after the
-    library (Apiproto), in this project's RootNamespace, one nested class per .asm file, folders
-    as levels; a function named like its file is Invoke. It prints one line per function:
+    A C# program that calls the asm library ApiProto through its baseline alone (BindingsTests):
+    no [LibraryImport] written by hand, and no AllowUnsafeBlocks either (the consumer targets set
+    it when there are bindings). The baseline is the namespace Apiproto (the library's name), a
+    class per .asm file, folders as namespaces (Apiproto.Simd.Sum); a function named like its file
+    is Invoke. The SDK writes it (obj/.../AsmBindings/Apiproto.g.cs): this project never mentions
+    the attribute, so no generator runs. It prints one line per function:
       add_ints 42 / answer 42 / halve 2.5 / name_length 5 / sum_bytes 10 / apply 42
   -->
   <PropertyGroup>

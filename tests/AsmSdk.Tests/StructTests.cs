@@ -123,11 +123,12 @@ public sealed class StructTests(SdkUnderTest sdk)
     }
 
     /// <summary>
-    /// The generated structs are the spec's: sequential, in the default class, each field a C#
-    /// equivalent of the same size (a fixed buffer for an array, bool for bool, byte for char, a
-    /// delegate* unmanaged for a function pointer, the generated struct for a nested one, fully
-    /// qualified), with the C line, the size and each offset in the summaries; a PROTO's pointer
-    /// to a struct takes the struct's pointer. Read from EmitCompilerGeneratedFiles.
+    /// The baseline's structs are the spec's: sequential, at the root of the library's namespace,
+    /// each field a C# equivalent of the same size (a fixed buffer for an array, bool for bool,
+    /// byte for char, a delegate* unmanaged for a function pointer, the generated struct for a
+    /// nested one, fully qualified), with the C line, the size and each offset in the summaries; a
+    /// PROTO's pointer to a struct takes the struct's pointer. Read from the source the SDK wrote
+    /// (the project never mentions the attribute: no generator).
     /// </summary>
     [Fact]
     public void The_generated_structs_are_the_specs()
@@ -135,20 +136,20 @@ public sealed class StructTests(SdkUnderTest sdk)
         CommandResult build = sdk.Once("build NetStructs emitted", () =>
             sdk.Dotnet("build", Repo.TestProjectPath("NetStructs", "NetStructs.csproj"), "-c", "Emitted", "-p:EmitCompilerGeneratedFiles=true"));
         Assert.True(build.ExitCode == 0, build.Tail());
-        string source = File.ReadAllText(Repo.TestProjectPath("NetStructs", "obj", "Emitted", "net10.0", "generated", "AsmFoundation.Sdk.Bindings",
-            "AsmFoundation.Sdk.Bindings.BindingsGenerator", "AsmBindings.NetStructs.Apistruct.g.cs"));
+        string source = File.ReadAllText(Repo.TestProjectPath("NetStructs", "obj", "Emitted", "net10.0", "AsmBindings", "Apistruct.g.cs"));
+        Assert.Contains("namespace Apistruct\n{", source);
         Assert.Contains("/// <summary><c>STRUCT rect, point min, point max, uint32_t flags</c>: 20 bytes, aligned to 4.</summary>", source);
         Assert.Matches(new Regex(@"\[global::System\.Runtime\.InteropServices\.StructLayout\(global::System\.Runtime\.InteropServices\.LayoutKind\.Sequential\)\]\s+internal unsafe struct Rect\s"), source);
-        Assert.Contains("public global::NetStructs.Apistruct.Point Min;", source);
+        Assert.Contains("public global::Apistruct.Point Min;", source);
         Assert.Contains("public fixed uint H[8];", source);
         Assert.Contains("public fixed byte Block[64];", source);
         Assert.Contains("public bool Final;", source);
         Assert.Contains("public byte Tag;", source);
         Assert.Contains("public byte* Data;", source);
         Assert.Contains("public delegate* unmanaged<int, int, int> Cmp;", source);
-        Assert.Contains("public global::NetStructs.Apistruct.Sorter* Next;", source);
+        Assert.Contains("public global::Apistruct.Sorter* Next;", source);
         Assert.Contains("/// <summary><c>char tag</c>, at offset 22.</summary>", source);
-        Assert.Contains("internal static unsafe extern int RectArea(global::NetStructs.Apistruct.Rect* r);", source);
+        Assert.Contains("internal static unsafe extern int RectArea(global::Apistruct.Rect* r);", source);
     }
 
     /// <summary>
@@ -252,8 +253,8 @@ public sealed class StructTests(SdkUnderTest sdk)
     /// <param name="code">The error code.</param>
     /// <param name="message">A part of the message.</param>
     [Theory]
-    [InlineData("publicstruct", "ASM0145", "NetStructsErrors.PublicShapes is public, but point_set takes the struct point of apistruct, which its default class Apistruct keeps internal")]
-    [InlineData("clash", "ASM0143", "In Apistructclash, the binding of apistructclash: the file or folder clash becomes the class Clash, the name of a struct")]
+    [InlineData("publicstruct", "ASM0145", "NetStructsErrors.PublicShapes binds point_set as public, but point_set takes the struct point of apistruct, which the library's baseline keeps internal")]
+    [InlineData("clash", "ASM0143", "In the bindings of apistructclash (namespace Apistructclash): clash becomes the class Apistructclash.Clash, the name of a struct")]
     public void A_wrong_struct_binding_stops_the_build_with_its_code(string structCase, string code, string message)
     {
         CommandResult build = sdk.Once($"build NetStructsErrors {structCase}", () =>

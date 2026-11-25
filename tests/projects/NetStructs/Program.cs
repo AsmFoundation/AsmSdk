@@ -1,8 +1,8 @@
 using System.Runtime.InteropServices;
-using NetStructs;
 
-// Every struct below is generated from ApiStruct's STRUCT lines, and every call goes through a
-// generated binding. The asm code reads (and point_set writes) each field at the offset the SDK
+// Every struct below is in ApiStruct's baseline (the namespace Apistruct, written by the SDK from
+// its STRUCT lines), and every call goes through a binding of it. The asm code reads (and
+// point_set writes) each field at the offset the SDK
 // gave it; the numbers come out right only where C# lays each field at the same offset.
 unsafe
 {

@@ -856,11 +856,12 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
     }
 
     /// <summary>
-    /// A .NET browser-wasm app calls an asm library through the generated C# bindings alone: the
+    /// A .NET browser-wasm app calls an asm library through the C# bindings' baseline alone: the
     /// library's browser-wasm build writes its API file from the wasm records, the consumer
-    /// targets hand it to the generator (the app's reference is built for the app's RID), and
-    /// Wasmapi.Add.AddInts links into dotnet.native.wasm with the archive. Before WebAssembly
-    /// RIDs wrote API files, such an app got no bindings (3e9a958).
+    /// targets write the baseline from it (the app's reference is built for the app's RID), and
+    /// Wasmapi.Add.AddInts (the namespace named after the library, the class after add.wasm.s)
+    /// links into dotnet.native.wasm with the archive. Before WebAssembly RIDs wrote API files,
+    /// such an app got no bindings (3e9a958).
     /// </summary>
     [Fact]
     public void A_browser_wasm_dotnet_app_calls_the_generated_bindings()

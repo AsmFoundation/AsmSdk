@@ -1,14 +1,20 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
-    The [AsmLibrary] attribute at every level, over the asm library ApiProto (BindingsTests):
-      [assembly: AsmLibrary(SpanOverloads = false)]                      every library: no spans
-      [assembly: AsmLibrary("apiproto", ClassName = "Proto", Nesting = AsmNesting.Folders)]
-                                                                         the default class
-      Text    Files = ["strings.asm"], Visibility = Public               chosen file, public
-      Vector  Folder = "simd", SpanOverloads = true                      a folder; spans back on
-      Alias   Files = ["add"], AliasBinding = true                       a second copy of add_ints
-      NoSpans Files = ["simd/sum"], AliasBinding = true                  inherits "no spans"
-    The program prints what each class offers; BindingsTests compares the lines.
+    The [AsmLibrary] attribute at every level, over the asm library ApiProto (BindingsTests). The
+    project mentions the attribute, so the generator runs (the switch) and writes both sets:
+      [assembly: AsmLibrary(SpanOverloads = false)]       the copies' default: no span overloads
+      [assembly: AsmLibrary("apiproto", DefaultNamespace = "Proto", DefaultNesting = Folders,
+                 DefaultClassKind = Instance, DefaultVirtual = true, DefaultVisibility = ProtectedInternal)]
+                                                          the baseline: Proto.Api (root files),
+                                                          Proto.Simd, instantiable and virtual
+      Text       Files = ["strings.asm"], Visibility = Public     a copy, public
+      Vector     Folder = "simd", SpanOverloads = true            a copy of a folder; spans back on
+      NoSpans    Files = ["simd/sum"], AliasBinding = true        a second copy; inherits "no spans"
+      MathA      Files = ["add"]                                  a copy
+      MathB      Files = ["add"], AliasBinding = true             add again, allowed
+      Calculator Files = ["add"], AliasBinding, Virtual = true    a non-static class: instance copies
+    FixedApi and FixedCalculator override a virtual binding. The program prints what each offers;
+    BindingsTests compares the lines.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>

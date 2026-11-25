@@ -19,6 +19,51 @@ internal enum Nesting
 }
 
 /// <summary>
+/// The options of a library's baseline, resolved (the code wins: the assembly attribute's
+/// Default* options, then the project's AsmBindings items and properties, then the defaults).
+/// </summary>
+/// <param name="Namespace">The namespace the baseline lives in (the library's name by default).</param>
+/// <param name="Nesting">Files (a class per file, folders as namespaces), Folders (a class per folder) or Flat (everything in Api).</param>
+/// <param name="SpanOverloads">Whether pointer-and-length pairs get span overloads.</param>
+/// <param name="Members">How the members are declared (static, or instance and maybe virtual).</param>
+/// <param name="Sealed">Whether the instance classes are sealed (static classes always are).</param>
+/// <param name="Functions">Whether the function classes are written at all (DefaultBindings); the structs always are.</param>
+internal sealed record BaselineShape(string Namespace, Nesting Nesting, bool SpanOverloads, MemberShape Members, bool Sealed, bool Functions);
+
+/// <summary>
+/// How generated members are declared: their accessibility, and whether they are static methods
+/// or instance methods (overridable or not). The baseline's shape comes from the Default*
+/// options, an attributed class's from the class itself (a static class gets static members, a
+/// non-static partial class instance members).
+/// </summary>
+/// <param name="Access">The members' accessibility keyword(s): "internal", "public" or "protected internal".</param>
+/// <param name="Static">Whether the members are static (every static class) or instance members (ClassKind = Instance).</param>
+/// <param name="Virtual">Whether instance members are virtual (a test double or a subclass overrides them); never with Static.</param>
+internal sealed record MemberShape(string Access, bool Static, bool Virtual)
+{
+    /// <summary>The modifiers of a binding method: "internal static", "public virtual", "protected internal".</summary>
+    internal string MethodModifiers => Access + (Static ? " static" : Virtual ? " virtual" : "");
+
+    /// <summary>
+    /// The accessibility of a type at namespace level that holds or serves these members: public
+    /// for Public and ProtectedInternal (a protected internal member is reached from derived types
+    /// in any assembly, so its class and the structs it takes must be public), internal otherwise.
+    /// Namespace-level types cannot be protected.
+    /// </summary>
+    internal string TypeAccess => Access == "internal" ? "internal" : "public";
+
+    /// <summary>The keyword(s) of an AsmVisibility value: 0 internal, 1 public, 2 protected internal.</summary>
+    /// <param name="visibility">The value.</param>
+    /// <returns>The accessibility keyword(s).</returns>
+    internal static string AccessOf(int visibility) => visibility switch
+    {
+        1 => "public",
+        2 => "protected internal",
+        _ => "internal",
+    };
+}
+
+/// <summary>
 /// Writes the C# of a bound class's members: one blittable [DllImport] extern per function (with
 /// a wrapper when it takes a bool or a string), span overloads, nested classes per file or
 /// folder, and the library's structs (sequential C# structs, in its default class). Pure text, no
@@ -93,17 +138,16 @@ internal static class CSharpEmitter
     /// <param name="functions">The functions this class binds.</param>
     /// <param name="nesting">The layout.</param>
     /// <param name="spanOverloads">Whether pointer-and-length pairs get span overloads.</param>
-    /// <param name="access">"internal" or "public", for the members and the nested classes.</param>
+    /// <param name="shape">How the members (and the nested classes, which take its accessibility and static-ness) are declared.</param>
     /// <param name="className">The bound class's own name: a function named like the class it lands in becomes Invoke (C# forbids a member named like its type, CS0542).</param>
     /// <param name="collisions">Receives a description of each name generated twice in one scope.</param>
-    /// <param name="structs">The library's STRUCTs: each C name with its generated C# type, fully qualified (global::Ns.Library.Rect), which a signature naming the struct uses.</param>
+    /// <param name="structs">The library's STRUCTs: each C name with its generated C# type, fully qualified (global::Demo.Native.Rect), which a signature naming the struct uses.</param>
     /// <param name="reserved">
-    /// Names already taken in the class's own scope (the default class's structs), or null: a
-    /// method or nested class of that name would be a duplicate member (CS0102), reported as a
-    /// collision instead.
+    /// Names already taken in the class's own scope, or null: a method or nested class of that
+    /// name would be a duplicate member (CS0102), reported as a collision instead.
     /// </param>
     internal static void WriteMembers(StringBuilder output, int indent, string library, IEnumerable<ApiFunctionModel> functions,
-        Nesting nesting, bool spanOverloads, string access, string className, List<string> collisions,
+        Nesting nesting, bool spanOverloads, MemberShape shape, string className, List<string> collisions,
         IReadOnlyDictionary<string, string> structs, ISet<string>? reserved = null)
     {
         var root = new Node("");
@@ -125,7 +169,7 @@ internal static class CSharpEmitter
             node.Functions.Add(function);
         }
 
-        WriteNode(output, indent, library, root, className, spanOverloads, access, collisions, "", structs, reserved);
+        WriteNode(output, indent, library, root, className, spanOverloads, shape, collisions, "", structs, reserved);
     }
 
     /// <summary>Writes one scope: its methods, then its nested classes.</summary>
@@ -135,12 +179,12 @@ internal static class CSharpEmitter
     /// <param name="node">The scope.</param>
     /// <param name="scopeName">The class name of the scope (the bound class's for the root).</param>
     /// <param name="spanOverloads">Whether to write span overloads.</param>
-    /// <param name="access">The members' accessibility.</param>
+    /// <param name="shape">How the members are declared.</param>
     /// <param name="collisions">Receives names generated twice.</param>
     /// <param name="scope">The scope's path, for messages ("" for the class itself).</param>
     /// <param name="structs">The library's STRUCTs and their C# types.</param>
-    /// <param name="reserved">Names this scope already holds (the root's structs), or null.</param>
-    private static void WriteNode(StringBuilder output, int indent, string library, Node node, string scopeName, bool spanOverloads, string access,
+    /// <param name="reserved">Names this scope already holds, or null.</param>
+    private static void WriteNode(StringBuilder output, int indent, string library, Node node, string scopeName, bool spanOverloads, MemberShape shape,
         List<string> collisions, string scope, IReadOnlyDictionary<string, string> structs, ISet<string>? reserved)
     {
         // A struct of the default class named like one of its nested classes (STRUCT add and
@@ -185,19 +229,149 @@ internal static class CSharpEmitter
             }
 
             methodNames[method] = function.Name;
-            WriteFunction(output, indent, library, function, method, spanOverloads, access, structs);
+            WriteFunction(output, indent, library, function, method, spanOverloads, shape, structs);
         }
 
         foreach (KeyValuePair<string, Node> child in node.Children)
         {
+            // A nested class takes the scope's kind: static members live in static classes, an
+            // instance class's file classes are instance classes too (each instantiated alone).
             Indent(output, indent).Append("/// <summary>The functions of ").Append(child.Value.Source).Append(".</summary>\n");
-            Indent(output, indent).Append(access).Append(" static partial class ").Append(child.Key).Append('\n');
+            Indent(output, indent).Append(shape.Access).Append(shape.Static ? " static partial class " : " partial class ").Append(child.Key).Append('\n');
             Indent(output, indent).Append("{\n");
-            // Nested scopes hold no struct (the structs are members of the root only).
-            WriteNode(output, indent + 1, library, child.Value, child.Key, spanOverloads, access, collisions, scope + child.Key + ".", structs, null);
+            WriteNode(output, indent + 1, library, child.Value, child.Key, spanOverloads, shape, collisions, scope + child.Key + ".", structs, null);
             Indent(output, indent).Append("}\n");
         }
     }
+
+    /// <summary>The name of the baseline's class for functions that have no file class (Flat, or a root file under Folders): a namespace cannot hold methods.</summary>
+    internal const string RootClassName = "Api";
+
+    /// <summary>
+    /// The namespace of a library's baseline by default: its import name, each dotted part in
+    /// PascalCase ("apiproto" Apiproto, "Demo.Native" Demo.Native, "KvAsm" KvAsm).
+    /// </summary>
+    /// <param name="library">The library's import name (its AssemblyName).</param>
+    /// <returns>The namespace.</returns>
+    internal static string LibraryNamespace(string library) =>
+        string.Join(".", library.Split('.').Where(part => part.Length > 0).Select(Pascal));
+
+    /// <summary>
+    /// Writes a library's baseline, the bindings every consumer has without writing a line (the
+    /// owner's spec of 2026-11-25): a namespace named after the library, its STRUCTs at the root,
+    /// one class per .asm file with folders as namespaces (Nesting Files, the default), one class
+    /// per folder (Folders), or every function in the class Api (Flat; also where Folders puts the
+    /// root files).
+    /// </summary>
+    /// <param name="output">Where to write (a whole compilation unit's namespaces are appended).</param>
+    /// <param name="library">The library.</param>
+    /// <param name="shape">The baseline's options.</param>
+    /// <param name="structs">Every struct's C name and C# type (fully qualified, in the baseline namespace).</param>
+    /// <param name="collisions">Receives each name the C# could not hold twice; the class concerned is left out.</param>
+    /// <remarks>
+    /// The classes are declared at namespace level, so their accessibility is public or internal
+    /// only (<see cref="MemberShape.TypeAccess"/>); a ProtectedInternal baseline has public classes
+    /// whose members are protected internal. The structs are always written, also when the
+    /// function classes are not (DefaultBindings false): the attributed classes' copies name them.
+    /// Writes nothing at all for a library with neither (the caller then adds no source).
+    /// </remarks>
+    internal static void WriteBaseline(StringBuilder output, ApiLibraryModel library, BaselineShape shape,
+        IReadOnlyDictionary<string, string> structs, List<string> collisions)
+    {
+        // namespace -> (class -> (what it stands for, its functions)), the root namespace first.
+        var namespaces = new SortedDictionary<string, SortedDictionary<string, (string Source, List<ApiFunctionModel> Functions)>>(StringComparer.Ordinal);
+        if (shape.Functions)
+        {
+            foreach (ApiFunctionModel function in library.Functions)
+            {
+                string[] path = function.File.Split('/');
+                string[] folders = path.Take(path.Length - 1).ToArray();
+                (string ns, string cls, string source) = shape.Nesting switch
+                {
+                    Nesting.Files => (Join(shape.Namespace, folders), Pascal(path[path.Length - 1]), function.File),
+                    Nesting.Folders when folders.Length > 0 => (Join(shape.Namespace, folders.Take(folders.Length - 1)), Pascal(folders[folders.Length - 1]), string.Join("/", folders)),
+                    _ => (shape.Namespace, RootClassName, "the library " + library.Library),
+                };
+                if (!namespaces.TryGetValue(ns, out var classes))
+                {
+                    classes = new SortedDictionary<string, (string, List<ApiFunctionModel>)>(StringComparer.Ordinal);
+                    namespaces[ns] = classes;
+                }
+
+                if (!classes.TryGetValue(cls, out var entry))
+                {
+                    entry = (source, new List<ApiFunctionModel>());
+                    classes[cls] = entry;
+                }
+
+                entry.Functions.Add(function);
+            }
+        }
+
+        // What C# cannot hold: a class named like a struct of the root namespace, and a class
+        // named like a namespace beside it (simd.asm and the folder simd/ both make Simd).
+        var structNames = new HashSet<string>(library.Structs.Select(s => Pascal(s.Name)), StringComparer.Ordinal);
+        foreach (KeyValuePair<string, SortedDictionary<string, (string Source, List<ApiFunctionModel> Functions)>> ns in namespaces)
+        {
+            foreach (string cls in ns.Value.Keys.ToList())
+            {
+                string full = ns.Key + "." + cls;
+                if (ns.Key == shape.Namespace && structNames.Contains(cls))
+                {
+                    collisions.Add($"{ns.Value[cls].Source} becomes the class {full}, the name of a struct");
+                    ns.Value.Remove(cls);
+                }
+                else if (namespaces.Keys.Any(other => other == full || other.StartsWith(full + ".", StringComparison.Ordinal)))
+                {
+                    collisions.Add($"{ns.Value[cls].Source} becomes the class {full}, and a folder the namespace {full}");
+                    ns.Value.Remove(cls);
+                }
+            }
+        }
+
+        if (library.Structs.Count == 0 && namespaces.Values.All(classes => classes.Count == 0))
+        {
+            return;
+        }
+
+        // The root namespace first (it holds the structs), then the folders' in order.
+        IEnumerable<string> order = new[] { shape.Namespace }.Concat(namespaces.Keys.Where(k => k != shape.Namespace));
+        foreach (string ns in order)
+        {
+            namespaces.TryGetValue(ns, out var classes);
+            bool root = ns == shape.Namespace;
+            if (!root && (classes is null || classes.Count == 0))
+            {
+                continue;
+            }
+
+            output.Append("namespace ").Append(ns).Append("\n{\n");
+            if (root)
+            {
+                WriteStructs(output, 1, library.Structs, shape.Members.TypeAccess, structs, collisions);
+            }
+
+            foreach (KeyValuePair<string, (string Source, List<ApiFunctionModel> Functions)> cls in classes ?? new SortedDictionary<string, (string, List<ApiFunctionModel>)>())
+            {
+                Indent(output, 1).Append("/// <summary>The functions of ").Append(Xml(cls.Value.Source)).Append(" (the asm library ").Append(Xml(library.Library)).Append(").</summary>\n");
+                Indent(output, 1).Append(shape.Members.TypeAccess)
+                    .Append(shape.Members.Static ? " static partial class " : shape.Sealed ? " sealed partial class " : " partial class ")
+                    .Append(cls.Key).Append('\n');
+                Indent(output, 1).Append("{\n");
+                WriteMembers(output, 2, library.Library, cls.Value.Functions, Nesting.Flat, shape.SpanOverloads, shape.Members, cls.Key, collisions, structs);
+                Indent(output, 1).Append("}\n");
+            }
+
+            output.Append("}\n");
+        }
+    }
+
+    /// <summary>A namespace and the PascalCase names of folders under it.</summary>
+    /// <param name="root">The namespace.</param>
+    /// <param name="folders">The folders, outermost first.</param>
+    /// <returns>"Demo.Native.Simd.Avx" for ("Demo.Native", ["simd", "avx"]).</returns>
+    private static string Join(string root, IEnumerable<string> folders) =>
+        string.Join(".", new[] { root }.Concat(folders.Select(Pascal)));
 
     /// <summary>
     /// Writes the library's STRUCTs, each a sequential C# struct of the same fields: the
@@ -296,7 +470,7 @@ internal static class CSharpEmitter
     /// <param name="function">The function.</param>
     /// <param name="method">Its C# name.</param>
     /// <param name="spanOverloads">Whether to write a span overload.</param>
-    /// <param name="access">The accessibility.</param>
+    /// <param name="shape">How the method is declared (an instance method always wraps a private static extern).</param>
     /// <param name="structs">The library's STRUCTs and their C# types (for pointers to them).</param>
     /// <remarks>
     /// Why [DllImport] and not [LibraryImport]: source generators never see each other's output,
@@ -306,13 +480,15 @@ internal static class CSharpEmitter
     /// Utf8StringMarshaller's stack-buffer path (on the stack when short, as LibraryImport does),
     /// a bool as one byte. For a blittable signature LibraryImport emits this same DllImport
     /// (measured with the Crc32C sample), so nothing is lost; no runtime marshalling is used, so
-    /// it works under DisableRuntimeMarshalling and in NativeAOT.
+    /// it works under DisableRuntimeMarshalling and in NativeAOT. The static shape keeps that
+    /// direct extern (the owner's approved spec: no call in between); an extern cannot be an
+    /// instance method, so the instance shape always wraps it.
     /// </remarks>
     private static void WriteFunction(StringBuilder output, int indent, string library, ApiFunctionModel function, string method,
-        bool spanOverloads, string access, IReadOnlyDictionary<string, string> structs)
+        bool spanOverloads, MemberShape shape, IReadOnlyDictionary<string, string> structs)
     {
         string[] names = function.Parameters.Select((p, i) => ParameterName(p, i)).ToArray();
-        bool wrapped = IsBool(function.Returns) || function.Parameters.Any(p => IsBool(p.Type) || IsString(p.Type));
+        bool wrapped = !shape.Static || IsBool(function.Returns) || function.Parameters.Any(p => IsBool(p.Type) || IsString(p.Type));
         bool unsafeNative = HasPointer(function.Returns) || function.Parameters.Any(p => HasPointer(p.Type));
         string native = wrapped ? "__" + method + "_Native" : method;
 
@@ -330,7 +506,7 @@ internal static class CSharpEmitter
             Indent(output, indent).Append('[').Append(Interop).Append(".SuppressGCTransition]\n");
         }
 
-        Indent(output, indent).Append(wrapped ? "private" : access).Append(" static ").Append(unsafeNative ? "unsafe " : "").Append("extern ")
+        Indent(output, indent).Append(wrapped ? "private" : shape.Access).Append(" static ").Append(unsafeNative ? "unsafe " : "").Append("extern ")
             .Append(NativeType(function.Returns, structs)).Append(' ').Append(native).Append('(');
         for (int i = 0; i < names.Length; i++)
         {
@@ -341,20 +517,21 @@ internal static class CSharpEmitter
 
         if (wrapped)
         {
-            WriteWrapper(output, indent, function, method, native, names, access, structs);
+            WriteWrapper(output, indent, function, method, native, names, shape, structs);
         }
 
         if (spanOverloads)
         {
-            WriteSpanOverload(output, indent, function, method, names, access, structs);
+            WriteSpanOverload(output, indent, function, method, names, shape, structs);
         }
     }
 
     /// <summary>
-    /// Writes the public method of a function whose signature has a bool or a string: each
-    /// string converted to UTF-8 (Utf8StringMarshaller.ManagedToUnmanagedIn, a stack buffer of
-    /// its BufferSize, freed after the call), each bool passed as 1 or 0, a bool result read as
-    /// non-zero.
+    /// Writes the method that calls a private extern: for a function whose signature has a bool
+    /// or a string (each string converted to UTF-8 through Utf8StringMarshaller.ManagedToUnmanagedIn,
+    /// a stack buffer of its BufferSize, freed after the call; each bool passed as 1 or 0, a bool
+    /// result read as non-zero), and for every function of the instance shape, whose methods
+    /// cannot be externs.
     /// </summary>
     /// <param name="output">Where to write.</param>
     /// <param name="indent">The indentation.</param>
@@ -362,9 +539,9 @@ internal static class CSharpEmitter
     /// <param name="method">Its C# name.</param>
     /// <param name="native">The private extern's name.</param>
     /// <param name="names">The parameters' C# names.</param>
-    /// <param name="access">The accessibility.</param>
+    /// <param name="shape">How the method is declared: static, or an instance method (virtual when the shape says so).</param>
     /// <param name="structs">The library's STRUCTs and their C# types.</param>
-    private static void WriteWrapper(StringBuilder output, int indent, ApiFunctionModel function, string method, string native, string[] names, string access,
+    private static void WriteWrapper(StringBuilder output, int indent, ApiFunctionModel function, string method, string native, string[] names, MemberShape shape,
         IReadOnlyDictionary<string, string> structs)
     {
         const string Marshaller = "global::System.Runtime.InteropServices.Marshalling.Utf8StringMarshaller.ManagedToUnmanagedIn";
@@ -372,7 +549,7 @@ internal static class CSharpEmitter
         bool unsafeWrapper = strings.Length > 0 || HasPointer(function.Returns) || function.Parameters.Any(p => HasPointer(p.Type) && !IsString(p.Type));
 
         Summary(output, indent, function);
-        Indent(output, indent).Append(access).Append(" static ").Append(unsafeWrapper ? "unsafe " : "").Append(ReturnType(function.Returns, structs))
+        Indent(output, indent).Append(shape.MethodModifiers).Append(' ').Append(unsafeWrapper ? "unsafe " : "").Append(ReturnType(function.Returns, structs))
             .Append(' ').Append(method).Append('(');
         for (int i = 0; i < names.Length; i++)
         {
@@ -460,9 +637,9 @@ internal static class CSharpEmitter
     /// <param name="function">The function.</param>
     /// <param name="method">Its C# name.</param>
     /// <param name="names">Its parameters' C# names.</param>
-    /// <param name="access">The accessibility.</param>
+    /// <param name="shape">How the main method is declared: the overload takes its accessibility and static-ness, never virtual (it calls the main method, so an override of that one covers both).</param>
     /// <param name="structs">The library's STRUCTs and their C# types (a span of structs: const point* pts, size_t count).</param>
-    private static void WriteSpanOverload(StringBuilder output, int indent, ApiFunctionModel function, string method, string[] names, string access,
+    private static void WriteSpanOverload(StringBuilder output, int indent, ApiFunctionModel function, string method, string[] names, MemberShape shape,
         IReadOnlyDictionary<string, string> structs)
     {
         var pairs = new Dictionary<int, int>();
@@ -485,7 +662,7 @@ internal static class CSharpEmitter
 
         var lengths = new HashSet<int>(pairs.Values);
         Indent(output, indent).Append("/// <summary><c>").Append(Xml(function.Prototype)).Append("</c>, with spans for the pointer and length pairs.</summary>\n");
-        Indent(output, indent).Append(access).Append(" static unsafe ").Append(ReturnType(function.Returns, structs)).Append(' ').Append(method).Append('(');
+        Indent(output, indent).Append(shape.Access).Append(shape.Static ? " static unsafe " : " unsafe ").Append(ReturnType(function.Returns, structs)).Append(' ').Append(method).Append('(');
         bool first = true;
         for (int i = 0; i < names.Length; i++)
         {
