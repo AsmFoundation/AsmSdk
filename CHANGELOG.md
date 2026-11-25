@@ -361,8 +361,8 @@ Each SDK release names the one it was tested with.
   struct laid out as C lays it out on the RID.
   - **The asm code** reads it through `rect.max` (an offset) and `rect_size` (the size, padding
     included): NASM gets `%assign` numbers, which work in `%if`, and llvm-mc gets `.set` symbols.
-  - **C#** gets a sequential struct in the library's default class. A `PROTO` takes a pointer to
-    it (`const rect* r`), never a struct by value.
+  - **C#** gets a sequential struct at the root of the library's namespace. A `PROTO` takes a
+    pointer to it (`const rect* r`), never a struct by value.
   - **Fields:** the PROTO types, a `STRUCT` declared before (by value), function pointers, and
     arrays of the scalars (`uint32_t h[8]`, a C# `fixed` buffer).
   - **The SDK lays structs out** (the owner's choice), not the macros. It reads each source's
@@ -375,35 +375,73 @@ Each SDK release names the one it was tested with.
   - **Checks:** `ASM0130` (a refused field: an array of pointers or structs, a struct holding
     itself, one used before it is declared, a struct by value in `PROTO`), `ASM0136` (one struct
     declared twice, differently), `ASM0133` (two RIDs that lay a struct out differently), and
-    from the generator `ASM0145` (a public binding of an internal struct).
+    from the generator `ASM0145` (a public copy of a function taking an internal struct).
   - **The tests check it on every machine they run on:** the asm code reads back each field C#
     wrote, and its size constants equal C#'s `sizeof`.
   - **Not yet in WebAssembly sources** (an error, as `PROTO` is).
-- **Generated C# bindings.** A C# project (.NET 7 or later) that references an asm library with
-  `PROTO` lines calls it with nothing written by hand: the SDK package's Roslyn incremental
-  generator (`bindings/netstandard2.0/AsmFoundation.Sdk.Bindings.dll`, added by the consumer
-  targets with each reference's API file as an `AdditionalFiles` item) writes a class named
-  after the library (its `AssemblyName` in PascalCase) in the project's `RootNamespace`, one
-  nested class per `.asm` file with folders as levels; a function named like its file is
-  `Invoke`. `[AsmLibrary]` (generated into the project, `AsmFoundation.Interop`) sets options
-  for every library and per library on the assembly (`Nesting`, `SpanOverloads`, `Visibility`,
-  `ClassName`), and puts a library, chosen `Files` or a `Folder` into an app's `static partial`
-  class, overriding both; each function is bound once unless a class says `AliasBinding`. The
-  bindings are blittable `[DllImport]` externs (`ExactSpelling`, `[SuppressGCTransition]` for
-  `PROTO fast`) with generated conversions: a `bool` as one byte, a `const char*` parameter as a
-  UTF-8 `string` through `Utf8StringMarshaller`'s stack buffer, a function pointer as
-  `delegate* unmanaged<...>`, and a span overload for each pointer and length pair (`len`,
-  `length`, `size`, `count`, `<pointer>_len`, `<pointer>_count`). Not `[LibraryImport]`: source
-  generators never see each other's output, so .NET's LibraryImport generator left generated
-  `[LibraryImport]` methods without a body (measured: CS8795). The SDK sets `AllowUnsafeBlocks`
-  whenever bindings are generated (the .NET SDK defaults it to `false`, measured);
-  `AsmGenerateBindings=false` turns the bindings off. Libraries only: a referenced asm program
-  gets none, `PROTO` lines or not (it is started, never loaded), and a .NET WebAssembly app
-  none yet (the wasm RIDs write no API file). Errors at the attribute: **ASM0140** (no
-  such library), **ASM0141** (no such file or folder), **ASM0142** (bound twice), **ASM0143**
-  (not `static partial`, or a name generated twice), **ASM0144** (an unreadable API file). Phase 2
-  of the design; also fixed: `GetAsmApiFile` returns absolute paths (a referencing project read
-  relative ones against its own folder).
+- **Generated C# bindings** (phases 2 and 4 of the design; the owner's spec of 2026-11-25,
+  catalog `asmsdk/plans/csharp-bindings.md`). A C# project (.NET 7 or later) that references an
+  asm library with `PROTO` or `STRUCT` lines, as a project or as its package, calls it with
+  nothing written by hand.
+  - **The baseline:** a namespace named after the library (its `AssemblyName`, each dotted part
+    in PascalCase: `Demo.Native.Add.AddInts`), one internal static class per `.asm` file,
+    folders as namespaces, the `STRUCT`s at the namespace's root; a function named like its file
+    is `Invoke`; functions with no file class (`Folders`, `Flat`) go into `<Namespace>.Api`.
+    Every function is there, whatever else the project binds.
+  - **Written by the SDK, no generator:** for a project reference at build time
+    (`AsmWriteBindings`, `obj/<Configuration>/<tfm>/AsmBindings/<Namespace>.g.cs`, rewritten only
+    when it changes); for a package at pack time (below). No attribute type enters the
+    compilation until the project's code names `AsmLibrary`.
+  - **Shaped by the project file:** the properties `AsmBindingsNesting` (`Files`, `Folders`,
+    `Flat`), `AsmBindingsSpanOverloads`, `AsmBindingsVisibility` (`Internal`, `Public`,
+    `ProtectedInternal`), `AsmBindingsClassKind` (`Static`, `Instance`: classes to create, each
+    method around a private extern), `AsmBindingsVirtual`, `AsmBindingsSealed` and
+    `AsmDefaultBindings` (`false` keeps the structs only) for every library, and an
+    `<AsmBindings Include="lib" Namespace="..." ... />` item with the same metadata for one.
+  - **`[AsmLibrary]` in code turns the generator on** (a word search of the `Compile` items, no
+    compiler: `_AsmBindingsSwitch`). It writes the baseline, reshaped by the `Default*` options of
+    an assembly attribute (`DefaultNamespace`, `DefaultNesting`, `DefaultSpanOverloads`,
+    `DefaultVisibility`, `DefaultClassKind`, `DefaultVirtual`, `DefaultSealed`,
+    `DefaultBindings`), and the copies the app's classes ask for (`Nesting`, `SpanOverloads`,
+    `Visibility`, `Virtual`, `Files`, `Folder`, `AliasBinding`); a non-static partial class gets
+    instance members. The code wins: a class's attribute, the library's assembly attribute, the
+    global one, the `AsmBindings` item, the properties. `ClassName` and the default class in
+    `RootNamespace` of the first phase-2 builds are gone (no compatibility kept). The attribute's
+    source compiles down to C# 7.3; below C# 11 the generator writes nothing.
+  - **The bindings** are blittable `[DllImport]` externs (`ExactSpelling`,
+    `[SuppressGCTransition]` for `PROTO fast`) with generated conversions: a `bool` as one byte, a
+    `const char*` parameter as a UTF-8 `string` through `Utf8StringMarshaller`'s stack buffer, a
+    function pointer as `delegate* unmanaged<...>`, and a span overload for each pointer and
+    length pair (`len`, `length`, `size`, `count`, `<pointer>_len`, `<pointer>_count`). Not
+    `[LibraryImport]`: source generators never see each other's output, so .NET's LibraryImport
+    generator left generated `[LibraryImport]` methods without a body (measured: CS8795). The SDK
+    sets `AllowUnsafeBlocks` whenever there are bindings (the .NET SDK defaults it to `false`,
+    measured); `AsmGenerateBindings=false` turns them off.
+  - **Packages carry their bindings, with no dependency on AsmFoundation.Sdk:**
+    `contentFiles/cs/net7.0/AsmBindings/<AssemblyName>.cs.pp` (`AsmWritePackageBindings`: every
+    layout under `#if`, chosen by `#define` lines whose NuGet tokens the package's targets fill
+    from the consumer's settings, checked with the SDK's rules and words), the API file and the
+    generator in `build/bindings/`, and targets that switch to the generator. One generator runs
+    for a project of several packages and asm references: the newest copy
+    (`_AsmPickBindingsGenerator`, by version; two would write every type twice, CS0101,
+    measured). The shared targets `_AsmBindingsSwitch`, `_AsmCheckBindingsItems` and
+    `_AsmPickBindingsGenerator` are the same in the SDK and every package, and keep their names
+    and meanings forever (MSBuild keeps the last definition imported).
+  - **Libraries only:** a referenced asm program gets none, `PROTO` lines or not (it is started,
+    never loaded). A .NET WebAssembly app gets them from its RID's API file.
+  - **Errors:** **ASM0140** (an attribute or an `AsmBindings` item names no library the project
+    has bindings for), **ASM0141** (no such file or folder), **ASM0142** (bound twice among the
+    app's classes), **ASM0143** (a class that cannot hold bindings, or a name generated twice),
+    **ASM0144** (an unreadable API file), **ASM0145** (a public copy of a function taking a
+    struct the internal baseline holds), **ASM0146** (a shaping value or combination C# cannot
+    follow), **ASM0147** (warning: C# older than 11), **ASM0148** (warning at pack time: a layout
+    of the package's baseline in which two names meet; it keeps ASM0143 as an `#error`).
+  - **The templates:** `asmnet`'s app and tests call their library through the baseline (the
+    template names the namespace in an `AsmBindings` item, so that `-n my-app` gives the
+    `my_app.Native` its code says), and `asmlib`'s `add.asm` has its `PROTO` line.
+  - Also fixed: `GetAsmApiFile` returns absolute paths (a referencing project read relative ones
+    against its own folder); the generator read the array argument `Files` as a scalar and
+    failed (CS8785).
 - **`PROTO` lines and the API file, the first phase of generated C# bindings.** A
   `PROTO int32_t add_ints(int32_t a, int32_t b)` line beside a `FUNCTION` (NASM and GNU syntax
   alike; `PROTO fast ...` for a short function that never blocks) declares its C signature.
@@ -422,8 +460,7 @@ Each SDK release names the one it was tested with.
   file in `bin/<Configuration>/<tfm>/`. No `PROTO` line, no file. The WebAssembly RIDs (also
   unreleased) take part like the others: their objects carry the records in an `asmapi` custom
   section (see the WebAssembly entry). The design (the owner's choices
-  of 2026-11-23, approved as a spec): catalog `asmsdk/plans/csharp-bindings.md`; the C# generator
-  is the next phase.
+  of 2026-11-23, approved as a spec): catalog `asmsdk/plans/csharp-bindings.md`.
 - **A NativeAOT publish links a referenced static library by itself.** A `PublishAot` project
   that references a `StaticLibrary` asm project needs nothing more: `dotnet publish -r <rid>`
   builds the library for that RID, adds the `DirectPInvoke` item (its `AssemblyName`, the name

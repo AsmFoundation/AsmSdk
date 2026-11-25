@@ -94,7 +94,8 @@ The [getting started guide](https://asmfoundation.github.io/AsmSdk/guide/getting
 builds a library, a program and a C# caller for seven platforms.
 
 Not released yet: on `main`, plug and play. `dotnet new install AsmFoundation.Templates`, then
-`dotnet new asmnet -n Demo`, creates a C# app, the asm library it calls and xunit tests, which
+`dotnet new asmnet -n Demo`, creates a C# app, the asm library it calls (through the C# bindings
+the SDK writes from the library's `PROTO` lines) and xunit tests, which
 `dotnet build`, `run` and `test` take as they are (`asmlib`, `asmexe` and `asmstatic` create one
 project each). A project that lists no `RuntimeIdentifiers` builds for the build machine's
 platform, with `ASM0013` when a pack or a portable publish would ship that one alone.
@@ -102,6 +103,14 @@ platform, with `ASM0013` when a pack or a portable publish would ship that one a
 every source, and `dotnet sln add` writes the project type itself. `NoWarn`,
 `WarningsAsErrors` and `WarningsNotAsErrors` take NASM's warning names, `NativeLibrary`
 replaces `AsmLinkLibrary`, and Release builds are byte-identical in any folder.
+
+Not released yet: on `main`, **generated C# bindings**. A `PROTO` line beside a `FUNCTION`
+(`PROTO int32_t hello_add(int32_t a, int32_t b)`), and `STRUCT` lines for the structs it takes,
+give every C# project that references the library, as a project or as its package, a namespace
+named after it: `Hello.Add.HelloAdd(40, 2)`, with nothing declared and no AsmFoundation.Sdk
+needed for a package. The project file shapes it (`<AsmBindings Include="hello" Namespace="..."
+/>`, instance or virtual classes), and `[AsmLibrary]` in code reshapes it and binds copies in
+the app's own classes. See [Generated bindings](docs/guide/interop.md#generated-bindings).
 
 ## What it builds
 

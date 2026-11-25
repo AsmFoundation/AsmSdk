@@ -296,11 +296,12 @@ the reason.
 
 **Generated bindings.** When the asm sources carry `PROTO` lines (see
 [PROTO](#proto-the-c-bindings)), the app needs no `[LibraryImport]` at all: the asm project's
-WebAssembly build writes its API file, and the generator turns it into C#, as for a native app
-(see [Interop](interop.md#generated-bindings)):
+WebAssembly build writes its API file, and the SDK writes the library's baseline from it (the
+generator does once the app's code names `[AsmLibrary]`), as for a native app (see
+[Interop](interop.md#generated-bindings)):
 
 ```csharp
-int sum = Calc.Add.AddInts(40, 2);   // the library "Calc", its source add.wasm.s, add_ints
+int sum = Calc.Add.AddInts(40, 2);   // the namespace Calc (the library), its source add.wasm.s, add_ints
 ```
 
 An asm library can also reach the app through a .NET library that references it, as

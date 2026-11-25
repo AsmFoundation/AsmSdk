@@ -26,7 +26,7 @@ dotnet new install AsmFoundation.Templates
 | Assembly Library | `asmlib` | a shared library: x64 code in NASM (`add.asm`), ARM64 code in GNU syntax (`add.s`) |
 | Assembly Console App | `asmexe` | a program on the platform's C library, which `dotnet run` builds and runs |
 | Assembly Static Library | `asmstatic` | a static library with a public `include/` folder, for other asm projects |
-| Assembly + .NET Solution | `asmnet` | a `.slnx` with a C# console app, the asm library it calls through `[LibraryImport]`, and xunit v3 tests |
+| Assembly + .NET Solution | `asmnet` | a `.slnx` with a C# console app, the asm library it calls through the C# bindings the SDK writes from its `PROTO` line (no `[LibraryImport]`), and xunit v3 tests |
 | Assembly WebAssembly Library (not released yet) | `asmwasm` | a WebAssembly library for `browser-wasm` and `wasi-wasm` (`add.wasm.s`), and a `run.mjs` that calls its module from Node (see [WebAssembly](webassembly.md)) |
 | Assembly + .NET WebAssembly Solution (not released yet) | `asmwasmapp` | a `.slnx` with a .NET `browser-wasm` app and the WebAssembly library it calls; `dotnet run` runs it in Node (needs the `wasm-tools` workload) |
 
@@ -43,8 +43,10 @@ dotnet new install AsmFoundation.Templates
   [Runtime identifiers](#runtime-identifiers)). Their comments show the line to add to ship
   more platforms.
 - **Names keep their form:** `dotnet new asmnet -n my-app` writes `my-app.Native.asmproj` and
-  `[LibraryImport("my-app.Native")]`, which match the library's file name, and the C#
-  namespace `my_app.Tests`.
+  `<AsmBindings Include="my-app.Native" ... />`, which match the library's name, and the C#
+  namespaces `my_app.Tests` and `my_app.Native`. The second is the bindings' namespace, named
+  in that item: the SDK's own would be `MyApp.Native`, and the template's code needs the one it
+  writes.
 
 ## A project folder
 

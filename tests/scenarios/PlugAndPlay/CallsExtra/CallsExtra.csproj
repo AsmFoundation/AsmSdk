@@ -3,15 +3,15 @@
     Written by hand, as the docs tell a user to (dotnet add reference refuses an .asmproj): a
     console app that calls the library the asmlib template created during the scenario
     (../Demo/Demo.Extra, made by "dotnet new asmlib -n Demo.Extra -o Demo/Demo.Extra"). The one
-    ProjectReference line is all it takes; the scenario runs it with dotnet run.
+    ProjectReference line is all it takes: the template's PROTO line gives this project the C#
+    binding Demo.Extra.Add.AddInts, and the SDK turns on the unsafe code bindings need. The
+    scenario runs it with dotnet run.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <!-- [LibraryImport] generates its marshalling code as unsafe code. -->
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Demo/Demo.Extra/Demo.Extra.asmproj" />

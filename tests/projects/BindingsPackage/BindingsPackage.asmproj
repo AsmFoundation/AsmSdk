@@ -1,0 +1,26 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    An asm package with C# bindings (PackageBindingsTests): PROTO and STRUCT lines for all eight
+    RIDs, packed as Test.BindingsPackage 1.0.0 into the local feed. Its .NET consumers get the
+    baseline the SDK writes into the package at pack time
+    (contentFiles/cs/net7.0/AsmBindings/bindpkg.cs.pp), the API file and the bindings generator
+    (build/bindings/), with no AsmFoundation.Sdk in their graph. What each source covers, and
+    where its function lands in each layout of the baseline (namespace Bindpkg by default):
+      add.asm, add.s              add_ints(a, b): a + b, a root file
+                                  (Files: Bindpkg.Add; Folders and Flat: Bindpkg.Api)
+      simd/sum.asm, simd/sum.s    sum_bytes(data, len): fast, a pointer and length pair (a span
+                                  overload), in a folder (Files: Bindpkg.Simd.Sum; Folders:
+                                  Bindpkg.Simd; Flat: Bindpkg.Api)
+      geometry.asm, geometry.s    STRUCT point (x, y) at the namespace's root, and
+                                  point_sum(const point* p): x + y, which reads the struct
+                                  through the SDK's offset constants
+  -->
+  <PropertyGroup>
+    <AssemblyName>bindpkg</AssemblyName>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+    <PackageId>Test.BindingsPackage</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>AsmFoundation tests</Authors>
+    <Description>Test package: an assembly library with C# bindings, for eight runtime identifiers.</Description>
+  </PropertyGroup>
+</Project>

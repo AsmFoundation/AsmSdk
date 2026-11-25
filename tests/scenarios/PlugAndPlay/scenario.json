@@ -33,7 +33,7 @@
     },
     {
       "run": "dotnet run --project Demo/Demo.App",
-      "description": "The app calls the asm function through [LibraryImport].",
+      "description": "The app calls the asm function through the C# binding the SDK writes from the template's PROTO line (Demo.Native.Add.AddInts): no [LibraryImport] written.",
       "stdout": ["add_ints(40, 2) = 42"]
     },
     {
@@ -69,7 +69,7 @@
     },
     {
       "run": "dotnet run --project CallsExtra",
-      "description": "What the docs say to do instead: CallsExtra (written by hand, in this folder) has the one ProjectReference line to the asmlib template's library, and calls its add_ints.",
+      "description": "What the docs say to do instead: CallsExtra (written by hand, in this folder) has the one ProjectReference line to the asmlib template's library, and calls its add_ints through the binding the SDK writes from the template's PROTO line (Demo.Extra.Add.AddInts).",
       "stdout": ["Demo.Extra add_ints(1000, 337) = 1337"],
       "files": ["CallsExtra/bin/Debug/net10.0/runtimes/{rid}/native/{lib:Demo.Extra}"]
     },

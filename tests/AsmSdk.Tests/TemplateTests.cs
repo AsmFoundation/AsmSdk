@@ -127,11 +127,13 @@ public sealed class TemplateTests(SdkUnderTest sdk)
 
     /// <summary>
     /// A name with a hyphen keeps it wherever a file, a path or a library name needs it
-    /// (my-app.Native.asmproj, the .slnx, the ProjectReferences, [LibraryImport("my-app.Native")],
-    /// which must match the library's file name) and becomes my_app in the C# namespace: each
-    /// occurrence in the template names its form (sourceName AsmNet.1: AsmNet.1 for the name as
-    /// given, AsmNet._1 for the namespace). With a sourceName whose forms were all the same text,
-    /// the engine wrote my_demo into the paths of files it named my-demo (measured).
+    /// (my-app.Native.asmproj, the .slnx, the ProjectReferences, the AsmBindings item's library,
+    /// which must match the library's AssemblyName) and becomes my_app in C#: the test namespace,
+    /// and the bindings' namespace, which the template names in the AsmBindings item, since the
+    /// SDK's own would be MyApp.Native and the code says my_app.Native. Each occurrence in the
+    /// template names its form (sourceName AsmNet.1: AsmNet.1 for the name as given, AsmNet._1
+    /// for the namespace). With a sourceName whose forms were all the same text, the engine wrote
+    /// my_demo into the paths of files it named my-demo (measured).
     /// </summary>
     [Fact]
     public void A_hyphenated_name_keeps_its_form_in_paths_and_becomes_a_namespace()
@@ -144,13 +146,15 @@ public sealed class TemplateTests(SdkUnderTest sdk)
             File.ReadAllText(Path.Combine(solution, "my-app.slnx")));
         foreach (string project in new[] { "my-app.App/my-app.App.csproj", "my-app.Tests/my-app.Tests.csproj" })
         {
-            Assert.Contains("<ProjectReference Include=\"../my-app.Native/my-app.Native.asmproj\" />", File.ReadAllText(Path.Combine(solution, project)));
+            string text = File.ReadAllText(Path.Combine(solution, project));
+            Assert.Contains("<ProjectReference Include=\"../my-app.Native/my-app.Native.asmproj\" />", text);
+            Assert.Contains("<AsmBindings Include=\"my-app.Native\" Namespace=\"my_app.Native\" />", text);
         }
 
-        Assert.Contains("[LibraryImport(\"my-app.Native\", EntryPoint = \"add_ints\")]", File.ReadAllText(Path.Combine(solution, "my-app.App", "Program.cs")));
+        Assert.Contains("my_app.Native.Add.AddInts(40, 2)", File.ReadAllText(Path.Combine(solution, "my-app.App", "Program.cs")));
         string tests = File.ReadAllText(Path.Combine(solution, "my-app.Tests", "NativeTests.cs"));
         Assert.Contains("namespace my_app.Tests;", tests);
-        Assert.Contains("[LibraryImport(\"my-app.Native\", EntryPoint = \"add_ints\")]", tests);
+        Assert.Contains("my_app.Native.Add.AddInts(a, b)", tests);
         Assert.DoesNotContain("AsmNet", tests);
     }
 

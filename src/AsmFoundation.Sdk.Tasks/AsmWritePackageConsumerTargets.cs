@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using AsmFoundation.Sdk.Bindings;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Utilities;
 
@@ -54,6 +55,31 @@ public sealed class AsmWritePackageConsumerTargets : Task
     /// </summary>
     public ITaskItem[] LibraryNames { get; set; } = Array.Empty<ITaskItem>();
 
+    /// <summary>
+    /// Whether the package holds runtimes/ files for the BinariesCopyPath targets to move. False for
+    /// a package whose .NET consumers link it instead (WebAssembly archives) and that is here for
+    /// its C# bindings only: the move and the loader are then left out.
+    /// </summary>
+    public bool MovesNativeFiles { get; set; } = true;
+
+    /// <summary>The asm library whose C# bindings the package carries (its import name), or empty for none: the bindings targets are written only with it.</summary>
+    public string BindingsLibrary { get; set; } = "";
+
+    /// <summary>The bindings' namespace when the consumer names none (the library's name in PascalCase).</summary>
+    public string BindingsNamespace { get; set; } = "";
+
+    /// <summary>The prefix of the baseline's NuGet tokens (see AsmWritePackageBindings.TokenPrefixOf).</summary>
+    public string BindingsTokenPrefix { get; set; } = "";
+
+    /// <summary>The API file's path in the package (build/bindings/&lt;library&gt;.api.json): what the generator reads.</summary>
+    public string BindingsApiFile { get; set; } = "";
+
+    /// <summary>The bindings generator's path in the package (build/bindings/AsmFoundation.Sdk.Bindings.dll).</summary>
+    public string BindingsGenerator { get; set; } = "";
+
+    /// <summary>The generator's version (the SDK's): the shared pick runs the newest among the packages' and the SDK's.</summary>
+    public string BindingsGeneratorVersion { get; set; } = "";
+
     /// <summary>The .targets file to write (written only when its text changes).</summary>
     [Required]
     public string OutputPath { get; set; } = "";
@@ -104,12 +130,27 @@ public sealed class AsmWritePackageConsumerTargets : Task
         var x = new StringBuilder();
         x.Append("<Project>\n");
         x.Append("  <!--\n");
-        x.Append($"    Written by {Xml(Origin)} for the package {id} {Xml(PackageVersion)}: where the package's native\n");
-        x.Append("    libraries go in the output of a .NET project that references it. Set BinariesCopyPath on the\n");
-        x.Append("    PackageReference, or as the project's property: Runtimes (runtimes/{rid}/native), AppFolder,\n");
-        x.Append("    RidFolders ({rid}), Auto, or a folder such as native/{rid}. Without it, NuGet's own layout\n");
-        x.Append("    stays and nothing here acts. Everything is named for this package only.\n");
+        if (MovesNativeFiles)
+        {
+            x.Append($"    Written by {Xml(Origin)} for the package {id} {Xml(PackageVersion)}: where the package's native\n");
+            x.Append("    libraries go in the output of a .NET project that references it. Set BinariesCopyPath on the\n");
+            x.Append("    PackageReference, or as the project's property: Runtimes (runtimes/{rid}/native), AppFolder,\n");
+            x.Append("    RidFolders ({rid}), Auto, or a folder such as native/{rid}. Without it, NuGet's own layout\n");
+            x.Append("    stays and nothing here acts. Everything is named for this package only.\n");
+        }
+        else
+        {
+            x.Append($"    Written by {Xml(Origin)} for the package {id} {Xml(PackageVersion)}: the C# bindings of its asm\n");
+            x.Append("    library (below). Its .NET consumers link it rather than load it, so no file is moved here.\n");
+        }
+
         x.Append("  -->\n\n");
+        if (!MovesNativeFiles)
+        {
+            AppendBindings(x, s, id);
+            x.Append("</Project>\n");
+            return x.ToString();
+        }
 
         // The value and its folder: properties only, so the loader target can use them before
         // ResolvePackageAssets has run.
@@ -194,9 +235,324 @@ public sealed class AsmWritePackageConsumerTargets : Task
             x.Append("  </Target>\n");
         }
 
+        AppendBindings(x, s, id);
         x.Append("</Project>\n");
         return x.ToString();
     }
+
+    /// <summary>
+    /// The settings of a package's bindings, in the order the SDK's shape rules read them
+    /// (Shapes.Resolve), each with its AsmBindings item metadata, its project property, its
+    /// default and its values (null for true/false).
+    /// </summary>
+    private static readonly (string Name, string Property, string Default, string[]? Values)[] BindingsSettings =
+    {
+        ("Nesting", "AsmBindingsNesting", "Files", ShapeSettings.NestingNames),
+        ("SpanOverloads", "AsmBindingsSpanOverloads", "true", null),
+        ("Visibility", "AsmBindingsVisibility", "Internal", ShapeSettings.VisibilityNames),
+        ("ClassKind", "AsmBindingsClassKind", "Static", ShapeSettings.ClassKindNames),
+        ("Virtual", "AsmBindingsVirtual", "false", null),
+        ("Sealed", "AsmBindingsSealed", "false", null),
+        ("DefaultBindings", "AsmDefaultBindings", "true", null),
+    };
+
+    /// <summary>
+    /// Appends the targets of the package's C# bindings, when it has them (<see cref="BindingsLibrary"/>):
+    /// the tokens of its baseline, computed and checked from the consumer's settings; the switch
+    /// to the generator; and the shared targets.
+    /// </summary>
+    /// <param name="x">Where to write.</param>
+    /// <param name="s">The package id as part of an MSBuild name.</param>
+    /// <param name="id">The package id, XML-escaped.</param>
+    /// <remarks>
+    /// <para>
+    /// Every check and every message is the SDK's (the same shape rules, Shapes, compiled into this
+    /// task: each combination's message is taken from them, not retyped), but run by MSBuild alone:
+    /// the package does not depend on AsmFoundation.Sdk. The precedence is the SDK's too, as far as
+    /// a written baseline goes (an attribute turns the generator on, which reads the rest): the
+    /// project's &lt;AsmBindings Include="library" /&gt; item, then the AsmBindings* property, then
+    /// the default. The first error stops the build, so two packages never repeat one message.
+    /// </para>
+    /// <para>
+    /// The timing: NuGet preprocesses the content files in RunProduceContentAssets, which the .NET
+    /// SDK runs before AssignProjectConfiguration, long before ResolveProjectReferences; the tokens
+    /// are filled just before it, and the switch looked at just after it, when the baseline is a
+    /// Compile item that can be taken out again.
+    /// </para>
+    /// </remarks>
+    private void AppendBindings(StringBuilder x, string s, string id)
+    {
+        if (BindingsLibrary.Length == 0)
+        {
+            return;
+        }
+
+        string library = Xml(BindingsLibrary);
+        string p = BindingsTokenPrefix;
+        // The bindings live where a .NET consumer can see them: C#, .NET 7 or later (the
+        // contentFiles folder is net7.0, which NuGet gives no older framework, so the gate only
+        // spares the others the work). Never in an asm project, which imports these targets too.
+        const string gate = "'$(UsingAsmFoundationSdk)' != 'true' and '$(Language)' == 'C#'";
+        const string active = "'$(AsmGenerateBindings)' != 'false' and '$(TargetFrameworkIdentifier)' == '.NETCoreApp' and $([MSBuild]::VersionGreaterThanOrEquals('$(TargetFrameworkVersion.TrimStart(`vV`))', '7.0'))";
+
+        x.Append("\n  <!--\n");
+        x.Append($"    The C# bindings of the asm library {library}: its baseline, contentFiles/cs/net7.0/AsmBindings/{library}.cs.pp,\n");
+        x.Append("    which NuGet compiles into every C# project for .NET 7 or later that references this package,\n");
+        x.Append($"    its $tokens$ filled from the project's settings by _AsmPackageBindingsTokens_{s}: an\n");
+        x.Append($"    <AsmBindings Include=\"{library}\" /> item (Namespace, Nesting, SpanOverloads, Visibility, ClassKind,\n");
+        x.Append("    Virtual, Sealed, DefaultBindings), else the properties AsmBindingsNesting, AsmBindingsSpanOverloads,\n");
+        x.Append("    AsmBindingsVisibility, AsmBindingsClassKind, AsmBindingsVirtual, AsmBindingsSealed and\n");
+        x.Append("    AsmDefaultBindings. When the project's code names the bindings attribute, the newest bindings\n");
+        x.Append("    generator among the packages' and AsmFoundation.Sdk's takes over, reading the API file\n");
+        x.Append($"    (build/bindings/{library}.api.json), and the written baseline steps aside (_AsmPackageBindings_{s}).\n");
+        x.Append("    AsmGenerateBindings=false removes the bindings.\n");
+        x.Append("  -->\n");
+        // Visible to the generator: the item's settings travel on the API file, the properties as
+        // they are. Duplicate metadata entries are harmless (the editorconfig step batches them by
+        // name); duplicate properties are excluded, the SDK's own included.
+        x.Append($"  <ItemGroup Condition=\"{gate}\">\n");
+        x.Append("    <CompilerVisibleItemMetadata Include=\"AdditionalFiles\" MetadataName=\"AsmApiFile\" />\n");
+        foreach (string name in ShapeSettings.ItemMetadataNames)
+        {
+            x.Append($"    <CompilerVisibleItemMetadata Include=\"AdditionalFiles\" MetadataName=\"AsmBindings{name}\" />\n");
+        }
+
+        foreach ((string _, string property, string _, string[]? _) in BindingsSettings)
+        {
+            x.Append($"    <CompilerVisibleProperty Include=\"{property}\" Exclude=\"@(CompilerVisibleProperty)\" />\n");
+        }
+
+        x.Append("  </ItemGroup>\n\n");
+
+        // The tokens: every setting resolved (item, property, default), checked, then handed to
+        // NuGet as PreprocessorValue items. Filled even when the bindings are off or a value is
+        // wrong (with the defaults), so the content file always preprocesses.
+        x.Append($"  <Target Name=\"_AsmPackageBindingsTokens_{s}\" BeforeTargets=\"RunProduceContentAssets\" Condition=\"{gate}\">\n");
+        x.Append("    <ItemGroup>\n");
+        x.Append($"      <_AsmBindingsItem_{s} Include=\"@(AsmBindings)\" Condition=\"'%(Identity)' == '{library}'\" />\n");
+        x.Append("    </ItemGroup>\n");
+        x.Append("    <PropertyGroup>\n");
+        x.Append($"      <_AsmBindingsActive_{s} Condition=\"{active}\">true</_AsmBindingsActive_{s}>\n");
+        x.Append($"      <_AsmBindingsNamespace_{s}>@(_AsmBindingsItem_{s}->'%(Namespace)')</_AsmBindingsNamespace_{s}>\n");
+        x.Append($"      <_AsmBindingsNamespace_{s}>$(_AsmBindingsNamespace_{s}.Trim())</_AsmBindingsNamespace_{s}>\n");
+        x.Append($"      <_AsmBindingsNamespace_{s} Condition=\"'$(_AsmBindingsNamespace_{s})' == ''\">{Xml(BindingsNamespace)}</_AsmBindingsNamespace_{s}>\n");
+        foreach ((string name, string property, string _, string[]? values) in BindingsSettings)
+        {
+            string text = $"_AsmBindings{name}Text_{s}";
+            string value = $"_AsmBindings{name}_{s}";
+            string itemProblem = $"_AsmBindings{name}ItemProblem_{s}";
+            string propertyText = $"_AsmBindings{name}PropertyText_{s}";
+            string propertyProblem = $"_AsmBindings{name}PropertyProblem_{s}";
+            // The item's value first; a value that is no option's is the item's problem, and
+            // then, as in the SDK, the property is read as if the item said nothing.
+            x.Append($"      <{text}>@(_AsmBindingsItem_{s}->'%({name})')</{text}>\n");
+            x.Append($"      <{text}>$({text}.Trim())</{text}>\n");
+            x.Append($"      <{value}></{value}>\n");
+            AppendCanonical(x, value, text, values, onlyIfEmpty: false);
+            string itemMessage = values is null
+                ? $"The AsmBindings item of {BindingsLibrary}: {name} is '$({text})', which is not true or false"
+                : $"The AsmBindings item of {BindingsLibrary}: {name} is '$({text})', which is not one of {string.Join(", ", values)}";
+            x.Append($"      <{itemProblem} Condition=\"'$({text})' != '' and '$({value})' == ''\">{EscapeMessage(itemMessage)}</{itemProblem}>\n");
+            x.Append($"      <{propertyText} Condition=\"'$({value})' == ''\">$({property}.Trim())</{propertyText}>\n");
+            AppendCanonical(x, value, propertyText, values, onlyIfEmpty: true);
+            string propertyMessage = values is null
+                ? $"{property} is '$({propertyText})', which is not true or false"
+                : $"{property} is '$({propertyText})', which is not one of {string.Join(", ", values)}";
+            x.Append($"      <{propertyProblem} Condition=\"'$({propertyText})' != '' and '$({value})' == ''\">{EscapeMessage(propertyMessage)}</{propertyProblem}>\n");
+        }
+
+        x.Append("    </PropertyGroup>\n");
+        foreach ((string name, string _, string _, string[]? _) in BindingsSettings)
+        {
+            x.Append($"    <Error Code=\"ASM0146\" Condition=\"'$(_AsmBindingsActive_{s})' == 'true' and '$(_AsmBindings{name}ItemProblem_{s})' != ''\" Text=\"$(_AsmBindings{name}ItemProblem_{s})\" />\n");
+            x.Append($"    <Error Code=\"ASM0146\" Condition=\"'$(_AsmBindingsActive_{s})' == 'true' and '$(_AsmBindings{name}PropertyProblem_{s})' != ''\" Text=\"$(_AsmBindings{name}PropertyProblem_{s})\" />\n");
+        }
+
+        // The defaults, before the combinations are judged (as the SDK's rules resolve every
+        // option first: Virtual on an unset ClassKind is Virtual on Static). A wrong value reached
+        // only an inactive project (no error above), whose baseline is never compiled; the
+        // default keeps its tokens well-formed anyway.
+        x.Append("    <PropertyGroup>\n");
+        foreach ((string name, string _, string defaultValue, string[]? _) in BindingsSettings)
+        {
+            x.Append($"      <_AsmBindings{name}_{s} Condition=\"'$(_AsmBindings{name}_{s})' == ''\">{defaultValue}</_AsmBindings{name}_{s}>\n");
+        }
+
+        x.Append("    </PropertyGroup>\n");
+
+        // What C# cannot do with a shape: the SDK's own messages, one per combination.
+        string what = BindingsLibrary + "'s baseline";
+        var combinations = new (string Condition, string Message)[]
+        {
+            ($"'$(_AsmBindingsClassKind_{s})' == 'Static' and '$(_AsmBindingsVisibility_{s})' == 'ProtectedInternal'", Shapes.Problems(what, instance: false, visibility: 2, isVirtual: false, isSealed: false).Single()),
+            ($"'$(_AsmBindingsClassKind_{s})' == 'Static' and '$(_AsmBindingsVirtual_{s})' == 'true'", Shapes.Problems(what, instance: false, visibility: 0, isVirtual: true, isSealed: false).Single()),
+            ($"'$(_AsmBindingsClassKind_{s})' == 'Static' and '$(_AsmBindingsSealed_{s})' == 'true'", Shapes.Problems(what, instance: false, visibility: 0, isVirtual: false, isSealed: true).Single()),
+            ($"'$(_AsmBindingsVirtual_{s})' == 'true' and '$(_AsmBindingsSealed_{s})' == 'true'", Shapes.Problems(what, instance: true, visibility: 0, isVirtual: true, isSealed: true).Single()),
+        };
+        foreach ((string condition, string message) in combinations)
+        {
+            x.Append($"    <Error Code=\"ASM0146\" Condition=\"'$(_AsmBindingsActive_{s})' == 'true' and {condition}\" Text=\"{EscapeMessage(message)}\" />\n");
+        }
+
+        // The namespace: dotted C# identifiers, as the SDK checks it (letters or _, then letters,
+        // digits or _). The message keeps the SDK's words; the namespace is inserted by MSBuild.
+        x.Append($"    <Error Code=\"ASM0146\" Condition=\"'$(_AsmBindingsActive_{s})' == 'true' and !$([System.Text.RegularExpressions.Regex]::IsMatch('$(_AsmBindingsNamespace_{s})', '^[\\p{{L}}_][\\p{{L}}\\p{{Nd}}_]*(\\.[\\p{{L}}_][\\p{{L}}\\p{{Nd}}_]*)*$'))\"\n");
+        x.Append($"           Text=\"{EscapeMessage(BindingsLibrary + "'s baseline namespace '")}$(_AsmBindingsNamespace_{s}){EscapeMessage("' is not a C# namespace name")}\" />\n");
+
+        // The values the tokens take, from the resolved settings.
+        x.Append("    <PropertyGroup>\n");
+        x.Append($"      <_AsmBindingsAccess_{s}>internal</_AsmBindingsAccess_{s}>\n");
+        x.Append($"      <_AsmBindingsAccess_{s} Condition=\"'$(_AsmBindingsVisibility_{s})' == 'Public'\">public</_AsmBindingsAccess_{s}>\n");
+        x.Append($"      <_AsmBindingsAccess_{s} Condition=\"'$(_AsmBindingsVisibility_{s})' == 'ProtectedInternal'\">protected internal</_AsmBindingsAccess_{s}>\n");
+        // Namespace-level types are public or internal: a protected internal member's class is public.
+        x.Append($"      <_AsmBindingsTypeAccess_{s}>public</_AsmBindingsTypeAccess_{s}>\n");
+        x.Append($"      <_AsmBindingsTypeAccess_{s} Condition=\"'$(_AsmBindingsVisibility_{s})' == 'Internal'\">internal</_AsmBindingsTypeAccess_{s}>\n");
+        x.Append($"      <_AsmBindingsMembers_{s}>$(_AsmBindingsAccess_{s})</_AsmBindingsMembers_{s}>\n");
+        x.Append($"      <_AsmBindingsMembers_{s} Condition=\"'$(_AsmBindingsVirtual_{s})' == 'true'\">$(_AsmBindingsAccess_{s}) virtual</_AsmBindingsMembers_{s}>\n");
+        x.Append($"      <_AsmBindingsClassModifiers_{s}>$(_AsmBindingsTypeAccess_{s})</_AsmBindingsClassModifiers_{s}>\n");
+        x.Append($"      <_AsmBindingsClassModifiers_{s} Condition=\"'$(_AsmBindingsSealed_{s})' == 'true'\">$(_AsmBindingsTypeAccess_{s}) sealed</_AsmBindingsClassModifiers_{s}>\n");
+        x.Append("    </PropertyGroup>\n");
+        x.Append("    <ItemGroup>\n");
+        var tokens = new (string Suffix, string Value)[]
+        {
+            ("namespace", $"$(_AsmBindingsNamespace_{s})"),
+            ("nesting", $"$(_AsmBindingsNesting_{s})"),
+            ("classkind", $"$(_AsmBindingsClassKind_{s})"),
+            ("spanoverloads", $"$(_AsmBindingsSpanOverloads_{s})"),
+            ("functions", $"$(_AsmBindingsDefaultBindings_{s})"),
+            ("access", $"$(_AsmBindingsAccess_{s})"),
+            ("typeaccess", $"$(_AsmBindingsTypeAccess_{s})"),
+            ("members", $"$(_AsmBindingsMembers_{s})"),
+            ("classmodifiers", $"$(_AsmBindingsClassModifiers_{s})"),
+        };
+        foreach ((string suffix, string value) in tokens)
+        {
+            x.Append($"      <PreprocessorValue Include=\"{p}{suffix}\" Value=\"{value}\" />\n");
+        }
+
+        x.Append("    </ItemGroup>\n");
+        x.Append("  </Target>\n\n");
+
+        // The switch: the baseline NuGet made a Compile item is this package's; with the
+        // generator on (or the bindings off) it steps aside, and with the generator on the API
+        // file and this package's generator go to the compiler instead.
+        string apiFile = $"$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', '..', '..', '{Xml(BindingsApiFile)}'))";
+        string generator = $"$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', '..', '..', '{Xml(BindingsGenerator)}'))";
+        x.Append($"  <Target Name=\"_AsmPackageBindings_{s}\" AfterTargets=\"RunProduceContentAssets\" DependsOnTargets=\"_AsmBindingsSwitch\" Condition=\"{gate}\">\n");
+        x.Append("    <ItemGroup>\n");
+        x.Append($"      <_AsmPackageBindingsSource_{s} Include=\"@(Compile)\" Condition=\"'%(Compile.NuGetPackageId)' == '{id}' and '%(Compile.Filename)%(Compile.Extension)' == '{library}.cs'\" />\n");
+        x.Append("    </ItemGroup>\n");
+        x.Append("    <PropertyGroup>\n");
+        x.Append($"      <_AsmPackageBindingsOn_{s} Condition=\"'@(_AsmPackageBindingsSource_{s})' != '' and '$(AsmGenerateBindings)' != 'false'\">true</_AsmPackageBindingsOn_{s}>\n");
+        x.Append("    </PropertyGroup>\n");
+        x.Append($"    <ItemGroup Condition=\"'@(_AsmPackageBindingsSource_{s})' != '' and ('$(_AsmPackageBindingsOn_{s})' != 'true' or '$(_AsmBindingsGenerate)' == 'true')\">\n");
+        x.Append($"      <Compile Remove=\"@(_AsmPackageBindingsSource_{s})\" />\n");
+        x.Append("    </ItemGroup>\n");
+        x.Append($"    <ItemGroup Condition=\"'$(_AsmPackageBindingsOn_{s})' == 'true'\">\n");
+        x.Append($"      <_AsmBindingsLibrary Include=\"{library}\" />\n");
+        x.Append("    </ItemGroup>\n");
+        x.Append($"    <ItemGroup Condition=\"'$(_AsmPackageBindingsOn_{s})' == 'true' and '$(_AsmBindingsGenerate)' == 'true'\">\n");
+        x.Append($"      <AdditionalFiles Include=\"{apiFile}\" AsmApiFile=\"true\"");
+        foreach (string name in ShapeSettings.ItemMetadataNames)
+        {
+            x.Append($"\n                       AsmBindings{name}=\"@(_AsmBindingsItem_{s}->'%({name})')\"");
+        }
+
+        x.Append(" />\n");
+        x.Append($"      <_AsmBindingsGeneratorCandidate Include=\"{generator}\" Version=\"{Xml(BindingsGeneratorVersion)}\" />\n");
+        x.Append("    </ItemGroup>\n");
+        // Unsafe code: the pointer parameters and the string wrappers' buffers. Set, not
+        // defaulted: the .NET SDK has already set it false (measured with the SDK's own targets).
+        x.Append($"    <PropertyGroup Condition=\"'$(_AsmPackageBindingsOn_{s})' == 'true'\">\n");
+        x.Append("      <AllowUnsafeBlocks>true</AllowUnsafeBlocks>\n");
+        x.Append("    </PropertyGroup>\n");
+        x.Append("  </Target>\n\n");
+        x.Append(SharedBindingsTargets);
+    }
+
+    /// <summary>Appends the properties that set a setting's canonical value from a text, case-insensitively (MSBuild compares strings so).</summary>
+    /// <param name="x">Where to write.</param>
+    /// <param name="value">The property that receives the value.</param>
+    /// <param name="text">The property holding the text.</param>
+    /// <param name="values">The setting's values, or null for true/false.</param>
+    /// <param name="onlyIfEmpty">Whether to set it only when no value is set yet (the property after the item).</param>
+    private static void AppendCanonical(StringBuilder x, string value, string text, string[]? values, bool onlyIfEmpty)
+    {
+        string guard = onlyIfEmpty ? $"'$({value})' == '' and " : "";
+        foreach (string option in values ?? new[] { "true", "false" })
+        {
+            x.Append($"      <{value} Condition=\"{guard}'$({text})' == '{option}'\">{option}</{value}>\n");
+        }
+    }
+
+    /// <summary>A message as the text of an MSBuild element or attribute: MSBuild's special characters escaped except $( ) of the properties it names, then XML.</summary>
+    /// <param name="message">The message, which may name properties as $(Name).</param>
+    /// <returns>The escaped text.</returns>
+    /// <remarks>Only ' and ; and % and @ are escaped (the SDK's messages hold no * or ?): the $(…) references must stay expandable.</remarks>
+    private static string EscapeMessage(string message) =>
+        Xml(message.Replace("%", "%25").Replace("@", "%40").Replace(";", "%3B").Replace("'", "%27"));
+
+    /// <summary>
+    /// The C# bindings' shared targets, written word for word into every asm package with bindings
+    /// and kept identical in AsmFoundation.Sdk's consumer targets (a test compares them). MSBuild
+    /// keeps the last definition of a target name, so whichever copy wins must do exactly this:
+    /// THEIR NAMES AND MEANINGS NEVER CHANGE.
+    /// </summary>
+    internal const string SharedBindingsTargets =
+        "  <!--\n" +
+        "    The C# bindings' shared targets. AsmFoundation.Sdk's consumer targets and every asm package\n" +
+        "    with bindings carry these three, word for word, and MSBuild keeps the last definition it\n" +
+        "    imports: THEIR NAMES AND MEANINGS NEVER CHANGE.\n" +
+        "    _AsmBindingsSwitch: _AsmBindingsGenerate is true when a Compile item says AsmLibrary, the\n" +
+        "    attribute's name (a word search, no compiler; a missing file is skipped): the bindings\n" +
+        "    generator then writes the bindings, and the written baselines step aside.\n" +
+        "    _AsmCheckBindingsItems: ASM0140 for each AsmBindings item that names none of the libraries\n" +
+        "    the project has bindings for (the _AsmBindingsLibrary items the SDK and the packages add).\n" +
+        "    _AsmPickBindingsGenerator: the newest generator candidate (_AsmBindingsGeneratorCandidate,\n" +
+        "    with Version) becomes the one Analyzer: two would each write every library's bindings\n" +
+        "    (CS0101, CS0102, measured). A cross join, not a running maximum: a batched property never\n" +
+        "    sees its value from the previous batch (measured).\n" +
+        "  -->\n" +
+        "  <Target Name=\"_AsmBindingsSwitch\">\n" +
+        "    <PropertyGroup>\n" +
+        "      <_AsmBindingsGenerate Condition=\"Exists('%(Compile.FullPath)') and $([System.IO.File]::ReadAllText('%(Compile.FullPath)').Contains('AsmLibrary'))\">true</_AsmBindingsGenerate>\n" +
+        "    </PropertyGroup>\n" +
+        "  </Target>\n" +
+        "  <Target Name=\"_AsmCheckBindingsItems\" BeforeTargets=\"CoreCompile\"\n" +
+        "          Condition=\"'@(AsmBindings)' != '' and '$(AsmGenerateBindings)' != 'false' and '$(UsingAsmFoundationSdk)' != 'true' and '$(Language)' == 'C#' and '$(TargetFrameworkIdentifier)' == '.NETCoreApp' and $([MSBuild]::VersionGreaterThanOrEquals('$(TargetFrameworkVersion.TrimStart(`vV`))', '7.0'))\">\n" +
+        "    <ItemGroup>\n" +
+        "      <_AsmBindingsCheck Include=\"@(AsmBindings)\" Known=\";@(_AsmBindingsLibrary);\" />\n" +
+        "      <_AsmBindingsCheck Known=\"$([System.String]::Copy('%(Known)').ToLowerInvariant())\" Name=\";$([System.String]::Copy('%(Identity)').ToLowerInvariant());\" />\n" +
+        "      <_AsmBindingsUnknown Include=\"@(_AsmBindingsCheck)\" Condition=\"!$([System.String]::Copy('%(Known)').Contains('%(Name)'))\" />\n" +
+        "    </ItemGroup>\n" +
+        "    <PropertyGroup>\n" +
+        "      <_AsmBindingsKnownList>@(_AsmBindingsLibrary->Distinct(), ', ')</_AsmBindingsKnownList>\n" +
+        "      <_AsmBindingsKnownList Condition=\"'$(_AsmBindingsKnownList)' == ''\">none</_AsmBindingsKnownList>\n" +
+        "    </PropertyGroup>\n" +
+        "    <Error Code=\"ASM0140\" Condition=\"'@(_AsmBindingsUnknown)' != ''\" Text=\"&lt;AsmBindings Include=&quot;%(_AsmBindingsUnknown.Identity)&quot; /&gt; names no asm library this project references with PROTO or STRUCT lines%3B it references $(_AsmBindingsKnownList)\" />\n" +
+        "    <ItemGroup>\n" +
+        "      <_AsmBindingsCheck Remove=\"@(_AsmBindingsCheck)\" />\n" +
+        "      <_AsmBindingsUnknown Remove=\"@(_AsmBindingsUnknown)\" />\n" +
+        "    </ItemGroup>\n" +
+        "  </Target>\n" +
+        "  <Target Name=\"_AsmPickBindingsGenerator\" BeforeTargets=\"CoreCompile\" Condition=\"'@(_AsmBindingsGeneratorCandidate)' != ''\">\n" +
+        "    <ItemGroup>\n" +
+        "      <_AsmGeneratorOther Include=\"@(_AsmBindingsGeneratorCandidate)\" />\n" +
+        "      <_AsmGeneratorRival Include=\"@(_AsmBindingsGeneratorCandidate)\" RivalVersion=\"%(_AsmGeneratorOther.Version)\" />\n" +
+        "      <_AsmGeneratorBeaten Include=\"@(_AsmGeneratorRival)\" Condition=\"$([MSBuild]::VersionGreaterThan('%(_AsmGeneratorRival.RivalVersion)', '%(_AsmGeneratorRival.Version)'))\" />\n" +
+        "      <_AsmGeneratorNewest Include=\"@(_AsmBindingsGeneratorCandidate)\" Exclude=\"@(_AsmGeneratorBeaten)\" />\n" +
+        "    </ItemGroup>\n" +
+        "    <PropertyGroup>\n" +
+        "      <_AsmPickedBindingsGenerator>%(_AsmGeneratorNewest.Identity)</_AsmPickedBindingsGenerator>\n" +
+        "    </PropertyGroup>\n" +
+        "    <ItemGroup>\n" +
+        "      <Analyzer Include=\"$(_AsmPickedBindingsGenerator)\" />\n" +
+        "      <_AsmGeneratorOther Remove=\"@(_AsmGeneratorOther)\" />\n" +
+        "      <_AsmGeneratorRival Remove=\"@(_AsmGeneratorRival)\" />\n" +
+        "      <_AsmGeneratorBeaten Remove=\"@(_AsmGeneratorBeaten)\" />\n" +
+        "      <_AsmGeneratorNewest Remove=\"@(_AsmGeneratorNewest)\" />\n" +
+        "    </ItemGroup>\n" +
+        "  </Target>\n";
 
     /// <summary>A package id as part of an MSBuild name: letters and digits kept, everything else "_".</summary>
     /// <param name="id">The package id.</param>

@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Wrong settings for a package's baseline, one case each, picked with -p:BindingsCase=<name>
+    (PackageBindingsTests builds each in a configuration of its own). The package's own targets
+    check them (no AsmFoundation.Sdk here), with the SDK's codes and words:
+      badproperty   ASM0146  AsmBindingsNesting Flatt
+      baditem       ASM0146  the AsmBindings item's Visibility Publik
+      badshape      ASM0146  Virtual on a baseline whose classes stay static
+      badnamespace  ASM0146  a namespace C# cannot have
+      unknownitem   ASM0140  an AsmBindings item for nolib (the shared check)
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Test.BindingsPackage" Version="1.0.0" />
+  </ItemGroup>
+  <PropertyGroup Condition="'$(BindingsCase)' == 'badproperty'">
+    <AsmBindingsNesting>Flatt</AsmBindingsNesting>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(BindingsCase)' == 'baditem'">
+    <AsmBindings Include="bindpkg" Visibility="Publik" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(BindingsCase)' == 'badshape'">
+    <AsmBindings Include="bindpkg" Virtual="true" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(BindingsCase)' == 'badnamespace'">
+    <AsmBindings Include="bindpkg" Namespace="My-App" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(BindingsCase)' == 'unknownitem'">
+    <AsmBindings Include="nolib" />
+  </ItemGroup>
+</Project>

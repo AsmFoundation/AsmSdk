@@ -30,9 +30,11 @@ namespace AsmFoundation.Sdk.Tasks;
 /// RID-specific and a portable build) is written once.
 /// </para>
 /// <para>
-/// Errors: ASM0140 (an AsmBindings item names no referenced library with an API file), ASM0143
-/// (a name C# could not hold twice in the baseline), ASM0144 (an API file that cannot be read),
-/// ASM0146 (a setting that is no option's, or options C# cannot follow together).
+/// Errors: ASM0143 (a name C# could not hold twice in the baseline), ASM0144 (an API file that
+/// cannot be read), ASM0146 (a setting that is no option's, or options C# cannot follow together;
+/// a property's problem is logged once, though every library reads it). An AsmBindings item that
+/// names no library is ASM0140 from the shared target _AsmCheckBindingsItems, which also knows the
+/// asm packages' libraries (<see cref="Libraries"/> feeds it).
 /// </para>
 /// </remarks>
 public sealed class AsmWriteBindings : Task
@@ -80,6 +82,10 @@ public sealed class AsmWriteBindings : Task
     [Output]
     public ITaskItem[] AnnotatedApiFiles { get; set; } = Array.Empty<ITaskItem>();
 
+    /// <summary>The libraries read (their import names), in either mode: _AsmBindingsLibrary items, which the check of the AsmBindings items reads.</summary>
+    [Output]
+    public ITaskItem[] Libraries { get; set; } = Array.Empty<ITaskItem>();
+
     /// <summary>Reads, resolves and writes.</summary>
     /// <returns>False after any error.</returns>
     public override bool Execute()
@@ -115,20 +121,10 @@ public sealed class AsmWriteBindings : Task
             }
         }
 
-        // An AsmBindings item for a library this project does not reference would silently do
-        // nothing: the same error as an attribute naming one.
-        foreach (ITaskItem setting in Settings)
-        {
-            if (!libraries.Keys.Any(name => string.Equals(name, setting.ItemSpec, StringComparison.OrdinalIgnoreCase)))
-            {
-                string known = libraries.Count == 0 ? "none" : string.Join(", ", libraries.Keys.OrderBy(k => k, StringComparer.Ordinal));
-                Log.LogError(null, "ASM0140", null, null, 0, 0, 0, 0,
-                    "<AsmBindings Include=\"{0}\" /> names no asm library this project references with PROTO or STRUCT lines; it references {1}", setting.ItemSpec, known);
-            }
-        }
-
         var annotated = new List<ITaskItem>();
         var sources = new List<ITaskItem>();
+        // Every library reads the same properties: a property's problem is said once.
+        var reported = new HashSet<string>(StringComparer.Ordinal);
         foreach ((ITaskItem file, ApiLibraryModel library) in libraries.Values.OrderBy(l => l.Library.Library, StringComparer.Ordinal))
         {
             ITaskItem? setting = Settings.FirstOrDefault(s => string.Equals(s.ItemSpec, library.Library, StringComparison.OrdinalIgnoreCase));
@@ -147,7 +143,7 @@ public sealed class AsmWriteBindings : Task
             ShapeSettings item = setting is null ? ShapeSettings.None : ShapeSettings.FromItem(name => setting.GetMetadata(name));
             var problems = new List<string>();
             BaselineShape? shape = Shapes.Resolve(library.Library, null, null, item, properties, problems);
-            foreach (string problem in problems)
+            foreach (string problem in problems.Where(reported.Add))
             {
                 Log.LogError(null, "ASM0146", null, null, 0, 0, 0, 0, "{0}", problem);
             }
@@ -196,6 +192,7 @@ public sealed class AsmWriteBindings : Task
 
         AnnotatedApiFiles = annotated.ToArray();
         Sources = sources.ToArray();
+        Libraries = libraries.Keys.OrderBy(k => k, StringComparer.Ordinal).Select(k => (ITaskItem)new TaskItem(k)).ToArray();
         return !Log.HasLoggedErrors;
     }
 

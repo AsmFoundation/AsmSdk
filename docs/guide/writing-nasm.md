@@ -264,7 +264,7 @@ On ELF (Linux-only files), the directives also give sizes and data types:
 >   includes, before assembling. It computes the layout once, in C#, and gives the source its
 >   constants as a pre-include. Each source gets the structs it declares or includes, as in C. The
 >   `STRUCT` macro records the line for the API file, where the RIDs are compared (`ASM0133`), and
->   the generator writes a sequential C# struct from it (see
+>   each C# consumer's baseline gets a sequential C# struct from it (see
 >   [Generated bindings](interop.md#generated-bindings)).
 > - **Footguns:**
 >   - `%if` does not hide a `STRUCT` line from the SDK.

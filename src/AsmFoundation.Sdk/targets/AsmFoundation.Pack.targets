@@ -22,7 +22,18 @@
                                                (BinariesCopyPath on its PackageReference, or as
                                                its property), in plain MSBuild because the
                                                package does not depend on AsmFoundation.Sdk
-                                               (AsmWritePackageConsumerTargets)
+                                               (AsmWritePackageConsumerTargets); for a package
+                                               with C# bindings, their targets too (below)
+      contentFiles/cs/net7.0/AsmBindings/<AssemblyName>.cs.pp
+                                               the C# bindings' baseline, for a library with
+                                               PROTO or STRUCT lines: NuGet fills its tokens from
+                                               the consumer's AsmBindings settings (the targets
+                                               above) and compiles it into each C# consumer for
+                                               .NET 7 or later (AsmWritePackageBindings)
+      build/bindings/<AssemblyName>.api.json, build/bindings/AsmFoundation.Sdk.Bindings.dll
+                                               the API file and the bindings generator, for a
+                                               consumer whose code uses [AsmLibrary]: the newest
+                                               generator among the packages' and the SDK's runs
       native/<rid>/<tfm>/libfoo.a, foo.lib     static library (Unix, Windows)
       native/<rid>/<tfm>/foo.a, foo.wasm       WebAssembly (browser-wasm, wasi-wasm): the archive,
                                                which a consuming .asmproj links and the props hand
@@ -74,6 +85,8 @@
     <TargetsForTfmSpecificContentInPackage Condition="'$(_AsmPackAsTool)' == 'true'">$(TargetsForTfmSpecificContentInPackage);_AsmPackToolContent</TargetsForTfmSpecificContentInPackage>
     <_AsmGeneratedPropsPath>$(AsmIntermediateDirectory)pack/$(PackageId).props</_AsmGeneratedPropsPath>
     <_AsmGeneratedConsumerTargetsPath>$(AsmIntermediateDirectory)pack/$(PackageId).targets</_AsmGeneratedConsumerTargetsPath>
+    <!-- The C# bindings' baseline the package carries (AsmWritePackageBindings). -->
+    <_AsmGeneratedBindingsPath>$(AsmIntermediateDirectory)pack/$(AssemblyName).cs.pp</_AsmGeneratedBindingsPath>
     <_AsmEmptyLibMarkerPath>$(AsmIntermediateDirectory)pack/_._</_AsmEmptyLibMarkerPath>
   </PropertyGroup>
 
@@ -84,6 +97,7 @@
 
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmWritePackageProps" AssemblyFile="$(_AsmTasksAssembly)" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmWritePackageConsumerTargets" AssemblyFile="$(_AsmTasksAssembly)" />
+  <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmWritePackageBindings" AssemblyFile="$(_AsmTasksAssembly)" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmRemovePackageDependency" AssemblyFile="$(_AsmTasksAssembly)" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmWriteToolSettings" AssemblyFile="$(_AsmTasksAssembly)" />
 
@@ -229,16 +243,22 @@
     project is always "first".
     _AsmPackIsMultiTargeted: the shared libraries of two target frameworks have the same file
     name, so they cannot both go to runtimes/<rid>/native/.
+    _AsmPackIsDotnetFramework: the target framework whose build a .NET consumer gets, libc's when
+    the project has it (net7.0 and later are nearer to netstandard2.0 than to netstandard1.0),
+    else the first: it alone packs the C# bindings (_AsmPackNativeContent), which exist once per
+    package (contentFiles are chosen by the consumer's framework, not the asm one).
   -->
   <Target Name="_AsmComputePackLayout">
     <ItemGroup>
       <!-- An item Include splits on ";" and trims each name, whatever the project's spacing. -->
       <_AsmPackTargetFramework Include="$(TargetFrameworks)" />
+      <_AsmPackLibcTargetFramework Include="@(_AsmPackTargetFramework)" Condition="'%(Identity)' == 'libc'" />
     </ItemGroup>
     <PropertyGroup>
       <_AsmPackFirstTargetFramework>$([System.Text.RegularExpressions.Regex]::Replace('$(TargetFrameworks)', '(?s)^[\s;]*([^;\s]+).*$', '$1'))</_AsmPackFirstTargetFramework>
       <_AsmPackIsFirstTargetFramework Condition="'$(TargetFrameworks)' == '' or '$(_AsmPackFirstTargetFramework)' == '$(TargetFramework)'">true</_AsmPackIsFirstTargetFramework>
       <_AsmPackIsMultiTargeted Condition="@(_AsmPackTargetFramework->Count()) &gt; 1">true</_AsmPackIsMultiTargeted>
+      <_AsmPackIsDotnetFramework Condition="'$(TargetFramework)' == 'libc' or ('@(_AsmPackLibcTargetFramework)' == '' and '$(_AsmPackIsFirstTargetFramework)' == 'true')">true</_AsmPackIsDotnetFramework>
     </PropertyGroup>
   </Target>
 
@@ -352,11 +372,47 @@
     <PropertyGroup>
       <_AsmPackLoaderName Condition="'$(_AsmOutputKind)' == 'SharedLibrary'">$(AssemblyName)</_AsmPackLoaderName>
     </PropertyGroup>
-    <AsmWritePackageConsumerTargets Condition="'@(_AsmPackedSharedLibrary)' != ''"
+
+    <!-- The C# bindings (phase 4; the owner's spec of 2026-11-25): a library with PROTO or STRUCT
+         lines carries its baseline, written now (AsmWritePackageBindings), the API file and this
+         SDK's bindings generator, for its .NET consumers, who need no AsmFoundation.Sdk. Once per
+         package: from the target framework a .NET consumer gets. Not for a program (started,
+         never loaded), and only with the generator at hand (an SDK used from a source folder
+         may not have it built). -->
+    <PropertyGroup>
+      <_AsmPackBindingsGeneratorSource>$(AsmFoundationSdkDirectory)bindings/netstandard2.0/AsmFoundation.Sdk.Bindings.dll</_AsmPackBindingsGeneratorSource>
+      <_AsmPackBindingsGeneratorVersion Condition="'$(_AsmPackBindingsGeneratorVersion)' == ''">$([MSBuild]::ValueOrDefault('$(AsmFoundationSdkVersion)', '0.0.0'))</_AsmPackBindingsGeneratorVersion>
+      <_AsmPackHasBindings Condition="'$(_AsmPackIsDotnetFramework)' == 'true' and '$(_AsmOutputKind)' != 'Executable' and Exists('$(_AsmApiMergedFullPath)') and Exists('$(_AsmPackBindingsGeneratorSource)')">true</_AsmPackHasBindings>
+    </PropertyGroup>
+    <AsmWritePackageBindings Condition="'$(_AsmPackHasBindings)' == 'true'"
+                             ApiFile="$(_AsmApiMergedFullPath)"
+                             PackageId="$(PackageId)"
+                             PackageVersion="$(PackageVersion)"
+                             Origin="AsmFoundation.Sdk $(AsmFoundationSdkVersion)"
+                             OutputPath="$(_AsmGeneratedBindingsPath)">
+      <Output TaskParameter="Library" PropertyName="_AsmPackBindingsLibrary" />
+      <Output TaskParameter="DefaultNamespace" PropertyName="_AsmPackBindingsNamespace" />
+      <Output TaskParameter="TokenPrefix" PropertyName="_AsmPackBindingsTokenPrefix" />
+    </AsmWritePackageBindings>
+    <!-- The targets: BinariesCopyPath for a package with shared libraries, the bindings'
+         targets for a package with bindings, both in one file (NuGet imports one per id). -->
+    <PropertyGroup>
+      <_AsmPackMovesNativeFiles>false</_AsmPackMovesNativeFiles>
+      <_AsmPackMovesNativeFiles Condition="'@(_AsmPackedSharedLibrary)' != ''">true</_AsmPackMovesNativeFiles>
+      <_AsmPackWritesConsumerTargets Condition="'$(_AsmPackMovesNativeFiles)' == 'true' or '$(_AsmPackHasBindings)' == 'true'">true</_AsmPackWritesConsumerTargets>
+    </PropertyGroup>
+    <AsmWritePackageConsumerTargets Condition="'$(_AsmPackWritesConsumerTargets)' == 'true'"
                                     PackageId="$(PackageId)"
                                     PackageVersion="$(PackageVersion)"
                                     Origin="AsmFoundation.Sdk"
                                     LibraryNames="$(_AsmPackLoaderName)"
+                                    MovesNativeFiles="$(_AsmPackMovesNativeFiles)"
+                                    BindingsLibrary="$(_AsmPackBindingsLibrary)"
+                                    BindingsNamespace="$(_AsmPackBindingsNamespace)"
+                                    BindingsTokenPrefix="$(_AsmPackBindingsTokenPrefix)"
+                                    BindingsApiFile="build/bindings/$(AssemblyName).api.json"
+                                    BindingsGenerator="build/bindings/AsmFoundation.Sdk.Bindings.dll"
+                                    BindingsGeneratorVersion="$(_AsmPackBindingsGeneratorVersion)"
                                     OutputPath="$(_AsmGeneratedConsumerTargetsPath)" />
 
     <ItemGroup>
@@ -369,10 +425,18 @@
       <TfmSpecificPackageFile Include="@(_AsmPackedRidFile)" PackagePath="%(_AsmPackedRidFile.PackagePath)" />
       <TfmSpecificPackageFile Include="$(_AsmGeneratedPropsPath)" PackagePath="build/$(_AsmNuGetFramework)/$(PackageId).props" />
       <TfmSpecificPackageFile Include="$(_AsmGeneratedPropsPath)" PackagePath="buildTransitive/$(_AsmNuGetFramework)/$(PackageId).props" />
-      <TfmSpecificPackageFile Include="$(_AsmGeneratedConsumerTargetsPath)" Condition="'@(_AsmPackedSharedLibrary)' != ''" PackagePath="build/$(_AsmNuGetFramework)/$(PackageId).targets" />
-      <TfmSpecificPackageFile Include="$(_AsmGeneratedConsumerTargetsPath)" Condition="'@(_AsmPackedSharedLibrary)' != ''" PackagePath="buildTransitive/$(_AsmNuGetFramework)/$(PackageId).targets" />
+      <TfmSpecificPackageFile Include="$(_AsmGeneratedConsumerTargetsPath)" Condition="'$(_AsmPackWritesConsumerTargets)' == 'true'" PackagePath="build/$(_AsmNuGetFramework)/$(PackageId).targets" />
+      <TfmSpecificPackageFile Include="$(_AsmGeneratedConsumerTargetsPath)" Condition="'$(_AsmPackWritesConsumerTargets)' == 'true'" PackagePath="buildTransitive/$(_AsmNuGetFramework)/$(PackageId).targets" />
+      <!-- The bindings: the baseline as a C# content file NuGet preprocesses (.pp) and compiles
+           (BuildAction Compile, written into the nuspec's contentFiles) for net7.0 and later; the
+           API file and the generator beside the targets' folders, which reach them as
+           ../../build/bindings/ from build/<tfm>/ and buildTransitive/<tfm>/ alike. -->
+      <TfmSpecificPackageFile Include="$(_AsmGeneratedBindingsPath)" Condition="'$(_AsmPackHasBindings)' == 'true'" PackagePath="contentFiles/cs/net7.0/AsmBindings/$(_AsmPackBindingsLibrary).cs.pp" BuildAction="Compile" />
+      <TfmSpecificPackageFile Include="$(_AsmApiMergedFullPath)" Condition="'$(_AsmPackHasBindings)' == 'true'" PackagePath="build/bindings/$(AssemblyName).api.json" />
+      <TfmSpecificPackageFile Include="$(_AsmPackBindingsGeneratorSource)" Condition="'$(_AsmPackHasBindings)' == 'true'" PackagePath="build/bindings/AsmFoundation.Sdk.Bindings.dll" />
       <FileWrites Include="$(_AsmGeneratedPropsPath);$(_AsmEmptyLibMarkerPath)" />
-      <FileWrites Include="$(_AsmGeneratedConsumerTargetsPath)" Condition="'@(_AsmPackedSharedLibrary)' != ''" />
+      <FileWrites Include="$(_AsmGeneratedConsumerTargetsPath)" Condition="'$(_AsmPackWritesConsumerTargets)' == 'true'" />
+      <FileWrites Include="$(_AsmGeneratedBindingsPath)" Condition="'$(_AsmPackHasBindings)' == 'true'" />
     </ItemGroup>
   </Target>
 

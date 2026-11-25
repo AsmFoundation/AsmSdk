@@ -562,7 +562,7 @@
     asmsdk/plans/csharp-bindings.md, phase 4, the owner's spec of 2026-11-25). After the asm
     references are built, each is asked for its API file (GetAsmApiFile, from the very build
     ResolveProjectReferences ran: the same global properties); a library with PROTO or STRUCT lines
-    has one. Then one of two ways, chosen by the switch:
+    has one. Then one of two ways, chosen by the switch (_AsmBindingsSwitch, below):
       the app's code never says AsmLibrary
           AsmWriteBindings writes each library's baseline as source,
           obj/.../AsmBindings/<namespace>.g.cs, added as Compile items: the namespace named after
@@ -575,6 +575,8 @@
           as AsmBindings* metadata), this SDK's generator a candidate, and
           _AsmPickBindingsGenerator adds the newest candidate (this SDK's, or an asm package's) as
           the one Analyzer.
+    Each library also becomes an _AsmBindingsLibrary item, for the check of the AsmBindings items
+    (_AsmCheckBindingsItems, ASM0140), which the asm packages' libraries join.
     The switch is a word search of the project's C# sources (its Compile items) for "AsmLibrary":
     no compiler, milliseconds; a hit in a comment only turns the generator on, which writes the
     same baseline. Nothing the SDK writes says that word, so the written baselines never switch
@@ -586,7 +588,12 @@
     default (measured: the condition "unset" never held, and the bindings failed with CS0227).
     AsmGenerateBindings=false turns everything off (a project with imports of its own). In a
     design-time build the references are not built: the API files of their last build serve.
+    The asm packages carry their own bindings targets (AsmWritePackageConsumerTargets): a
+    package's baseline is written when it is packed, and its consumers need no AsmFoundation.Sdk.
   -->
+  <!-- Visible to the generator. A property listed twice would be written twice into the
+       compiler's editorconfig, so each is added only once, whoever adds it first (this SDK, or
+       an asm package with bindings); metadata entries are batched by name there anyway. -->
   <ItemGroup Condition="'$(UsingAsmFoundationSdk)' != 'true' and '$(Language)' == 'C#'">
     <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="AsmApiFile" />
     <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="AsmBindingsNamespace" />
@@ -597,16 +604,17 @@
     <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="AsmBindingsVirtual" />
     <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="AsmBindingsSealed" />
     <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="AsmBindingsDefaultBindings" />
-    <CompilerVisibleProperty Include="AsmBindingsNesting" />
-    <CompilerVisibleProperty Include="AsmBindingsSpanOverloads" />
-    <CompilerVisibleProperty Include="AsmBindingsVisibility" />
-    <CompilerVisibleProperty Include="AsmBindingsClassKind" />
-    <CompilerVisibleProperty Include="AsmBindingsVirtual" />
-    <CompilerVisibleProperty Include="AsmBindingsSealed" />
-    <CompilerVisibleProperty Include="AsmDefaultBindings" />
+    <CompilerVisibleProperty Include="AsmBindingsNesting" Exclude="@(CompilerVisibleProperty)" />
+    <CompilerVisibleProperty Include="AsmBindingsSpanOverloads" Exclude="@(CompilerVisibleProperty)" />
+    <CompilerVisibleProperty Include="AsmBindingsVisibility" Exclude="@(CompilerVisibleProperty)" />
+    <CompilerVisibleProperty Include="AsmBindingsClassKind" Exclude="@(CompilerVisibleProperty)" />
+    <CompilerVisibleProperty Include="AsmBindingsVirtual" Exclude="@(CompilerVisibleProperty)" />
+    <CompilerVisibleProperty Include="AsmBindingsSealed" Exclude="@(CompilerVisibleProperty)" />
+    <CompilerVisibleProperty Include="AsmDefaultBindings" Exclude="@(CompilerVisibleProperty)" />
   </ItemGroup>
   <Target Name="_AsmAddBindings"
           AfterTargets="ResolveProjectReferences"
+          DependsOnTargets="_AsmBindingsSwitch"
           Condition="'$(UsingAsmFoundationSdk)' != 'true' and '$(Language)' == 'C#' and '$(AsmGenerateBindings)' != 'false' and '@(_AsmBindingReference)' != '' and '$(TargetFrameworkIdentifier)' == '.NETCoreApp' and $([MSBuild]::VersionGreaterThanOrEquals('$(TargetFrameworkVersion.TrimStart(`vV`))', '7.0'))">
     <MSBuild Projects="@(_AsmBindingReference)"
              Targets="GetAsmApiFile"
@@ -615,12 +623,6 @@
              RemoveProperties="%(_AsmBindingReference.GlobalPropertiesToRemove)$(_GlobalPropertiesToRemoveFromProjectReferences)">
       <Output TaskParameter="TargetOutputs" ItemName="_AsmApiFileForBindings" />
     </MSBuild>
-    <!-- The switch, one Compile item at a time (batched): set by any source that says the word,
-         never cleared by one that does not. A missing file (an item for a file generated later)
-         is skipped rather than read. -->
-    <PropertyGroup Condition="'@(_AsmApiFileForBindings)' != ''">
-      <_AsmBindingsGenerate Condition="Exists('%(Compile.FullPath)') and $([System.IO.File]::ReadAllText('%(Compile.FullPath)').Contains('AsmLibrary'))">true</_AsmBindingsGenerate>
-    </PropertyGroup>
     <AsmWriteBindings Condition="'@(_AsmApiFileForBindings)' != ''"
                       ApiFiles="@(_AsmApiFileForBindings)"
                       Settings="@(AsmBindings)"
@@ -635,6 +637,7 @@
                       WriteSources="$([System.String]::Equals('$(_AsmBindingsGenerate)', ''))">
       <Output TaskParameter="Sources" ItemName="_AsmBindingsSource" />
       <Output TaskParameter="AnnotatedApiFiles" ItemName="_AsmBindingsApiFile" />
+      <Output TaskParameter="Libraries" ItemName="_AsmBindingsLibrary" />
     </AsmWriteBindings>
     <ItemGroup Condition="'$(_AsmBindingsGenerate)' != 'true'">
       <Compile Include="@(_AsmBindingsSource)" />
@@ -650,22 +653,42 @@
   </Target>
 
   <!--
-    _AsmPickBindingsGenerator: the one bindings generator a compilation loads, the newest of the
-    candidates: this SDK's (registered by _AsmAddBindings when the app uses [AsmLibrary]) and each
-    asm package's (registered by the package's own props). Two generators would each write every
-    library's bindings, and the compilation would hold every type twice (measured with two
-    packages: CS0101, CS0102), so only one is ever an Analyzer.
-    THIS TARGET'S NAME AND MEANING NEVER CHANGE: every asm package ever packed carries a copy of
-    it, MSBuild keeps one definition of a name (the last one imported), and whichever runs must do
-    exactly this.
-    The newest by a cross join, not a running maximum: a batched property never sees its value
-    from the previous batch (measured), so each candidate is set against every version, the beaten
-    ones are removed, and the newest is left (two of one version are the same generator).
+    The C# bindings' shared targets. AsmFoundation.Sdk's consumer targets and every asm package
+    with bindings carry these three, word for word, and MSBuild keeps the last definition it
+    imports: THEIR NAMES AND MEANINGS NEVER CHANGE.
+    _AsmBindingsSwitch: _AsmBindingsGenerate is true when a Compile item says AsmLibrary, the
+    attribute's name (a word search, no compiler; a missing file is skipped): the bindings
+    generator then writes the bindings, and the written baselines step aside.
+    _AsmCheckBindingsItems: ASM0140 for each AsmBindings item that names none of the libraries
+    the project has bindings for (the _AsmBindingsLibrary items the SDK and the packages add).
+    _AsmPickBindingsGenerator: the newest generator candidate (_AsmBindingsGeneratorCandidate,
+    with Version) becomes the one Analyzer: two would each write every library's bindings
+    (CS0101, CS0102, measured). A cross join, not a running maximum: a batched property never
+    sees its value from the previous batch (measured).
   -->
-  <Target Name="_AsmPickBindingsGenerator"
-          AfterTargets="ResolveProjectReferences"
-          BeforeTargets="CoreCompile"
-          Condition="'@(_AsmBindingsGeneratorCandidate)' != ''">
+  <Target Name="_AsmBindingsSwitch">
+    <PropertyGroup>
+      <_AsmBindingsGenerate Condition="Exists('%(Compile.FullPath)') and $([System.IO.File]::ReadAllText('%(Compile.FullPath)').Contains('AsmLibrary'))">true</_AsmBindingsGenerate>
+    </PropertyGroup>
+  </Target>
+  <Target Name="_AsmCheckBindingsItems" BeforeTargets="CoreCompile"
+          Condition="'@(AsmBindings)' != '' and '$(AsmGenerateBindings)' != 'false' and '$(UsingAsmFoundationSdk)' != 'true' and '$(Language)' == 'C#' and '$(TargetFrameworkIdentifier)' == '.NETCoreApp' and $([MSBuild]::VersionGreaterThanOrEquals('$(TargetFrameworkVersion.TrimStart(`vV`))', '7.0'))">
+    <ItemGroup>
+      <_AsmBindingsCheck Include="@(AsmBindings)" Known=";@(_AsmBindingsLibrary);" />
+      <_AsmBindingsCheck Known="$([System.String]::Copy('%(Known)').ToLowerInvariant())" Name=";$([System.String]::Copy('%(Identity)').ToLowerInvariant());" />
+      <_AsmBindingsUnknown Include="@(_AsmBindingsCheck)" Condition="!$([System.String]::Copy('%(Known)').Contains('%(Name)'))" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_AsmBindingsKnownList>@(_AsmBindingsLibrary->Distinct(), ', ')</_AsmBindingsKnownList>
+      <_AsmBindingsKnownList Condition="'$(_AsmBindingsKnownList)' == ''">none</_AsmBindingsKnownList>
+    </PropertyGroup>
+    <Error Code="ASM0140" Condition="'@(_AsmBindingsUnknown)' != ''" Text="&lt;AsmBindings Include=&quot;%(_AsmBindingsUnknown.Identity)&quot; /&gt; names no asm library this project references with PROTO or STRUCT lines%3B it references $(_AsmBindingsKnownList)" />
+    <ItemGroup>
+      <_AsmBindingsCheck Remove="@(_AsmBindingsCheck)" />
+      <_AsmBindingsUnknown Remove="@(_AsmBindingsUnknown)" />
+    </ItemGroup>
+  </Target>
+  <Target Name="_AsmPickBindingsGenerator" BeforeTargets="CoreCompile" Condition="'@(_AsmBindingsGeneratorCandidate)' != ''">
     <ItemGroup>
       <_AsmGeneratorOther Include="@(_AsmBindingsGeneratorCandidate)" />
       <_AsmGeneratorRival Include="@(_AsmBindingsGeneratorCandidate)" RivalVersion="%(_AsmGeneratorOther.Version)" />

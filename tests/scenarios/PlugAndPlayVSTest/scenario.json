@@ -1,6 +1,6 @@
 {
   "$schema": "../scenario.schema.json",
-  "description": "The asmnet template with --test-runner vstest, for repositories whose tests run on VSTest: its tests run with a plain dotnet test and no global.json entry, as xunit's own template's VSTest choice does. The name has a hyphen, so each of the template's names is checked in its form: my-app.Native for files, paths and the library .NET loads, my_app.Tests for the C# namespace. The folder's own global.json, Directory.Build.props and Directory.Packages.props stand for a user's fresh folder (empty, but for NuGet's audit, which is off).",
+  "description": "The asmnet template with --test-runner vstest, for repositories whose tests run on VSTest: its tests run with a plain dotnet test and no global.json entry, as xunit's own template's VSTest choice does. The name has a hyphen, so each of the template's names is checked in its form: my-app.Native for files, paths and the library .NET loads, my_app.Tests and my_app.Native (the bindings' namespace, which the template names in an AsmBindings item: the SDK's own would be MyApp.Native) for C#. The folder's own global.json, Directory.Build.props and Directory.Packages.props stand for a user's fresh folder (empty, but for NuGet's audit, which is off).",
   "steps": [
     {
       "run": "dotnet new install AsmFoundation.Templates@{version}",

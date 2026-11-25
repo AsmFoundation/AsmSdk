@@ -9,9 +9,10 @@
       notpartial       ASM0143  a class that is not partial
       badshape         ASM0146  DefaultVirtual on a baseline whose classes stay static
       defaultsonclass  ASM0146  a Default* option on a class
-    and the SDK's task's (no code mentions the attribute, so no generator runs):
-      badproperty      ASM0146  AsmBindingsVisibility Publik
-      unknownitem      ASM0140  an AsmBindings item for nolib
+    and the project file's (no code mentions the attribute, so no generator runs):
+      badproperty      ASM0146  AsmBindingsVisibility Publik (the SDK's task)
+      unknownitem      ASM0140  an AsmBindings item for nolib (the shared check,
+                                _AsmCheckBindingsItems, which knows the packages' libraries too)
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>

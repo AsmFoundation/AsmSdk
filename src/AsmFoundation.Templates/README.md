@@ -3,7 +3,7 @@
 `dotnet new` templates for assembly projects built with
 [AsmFoundation.Sdk](https://www.nuget.org/packages/AsmFoundation.Sdk): an `.asmproj` sits in a
 solution next to `.csproj` projects, builds with `dotnet build`, and is called from C# through
-`[LibraryImport]`.
+the bindings the SDK writes from its `PROTO` lines, or through `[LibraryImport]`.
 
 ```sh
 dotnet new install AsmFoundation.Templates
@@ -27,6 +27,10 @@ dotnet test
   `<RuntimeIdentifiers>win-x64;linux-x64;osx-arm64</RuntimeIdentifiers>`.
 - **Sources are just code.** The SDK's platform layer (`FUNCTION`, `ARG1`, `RETURN`, ...) comes
   with `ImplicitUsings`, on by default.
+- **C# bindings from `PROTO` lines.** `PROTO int32_t add_ints(int32_t a, int32_t b)` beside a
+  `FUNCTION` gives every C# project that references the library a binding, written by the SDK:
+  `Demo.Native.Add.AddInts(40, 2)` (the library's namespace, the class of `add.asm`). `asmnet`
+  calls its library so, with no `[LibraryImport]`.
 - **`dotnet sln add`** adds an `.asmproj` like any project. `dotnet add reference` does not accept
   one yet (a .NET CLI limitation with target framework aliases); write the line instead:
   `<ProjectReference Include="../Native/Native.asmproj" />`.

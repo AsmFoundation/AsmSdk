@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The package's baseline shaped by this project file alone (PackageBindingsTests): the
+    properties make every library's baseline instantiable, public and sealed, without span
+    overloads; the item gives bindpkg's a namespace of its own and a class per folder (the root
+    files' functions in Shapes.Pkg.Api, simd/ as Shapes.Pkg.Simd). The package's targets fill the
+    tokens of its written baseline from these values. It prints:
+      Api.AddInts 42 Api.PointSum 42 / Simd.SumBytes 10 overloads 1 /
+      public True sealed True static False instance True virtual False / Point public True
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <AsmBindingsClassKind>Instance</AsmBindingsClassKind>
+    <AsmBindingsVisibility>Public</AsmBindingsVisibility>
+    <AsmBindingsSealed>true</AsmBindingsSealed>
+    <AsmBindingsSpanOverloads>false</AsmBindingsSpanOverloads>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Test.BindingsPackage" Version="1.0.0" />
+    <AsmBindings Include="bindpkg" Namespace="Shapes.Pkg" Nesting="Folders" />
+  </ItemGroup>
+</Project>

@@ -6,8 +6,6 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>false</IsPackable>
-    <!-- [LibraryImport] generates its marshalling code as unsafe code. -->
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
@@ -30,8 +28,10 @@
 
   <ItemGroup>
     <!-- The tests call the assembly library directly: the reference builds it for this machine
-         and puts it in the test output, as for the app. -->
+         and puts it in the test output, as for the app, and its PROTO lines give the tests the
+         same C# bindings, in the same namespace. -->
     <ProjectReference Include="../AsmNet.1.Native/AsmNet.1.Native.asmproj" />
+    <AsmBindings Include="AsmNet.1.Native" Namespace="AsmNet._1.Native" />
   </ItemGroup>
 
 </Project>

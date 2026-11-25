@@ -41,8 +41,16 @@ internal sealed record BaselineShape(string Namespace, Nesting Nesting, bool Spa
 /// <param name="Virtual">Whether instance members are virtual (a test double or a subclass overrides them); never with Static.</param>
 internal sealed record MemberShape(string Access, bool Static, bool Virtual)
 {
-    /// <summary>The modifiers of a binding method: "internal static", "public virtual", "protected internal".</summary>
-    internal string MethodModifiers => Access + (Static ? " static" : Virtual ? " virtual" : "");
+    /// <summary>
+    /// The pack-time placeholders a package's baseline is written with, or null for source
+    /// written for one compilation. With them, every modifier the consumer's settings decide is
+    /// a NuGet $token$ (see <see cref="Placeholders"/>), and <see cref="Access"/> is the access
+    /// token itself.
+    /// </summary>
+    internal Placeholders? Tokens { get; init; }
+
+    /// <summary>The modifiers of a binding method: "internal static", "public virtual", "protected internal" (or their tokens in a package's baseline).</summary>
+    internal string MethodModifiers => Static ? Access + " static" : Tokens?.InstanceMembers ?? Access + (Virtual ? " virtual" : "");
 
     /// <summary>
     /// The accessibility of a type at namespace level that holds or serves these members: public
@@ -50,7 +58,7 @@ internal sealed record MemberShape(string Access, bool Static, bool Virtual)
     /// in any assembly, so its class and the structs it takes must be public), internal otherwise.
     /// Namespace-level types cannot be protected.
     /// </summary>
-    internal string TypeAccess => Access == "internal" ? "internal" : "public";
+    internal string TypeAccess => Tokens?.TypeAccess ?? (Access == "internal" ? "internal" : "public");
 
     /// <summary>The keyword(s) of an AsmVisibility value: 0 internal, 1 public, 2 protected internal.</summary>
     /// <param name="visibility">The value.</param>
@@ -62,6 +70,19 @@ internal sealed record MemberShape(string Access, bool Static, bool Virtual)
         _ => "internal",
     };
 }
+
+/// <summary>
+/// The NuGet tokens a package's baseline (a .cs.pp in contentFiles) is written with: NuGet
+/// replaces each $name$ in the consumer, from the values the package's targets compute out of the
+/// consumer's AsmBindings settings (PreprocessorValue items). Every token always has a non-empty
+/// value, so no modifier is ever left as an empty token.
+/// </summary>
+/// <param name="Access">The members' accessibility: internal, public or protected internal.</param>
+/// <param name="TypeAccess">The namespace-level types' accessibility: internal or public.</param>
+/// <param name="InstanceMembers">An instance member's modifiers: the access, plus virtual when the settings say so.</param>
+/// <param name="InstanceClass">An instance class's modifiers before "partial class": the type access, plus sealed when the settings say so.</param>
+/// <param name="SpanSymbol">The preprocessor symbol that keeps the span overloads (each is written inside #if of it).</param>
+internal sealed record Placeholders(string Access, string TypeAccess, string InstanceMembers, string InstanceClass, string SpanSymbol);
 
 /// <summary>
 /// Writes the C# of a bound class's members: one blittable [DllImport] extern per function (with
@@ -268,6 +289,10 @@ internal static class CSharpEmitter
     /// <param name="shape">The baseline's options.</param>
     /// <param name="structs">Every struct's C name and C# type (fully qualified, in the baseline namespace).</param>
     /// <param name="collisions">Receives each name the C# could not hold twice; the class concerned is left out.</param>
+    /// <param name="writeStructs">
+    /// False leaves the structs out (a package's baseline writes them once, before its layouts);
+    /// they still count for the collisions, since they are in the same namespace.
+    /// </param>
     /// <remarks>
     /// The classes are declared at namespace level, so their accessibility is public or internal
     /// only (<see cref="MemberShape.TypeAccess"/>); a ProtectedInternal baseline has public classes
@@ -276,7 +301,7 @@ internal static class CSharpEmitter
     /// Writes nothing at all for a library with neither (the caller then adds no source).
     /// </remarks>
     internal static void WriteBaseline(StringBuilder output, ApiLibraryModel library, BaselineShape shape,
-        IReadOnlyDictionary<string, string> structs, List<string> collisions)
+        IReadOnlyDictionary<string, string> structs, List<string> collisions, bool writeStructs = true)
     {
         // namespace -> (class -> (what it stands for, its functions)), the root namespace first.
         var namespaces = new SortedDictionary<string, SortedDictionary<string, (string Source, List<ApiFunctionModel> Functions)>>(StringComparer.Ordinal);
@@ -329,7 +354,7 @@ internal static class CSharpEmitter
             }
         }
 
-        if (library.Structs.Count == 0 && namespaces.Values.All(classes => classes.Count == 0))
+        if ((!writeStructs || library.Structs.Count == 0) && namespaces.Values.All(classes => classes.Count == 0))
         {
             return;
         }
@@ -345,18 +370,27 @@ internal static class CSharpEmitter
                 continue;
             }
 
+            // Without the structs, an empty root namespace says nothing.
+            if (root && !writeStructs && (classes is null || classes.Count == 0))
+            {
+                continue;
+            }
+
             output.Append("namespace ").Append(ns).Append("\n{\n");
-            if (root)
+            if (root && writeStructs)
             {
                 WriteStructs(output, 1, library.Structs, shape.Members.TypeAccess, structs, collisions);
             }
 
+            // A static class is sealed already; an instance class is sealed when the shape says
+            // so, or (a package's baseline) when the consumer's settings fill the token so.
+            string declaration = shape.Members.Static ? shape.Members.TypeAccess + " static partial class "
+                : shape.Members.Tokens is { } tokens ? tokens.InstanceClass + " partial class "
+                : shape.Members.TypeAccess + (shape.Sealed ? " sealed partial class " : " partial class ");
             foreach (KeyValuePair<string, (string Source, List<ApiFunctionModel> Functions)> cls in classes ?? new SortedDictionary<string, (string, List<ApiFunctionModel>)>())
             {
                 Indent(output, 1).Append("/// <summary>The functions of ").Append(Xml(cls.Value.Source)).Append(" (the asm library ").Append(Xml(library.Library)).Append(").</summary>\n");
-                Indent(output, 1).Append(shape.Members.TypeAccess)
-                    .Append(shape.Members.Static ? " static partial class " : shape.Sealed ? " sealed partial class " : " partial class ")
-                    .Append(cls.Key).Append('\n');
+                Indent(output, 1).Append(declaration).Append(cls.Key).Append('\n');
                 Indent(output, 1).Append("{\n");
                 WriteMembers(output, 2, library.Library, cls.Value.Functions, Nesting.Flat, shape.SpanOverloads, shape.Members, cls.Key, collisions, structs);
                 Indent(output, 1).Append("}\n");
@@ -364,6 +398,118 @@ internal static class CSharpEmitter
 
             output.Append("}\n");
         }
+    }
+
+    /// <summary>The layouts a package's baseline holds, in the order of its #if chain: each nesting with a static and an instance variant.</summary>
+    internal static readonly Nesting[] PackageLayouts = { Nesting.Files, Nesting.Folders, Nesting.Flat };
+
+    /// <summary>
+    /// Writes the baseline an asm package carries for its .NET consumers (the owner's phase-4
+    /// spec: written at pack time, contentFiles/cs/net7.0/AsmBindings/&lt;library&gt;.cs.pp): every
+    /// layout the settings can choose, each under #if, the namespace and the modifiers as NuGet
+    /// tokens. NuGet fills the tokens in each consumer from the values the package's targets
+    /// compute out of the consumer's AsmBindings settings, so a consumer of the package gets the
+    /// same source a ProjectReference consumer with the same settings gets from
+    /// <see cref="WriteBaseline"/>.
+    /// </summary>
+    /// <param name="output">Where to write (after the file's header comment: the #define lines must precede every token of the file).</param>
+    /// <param name="library">The library, from the API file packed with it.</param>
+    /// <param name="tokenPrefix">The tokens' prefix, unique to the package ("asmbindings_Test_Calc_"): letters, digits and underscores only, as NuGet's token names are.</param>
+    /// <param name="layoutCollisions">Receives, per nesting, each name C# cannot hold twice in that layout (the same for its static and instance variants).</param>
+    /// <param name="structCollisions">Receives each field name generated twice in one struct (every layout has them).</param>
+    /// <remarks>
+    /// <para>
+    /// The tokens, each "$" + prefix + suffix + "$": namespace; nesting (Files, Folders, Flat),
+    /// classkind (Static, Instance), spanoverloads and functions (true, false), which the
+    /// #define lines turn into the file's own symbols; access, typeaccess, members and
+    /// classmodifiers (<see cref="Placeholders"/>). AsmWritePackageConsumerTargets fills these
+    /// nine and no other: a token left unfilled stays in the C# as it is (NuGet leaves an unknown
+    /// token alone, measured), which the consumer's compile then reports.
+    /// </para>
+    /// <para>
+    /// Why #define lines filled by tokens: a #define is local to its file, so the symbols never
+    /// reach the consumer's own code or another package's baseline, and the consumer's
+    /// DefineConstants stay untouched. The structs come once, before the layouts (they are the
+    /// same in each). The span overloads sit inside #if ASMBINDINGS_SPANS_true one by one, and
+    /// DefaultBindings false (ASMBINDINGS_FUNCTIONS_false) keeps the structs only.
+    /// </para>
+    /// <para>
+    /// A layout whose names collide keeps an #error with the ASM0143 text the SDK reports for a
+    /// ProjectReference: a consumer that chooses it cannot build, as it could not with the
+    /// reference. The chain ends with an #error for symbols no layout knows, which only a
+    /// consumer that fills the tokens by hand can reach (the package's targets check every
+    /// value first, ASM0146).
+    /// </para>
+    /// <para>Footgun: nothing written here may say the word the switch searches for (see the consumer targets): the baseline would turn the generator on in every consumer.</para>
+    /// </remarks>
+    internal static void WritePackageBaseline(StringBuilder output, ApiLibraryModel library, string tokenPrefix,
+        IDictionary<Nesting, List<string>> layoutCollisions, List<string> structCollisions)
+    {
+        string Token(string suffix) => "$" + tokenPrefix + suffix + "$";
+        output.Append("#define ASMBINDINGS_NESTING_").Append(Token("nesting")).Append('\n');
+        output.Append("#define ASMBINDINGS_KIND_").Append(Token("classkind")).Append('\n');
+        output.Append("#define ASMBINDINGS_SPANS_").Append(Token("spanoverloads")).Append('\n');
+        output.Append("#define ASMBINDINGS_FUNCTIONS_").Append(Token("functions")).Append('\n');
+
+        var tokens = new Placeholders(Token("access"), Token("typeaccess"), Token("members"), Token("classmodifiers"), "ASMBINDINGS_SPANS_true");
+        string ns = Token("namespace");
+        // Fully qualified through the namespace token: a signature names global::<namespace>.Rect,
+        // whatever namespace the consumer gives the baseline.
+        var structs = library.Structs.ToDictionary(s => s.Name, s => "global::" + ns + "." + Pascal(s.Name), StringComparer.Ordinal);
+        string fix = $"Rename one of them, or lay the baseline out differently (<AsmBindings Include=\"{library.Library}\" Nesting=\"...\" />).";
+        if (library.Structs.Count > 0)
+        {
+            output.Append("namespace ").Append(ns).Append("\n{\n");
+            WriteStructs(output, 1, library.Structs, tokens.TypeAccess, structs, structCollisions);
+            output.Append("}\n");
+            foreach (string collision in structCollisions)
+            {
+                output.Append("#error ASM0143: In the bindings of ").Append(library.Library).Append(" (namespace ").Append(ns).Append("): ")
+                    .Append(collision).Append(". Rename one of the fields.\n");
+            }
+        }
+
+        if (library.Functions.Count == 0)
+        {
+            return;
+        }
+
+        output.Append("#if ASMBINDINGS_FUNCTIONS_true\n");
+        string directive = "#if ";
+        foreach (Nesting nesting in PackageLayouts)
+        {
+            var collisions = new List<string>();
+            foreach (bool isStatic in new[] { true, false })
+            {
+                output.Append(directive).Append("ASMBINDINGS_NESTING_").Append(nesting).Append(" && ASMBINDINGS_KIND_").Append(isStatic ? "Static" : "Instance").Append('\n');
+                directive = "#elif ";
+                // Virtual and Sealed are no variants: the members and classmodifiers tokens carry
+                // them, so the shape's own flags stay off.
+                var shape = new BaselineShape(ns, nesting, SpanOverloads: true, new MemberShape(tokens.Access, isStatic, Virtual: false) { Tokens = tokens }, Sealed: false, Functions: true);
+                var found = new List<string>();
+                WriteBaseline(output, library, shape, structs, found, writeStructs: false);
+                foreach (string collision in found)
+                {
+                    output.Append("#error ASM0143: In the bindings of ").Append(library.Library).Append(" (namespace ").Append(ns).Append("): ")
+                        .Append(collision).Append(". ").Append(fix).Append('\n');
+                }
+
+                // The instance variant declares the same classes: its collisions are the same.
+                if (isStatic)
+                {
+                    collisions.AddRange(found);
+                }
+            }
+
+            layoutCollisions[nesting] = collisions;
+        }
+
+        output.Append("#else\n");
+        output.Append("#error ASM0146: The AsmBindings settings of ").Append(library.Library)
+            .Append(" reached its baseline unchecked (Nesting ").Append(Token("nesting")).Append(", ClassKind ").Append(Token("classkind"))
+            .Append("): the package's targets compute them; restore and build the project instead of filling the tokens by hand.\n");
+        output.Append("#endif\n");
+        output.Append("#endif\n");
     }
 
     /// <summary>A namespace and the PascalCase names of folders under it.</summary>
@@ -520,7 +666,19 @@ internal static class CSharpEmitter
             WriteWrapper(output, indent, function, method, native, names, shape, structs);
         }
 
-        if (spanOverloads)
+        if (shape.Tokens is { } tokens)
+        {
+            // A package's baseline: the consumer's settings decide, so the overload is always
+            // written, kept or dropped by the file's own #define of the symbol. Only where there
+            // is one: an empty #if would only lengthen the file.
+            if (SpanPairs(function).Count > 0)
+            {
+                output.Append("#if ").Append(tokens.SpanSymbol).Append('\n');
+                WriteSpanOverload(output, indent, function, method, names, shape, structs);
+                output.Append("#endif\n");
+            }
+        }
+        else if (spanOverloads)
         {
             WriteSpanOverload(output, indent, function, method, names, shape, structs);
         }
@@ -642,19 +800,7 @@ internal static class CSharpEmitter
     private static void WriteSpanOverload(StringBuilder output, int indent, ApiFunctionModel function, string method, string[] names, MemberShape shape,
         IReadOnlyDictionary<string, string> structs)
     {
-        var pairs = new Dictionary<int, int>();
-        for (int i = 0; i + 1 < function.Parameters.Count; i++)
-        {
-            ApiTypeModel pointer = function.Parameters[i].Type;
-            ApiParameterModel length = function.Parameters[i + 1];
-            bool spannable = pointer.Callback is null && pointer.Pointers == 1 && pointer.Base != "void" && !IsString(pointer);
-            if (spannable && length.Type.Callback is null && length.Type.Pointers == 0 && length.Type.Base == "size_t" && IsLengthName(length.Name, function.Parameters[i].Name))
-            {
-                pairs[i] = i + 1;
-                i++;
-            }
-        }
-
+        Dictionary<int, int> pairs = SpanPairs(function);
         if (pairs.Count == 0)
         {
             return;
@@ -716,6 +862,32 @@ internal static class CSharpEmitter
         output.Append(");\n");
         Indent(output, depth).Append("}\n");
         Indent(output, indent).Append("}\n\n");
+    }
+
+    /// <summary>
+    /// The pointer-and-length pairs of a function's parameters, by the span convention (see
+    /// <see cref="WriteSpanOverload"/>): each pointer's index with its length's index. Empty when the
+    /// function gets no span overload, which a package's baseline uses to skip an empty #if.
+    /// </summary>
+    /// <param name="function">The function.</param>
+    /// <returns>Pointer index to length index; a parameter is in at most one pair.</returns>
+    private static Dictionary<int, int> SpanPairs(ApiFunctionModel function)
+    {
+        var pairs = new Dictionary<int, int>();
+        for (int i = 0; i + 1 < function.Parameters.Count; i++)
+        {
+            ApiTypeModel pointer = function.Parameters[i].Type;
+            ApiParameterModel length = function.Parameters[i + 1];
+            bool spannable = pointer.Callback is null && pointer.Pointers == 1 && pointer.Base != "void" && !IsString(pointer);
+            if (spannable && length.Type.Callback is null && length.Type.Pointers == 0 && length.Type.Base == "size_t" && IsLengthName(length.Name, function.Parameters[i].Name))
+            {
+                pairs[i] = i + 1;
+                // The length is taken: it cannot start the next pair.
+                i++;
+            }
+        }
+
+        return pairs;
     }
 
     /// <summary>Whether a parameter name says it is the length of the pointer before it.</summary>

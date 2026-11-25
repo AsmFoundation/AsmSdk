@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The generator on demand, with bindings from three places (PackageBindingsTests): ApiProto
+    as a ProjectReference (AsmFoundation.Sdk's consumer targets, its generator a candidate) and
+    the packages Test.BindingsPackage and Test.BindingsPackageB (each with its own generator copy
+    and targets). Program.cs names the attribute, so the written baselines step aside and one
+    generator, the newest candidate (BindingsPackageB's, packed claiming 9.9.9), writes every
+    library's baseline and the copy Native. Two generators would hold every type twice (CS0101).
+    It prints:
+      Apiproto.Add.AddInts 42 / Bindpkg.Api.AddInts 42 / Bindpkg.Api.SumBytes 10 /
+      Bindpkgb.Mul.MulInts 42 / Native.MulInts 42 / attribute True
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../ApiProto/ApiProto.asmproj" />
+    <PackageReference Include="Test.BindingsPackage" Version="1.0.0" />
+    <PackageReference Include="Test.BindingsPackageB" Version="1.0.0" />
+  </ItemGroup>
+</Project>

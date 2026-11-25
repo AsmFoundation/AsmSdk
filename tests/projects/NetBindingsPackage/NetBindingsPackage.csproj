@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A C# program that calls the asm package Test.BindingsPackage (BindingsPackage.asmproj,
+    packed) through the baseline the package carries (PackageBindingsTests): written when the
+    package was packed (contentFiles/cs/net7.0/AsmBindings/bindpkg.cs.pp), compiled here by NuGet
+    with its tokens filled by the package's own targets. No AsmFoundation.Sdk in the graph, no
+    [LibraryImport] written by hand, no AllowUnsafeBlocks either (the package's targets set it),
+    and nothing here names the attribute, so no generator runs. It prints:
+      add_ints 42 / sum_bytes 10 / point_sum 42 / internal True / attribute False
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Test.BindingsPackage" Version="1.0.0" />
+  </ItemGroup>
+</Project>

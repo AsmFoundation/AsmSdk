@@ -6,7 +6,7 @@
   "groupIdentity": "AsmFoundation.Templates.AsmNetSolution",
   "name": "Assembly + .NET Solution",
   "shortName": "asmnet",
-  "description": "A solution with a C# console app, the assembly library it calls through [LibraryImport] (NASM for x64, GNU syntax for ARM64), and xUnit.net v3 tests of that library. Built by AsmFoundation.Sdk and the .NET SDK for Windows, Linux and macOS.",
+  "description": "A solution with a C# console app, the assembly library it calls through the C# bindings the SDK writes from the library's PROTO lines (NASM for x64, GNU syntax for ARM64), and xUnit.net v3 tests of that library. Built by AsmFoundation.Sdk and the .NET SDK for Windows, Linux and macOS.",
   "tags": {
     "language": "C#",
     "type": "solution"

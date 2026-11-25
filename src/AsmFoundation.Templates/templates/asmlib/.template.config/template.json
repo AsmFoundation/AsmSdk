@@ -6,7 +6,7 @@
   "groupIdentity": "AsmFoundation.Templates.AsmLibrary",
   "name": "Assembly Library",
   "shortName": "asmlib",
-  "description": "A shared library written in assembly (NASM for x64, GNU syntax for ARM64), built by AsmFoundation.Sdk for Windows, Linux and macOS. A .NET project calls it through [LibraryImport] after a ProjectReference.",
+  "description": "A shared library written in assembly (NASM for x64, GNU syntax for ARM64), built by AsmFoundation.Sdk for Windows, Linux and macOS. A C# project that references it calls it through the bindings the SDK writes from its PROTO lines.",
   "tags": {
     "language": "Assembly",
     "type": "project"
