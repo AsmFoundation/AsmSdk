@@ -11,4 +11,9 @@
     <AssemblyName>warnings</AssemblyName>
     <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
   </PropertyGroup>
+  <!-- macro.asm holds a warning raised inside a macro: only with WarningCase=Macro, so every other
+       case has orphan.asm's one warning alone. -->
+  <ItemGroup Condition="'$(WarningCase)' != 'Macro'">
+    <Compile Remove="macro.asm" />
+  </ItemGroup>
 </Project>

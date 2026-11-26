@@ -134,15 +134,16 @@ See [Platforms and runtime identifiers](platforms.md) for how a project chooses 
 | Message | Cause | Fix |
 |---|---|---|
 | `ASM0007: a.asm: the assembler exited with code 1; its object file was deleted` | any assembler error; the assembler's line comes just before | fix the error it names. The deleted object makes the next build assemble the source again |
-| `warning: implicit DEFAULT ABS is deprecated [-w+implicit-abs-deprecated]` (an error with `TreatWarningsAsErrors`) | a memory operand in a file without `default rel`: `ImplicitUsings` (on by default) puts it in front of every source, so the project sets `<ImplicitUsings>disable</ImplicitUsings>` | add `default rel` at the top of every source, or leave `ImplicitUsings` on |
+| `warning implicit-abs-deprecated: implicit DEFAULT ABS is deprecated` (an error with `TreatWarningsAsErrors`; 0.4.0 prints the name in brackets after the text) | a memory operand in a file without `default rel`: `ImplicitUsings` (on by default) puts it in front of every source, so the project sets `<ImplicitUsings>disable</ImplicitUsings>` | add `default rel` at the top of every source, or leave `ImplicitUsings` on |
 | `error : instruction expected, found `FUNCTION …'` (and `label `RETURN' alone on a line without a colon`) | `asmsdk.inc` is not included: a source without `%include "asmsdk.inc"` in a project with `<ImplicitUsings>disable</ImplicitUsings>` | `%include "asmsdk.inc"` at the top, or leave `ImplicitUsings` on |
-| `warning: 32-bit absolute section-crossing relocation [-w+reloc-abs-dword]` | absolute addressing, usually the same root cause. Also given for `dd f wrt ..imagebase` (Windows unwind tables), which is right | `default rel` |
+| `warning reloc-abs-dword: 32-bit absolute section-crossing relocation` | absolute addressing, usually the same root cause. Also given for `dd f wrt ..imagebase` (Windows unwind tables), which is right | `default rel` |
 | `error: unable to open include file 'b.inc'` | NASM looks in the project folder and the `-I` folders, never beside the including file | `%include "sub/b.inc"`, or `<AsmIncludeDirectory Include="sub/" />`; for a package or reference, check it ships the file under `include/` |
 | `error: label, instruction or prefix expected at start of line, found 'rel'` | a symbol named like a keyword or mnemonic (`rel`, `wait`, `syscall`) | write it as `$rel` in the definition and in every reference |
 | `error: DEBUG is not defined` (from your own `%error`) | `DisableImplicitConfigurationDefines=true`, or a Release build (it defines `RELEASE`) | remove the property; test `%ifdef DEBUG` only for Debug-only code |
 | a `%define` written by an MSBuild target came out as `Þfine …` | `%de` in an MSBuild string is an escape for byte `0xDE` | write `%25define` |
-| `warning: label 'x' alone on a line without a colon might be in error [-w+label-orphan]` | a missing `:` or a typo | add the colon; or `-w-label-orphan` |
-| `warning: dword exceeds bounds [-w+number-overflow]` | the constant is too large for its size | fix the size or the constant |
+| `warning label-orphan: label 'x' alone on a line without a colon might be in error` | a missing `:` or a typo | add the colon; or `<NoWarn>label-orphan</NoWarn>` |
+| `warning number-overflow: dword exceeds bounds` | the constant is too large for its size | fix the size or the constant |
+| `warning ASM0008: a.asm: NASM's messages could not be read` | the messages file NASM writes beside the object (`-Z`) was locked or unreadable | check the `obj/` folder; NASM's exit code still decides whether the source assembled |
 | `nasm: warning: unknown warning name: reloc-rel-dword` (System toolchain) | NASM 2.x does not know NASM 3's warning names | harmless; or install NASM 3 |
 | `panic: intra-segment OUT_REL4ADR` | `call f wrt ..plt` (or `call f PLT`) to a function in the same section of the same file | a plain `call f`: the PLT is for other libraries |
 

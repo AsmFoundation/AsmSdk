@@ -37,6 +37,7 @@
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmSelectRunTarget" AssemblyFile="$(_AsmTasksAssembly)" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmReadApi" AssemblyFile="$(_AsmTasksAssembly)" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmMergeApi" AssemblyFile="$(_AsmTasksAssembly)" />
+  <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmLogNasmMessages" AssemblyFile="$(_AsmTasksAssembly)" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmWriteCHeader" AssemblyFile="$(_AsmTasksAssembly)" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmWriteSourceWrappers" AssemblyFile="$(_AsmTasksAssembly)" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmReadStructs" AssemblyFile="$(_AsmTasksAssembly)" />
@@ -843,6 +844,14 @@
     ASM0007 (an assembler run failed; after the assembler's own messages), ASM0019 (llvm-mc's
     WebAssembly object writer stopped on what a wasm object cannot hold; before ASM0007).
 
+    NASM's messages go to a file of their own (-Z <object>.messages), which AsmLogNasmMessages
+    logs: each NASM warning with its warning name as its MSBuild code (number-overflow,
+    label-orphan, ...), so the command line's -nowarn:, -warnaserror: and -warnnotaserror: take
+    the same names the NoWarn, WarningsAsErrors and WarningsNotAsErrors properties pass to NASM.
+    MSBuild's own reading of the output gave them no code (NASM writes "warning: text [-w+name]",
+    and a code must come before the colon). IgnoreExitCode: the run's failure is said by NASM's
+    own errors and ASM0007, not also by Exec's MSB3073.
+
     A failed run deletes its object. An assembler that crashes rather than reports an error
     (NASM 3.02 did, with CodeView, before the .rodata mapping above) leaves a truncated object
     behind, newer than its source: the next build would skip the source and fail at link time
@@ -872,11 +881,17 @@
       <_AsmAssemblerExitCode>0</_AsmAssemblerExitCode>
     </PropertyGroup>
     <Exec Condition="'%(_AsmSelectedSource.AsmLanguage)' == 'Nasm'"
-          Command="$(_AsmNasm) $(_AsmNasmMessageArguments) $(_AsmNasmFormatArguments) $(_AsmDebugArguments) $(_AsmWarningArguments) $(_AsmNasmReproducibleArgument) $(AsmFlags) $(_AsmIncludeArguments) $(_AsmDefineArguments) $(_AsmNasmImplicitUsingsArgument)%(_AsmSelectedSource.AsmStructsArgument) -o &quot;%(_AsmSelectedSource.ObjectToolPath)&quot; &quot;%(_AsmSelectedSource.AssembledToolPath)&quot;"
+          Command="$(_AsmNasm) $(_AsmNasmMessageArguments) -Z &quot;%(_AsmSelectedSource.ObjectToolPath).messages&quot; $(_AsmNasmFormatArguments) $(_AsmDebugArguments) $(_AsmWarningArguments) $(_AsmNasmReproducibleArgument) $(AsmFlags) $(_AsmIncludeArguments) $(_AsmDefineArguments) $(_AsmNasmImplicitUsingsArgument)%(_AsmSelectedSource.AsmStructsArgument) -o &quot;%(_AsmSelectedSource.ObjectToolPath)&quot; &quot;%(_AsmSelectedSource.AssembledToolPath)&quot;"
           WorkingDirectory="$(MSBuildProjectDirectory)"
+          IgnoreExitCode="true"
           ContinueOnError="ErrorAndContinue">
       <Output TaskParameter="ExitCode" PropertyName="_AsmAssemblerExitCode" />
     </Exec>
+    <!-- Before ASM0007, so the build lists NASM's errors first, at their lines. -->
+    <AsmLogNasmMessages Condition="'%(_AsmSelectedSource.AsmLanguage)' == 'Nasm'"
+                        MessagesFile="%(_AsmSelectedSource.ObjectFile).messages"
+                        SourceFile="%(_AsmSelectedSource.AssembledToolPath)"
+                        ContinueOnError="ErrorAndContinue" />
     <Exec Condition="'%(_AsmSelectedSource.AsmLanguage)' == 'Gnu'"
           Command="$(_AsmLlvmMc) --triple=$(_AsmLlvmMcTriple) --filetype=obj $(_AsmLlvmMcFeatureArguments) $(_AsmLlvmMcDebugArguments) $(AsmLlvmMcFlags) $(_AsmLlvmMcIncludeArguments) $(_AsmLlvmMcDefineArguments) -o &quot;%(_AsmSelectedSource.ObjectToolPath)&quot; &quot;%(_AsmSelectedSource.AssembledToolPath)&quot;"
           WorkingDirectory="$(MSBuildProjectDirectory)"
@@ -903,6 +918,7 @@
            Text="%(_AsmSelectedSource.Identity): the assembler exited with code $(_AsmAssemblerExitCode); its object file was deleted, so the next build assembles the source again." />
     <ItemGroup>
       <FileWrites Include="%(_AsmSelectedSource.ObjectFile)" />
+      <FileWrites Include="%(_AsmSelectedSource.ObjectFile).messages" Condition="'%(_AsmSelectedSource.AsmLanguage)' == 'Nasm'" />
     </ItemGroup>
   </Target>
 

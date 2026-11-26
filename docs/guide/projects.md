@@ -257,7 +257,9 @@ triggers (`reloc-rel-dword` and `reloc-abs-qword`).
 
 - **`TreatWarningsAsErrors=true`** adds `-w+error`.
 - **.NET's own warning lists take NASM's warning names,** as they take a compiler's codes in a
-  `.csproj`. The name of each warning is printed in brackets after it:
+  `.csproj`. The name of each warning is its code in the build's output
+  (`orphan.asm(9): warning label-orphan: …`; on the released 0.4.0, in brackets after the text
+  instead):
 
   | Property | `label-orphan` in it becomes | Effect |
   |---|---|---|
@@ -267,14 +269,18 @@ triggers (`reloc-rel-dword` and `reloc-abs-qword`).
 
   They are passed after `-w+error`, so they win. Only entries shaped like NASM's names (lower
   case, with hyphens) are passed on, so one list can hold .NET's and NuGet's codes too:
-  `<NoWarn>$(NoWarn);NU5128;label-orphan</NoWarn>`. llvm-mc has no per-warning switches.
+  `<NoWarn>$(NoWarn);NU5128;label-orphan</NoWarn>`. llvm-mc has no per-warning switches, and
+  its warnings have no code.
+- **The command line's warning switches take the same names** (not released yet), because they
+  are the codes: `dotnet build -nowarn:label-orphan`, `-warnaserror:label-orphan`, and
+  `-warnaserror -warnnotaserror:label-orphan` to make every warning an error but that one.
+  They act on what NASM reported; under `TreatWarningsAsErrors` NASM itself reports an error,
+  which `-warnnotaserror` does not turn back.
 - **`AsmFlags`** passes extra arguments to NASM, and **`AsmLlvmMcFlags`** to llvm-mc.
 
-> [!TIP]
-> By default, NASM's messages are printed as plain text above an `MSB3073: The command …
-> exited with code 1` error, and `-v:q` hides them. Add `<AsmFlags>-Xvc</AsmFlags>`: NASM
-> then reports `file.asm(12): error : …`, which MSBuild counts as an error or warning, and
-> which IDEs link to the right line.
+NASM's messages are MSBuild errors and warnings at their file and line, which IDEs list and
+open at the line: `file.asm(12): error : …`, and a warning's name as its code. A warning that
+comes from inside a macro names the macro's definition in parentheses.
 
 ## Incremental builds
 

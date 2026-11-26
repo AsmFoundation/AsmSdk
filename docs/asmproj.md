@@ -182,7 +182,7 @@ deletes the image, so the next build links and checks again.
 | `AsmFlags` | empty | extra NASM arguments. They are placed before `-I` and `-D`. Recommended: `-Xvc`, which makes NASM messages MSBuild diagnostics. |
 | `AsmLlvmMcFlags` | empty | extra llvm-mc arguments, for `.s` sources. |
 | `TreatWarningsAsErrors` | `false` | adds `-w+error` to NASM. NASM 3 warns `implicit DEFAULT ABS is deprecated` on any memory operand in a file without `default rel` or `default abs`. With this property, that warning fails the build. |
-| `NoWarn`, `WarningsAsErrors`, `WarningsNotAsErrors` | .NET's | each entry shaped like a NASM warning name (lower case, hyphens: `label-orphan`) becomes `-w-<name>`, `-w+error=<name>` or `-w-error=<name>`, after `-w+error`, so it wins; other entries (`NU5128`, `CS1591`, `1701`) are left to the tools they belong to. NASM ignores a name it does not know. llvm-mc has no per-warning switches. MSBuild's own warnings (`ASM0013`) are silenced by `NoWarn` as any MSBuild warning is. |
+| `NoWarn`, `WarningsAsErrors`, `WarningsNotAsErrors` | .NET's | each entry shaped like a NASM warning name (lower case, hyphens: `label-orphan`, a NASM warning's MSBuild code) becomes `-w-<name>`, `-w+error=<name>` or `-w-error=<name>`, after `-w+error`, so it wins; other entries (`NU5128`, `CS1591`, `1701`) are left to the tools they belong to. NASM ignores a name it does not know. llvm-mc has no per-warning switches. MSBuild's own warnings (`ASM0013`) are silenced by `NoWarn` as any MSBuild warning is. |
 | `ImplicitUsings` | `enable` | `enable` or `true`: the platform layer in front of every source. NASM gets `-P include/asmsdk-implicit.inc` (`asmsdk.inc`, `default rel`, on Linux `.note.GNU-stack`, then `section .text` on every OS, without which NASM's COFF output leaves a label before the first section directive undefined); each `.s` is assembled through `obj/.../asm/implicit/<path>`: `.include "asmsdk-gnu-implicit.inc"`, then the source's own text behind a line marker naming the source (so diagnostics and DWARF stay on it), since llvm-mc has no pre-include; a WebAssembly source's wrapper includes `asmsdk-wasm.inc` instead. `disable` (or anything else) gives raw NASM. Code that writes the includes itself is unaffected: both headers have guards. In a `.asmproj` the .NET meaning (C# global usings) does not apply. |
 | `AsmIntermediateDirectory` | `$(IntermediateOutputPath)asm/` (`obj/<Configuration>/<tfm>/<rid>/asm/`) | objects in `obj/`, the system library stand-ins and startup code in `stubs/`, generated package files in `pack/`. |
 
@@ -194,13 +194,15 @@ deletes the image, so the next build links and checks again.
   freestanding executable, and rejected by the linker (or the SDK's image check) in
   read-only data of any other output.
 - Add `-w-<name>` to `AsmFlags` to silence another warning, for example
-  `-w-label-orphan`. The name is printed in brackets after each warning.
+  `-w-label-orphan`, or use `NoWarn`. The name is each warning's MSBuild code
+  (`warning label-orphan: …`; not released yet: 0.4.0 prints it in brackets after the text),
+  so the command line's `-nowarn:`, `-warnaserror:` and `-warnnotaserror:` take it too.
 - The SDK's own stubs are always assembled with `-w+error`.
 
 **The assembler command lines, as run** (from the project folder, with forward-slash paths):
 
 ```text
-nasm -Xvc -f win64|elf64|macho64 [--gprefix _] [-D.rodata=.rdata] [-g -F dwarf|cv8] -w+all -w-reloc-rel-dword -w-reloc-abs-qword [-w+error] $(AsmFlags)
+nasm -Xvc -Z "<obj>/x.o.messages" -f win64|elf64|macho64 [--gprefix _] [-D.rodata=.rdata] [-g -F dwarf|cv8] -w+all -w-reloc-rel-dword -w-reloc-abs-qword [-w+error] $(AsmFlags)
      -I"<dir>/" ... -D<your symbols> ... -DDEBUG|-DRELEASE -DFREESTANDING|-DLIBC -DWINDOWS|-DLINUX|-DMACOS -DX64
      -o "<obj>/x.o" "<project>/x.asm"
 
@@ -465,6 +467,7 @@ by `dotnet clean` only if you add it to `FileWrites` too.
 | `ASM0005` | `AsmToolchain=System` without `AsmLinkerCommand`, for a Windows or macOS RID, or for a linked Linux RID of another architecture than the build machine's: the default `ld` links the machine's own ELF only. | `AsmLinkerCommand` `lld-link`, `ld64.lld` or `ld.lld` (or a cross `ld`). |
 | `ASM0006` | No toolchain package for this build machine (Intel Mac, musl). | `AsmToolchain=System`, `AsmToolchainDirectory`, or `AsmHostRid`. |
 | `ASM0007` | The assembler failed on a source; its object was deleted. | Read the assembler's line above it. |
+| `ASM0008` (warning, not released yet) | NASM's messages for a source (`-Z`, beside its object) could not be read. NASM's exit code still decides whether the source assembled. | Check the `obj/` folder: a locked or unreadable file. |
 | `ASM0010` | No RID to build: none listed, none asked for, no `-r`, on a build machine that is none of the eight RIDs (elsewhere its RID is the default). | `RuntimeIdentifiers`, a `ProjectReference`'s `RuntimeIdentifiers`, or `-r`. |
 | `ASM0011` | A RID outside the ten (the eight native ones, `browser-wasm` and `wasi-wasm`). | One of those. |
 | `ASM0012` | A RID asked for that the project does not list. | Add it, if the code supports it. |
@@ -531,7 +534,7 @@ by `dotnet clean` only if you add it to `FileWrites` too.
 | `ASM0109` | An `AsmLinkLibrary` item, renamed `NativeLibrary` (NativeAOT's name) after 0.3.0. In the project, the error shows the new line; added by a package's props (a package packed by 0.3.0), it names the package. | `<NativeLibrary Include="..." />`; pack the named package again with this SDK. |
 | `NU1201` | A project references an `.asmproj` whose target frameworks it cannot use: a `freestanding` project and a `libc`-only reference. | Make the reference target `freestanding` too (or both), or make this project `libc`. |
 | `NU1202` | The same for a package. | The same, for the package's project. |
-| `MSB3073 … exited with code 1` | The linker, or a stand-in's tool, failed. | Read the line above it. Add `<AsmFlags>-Xvc</AsmFlags>` so NASM's messages become MSBuild errors with file and line. |
+| `MSB3073 … exited with code 1` | The linker, or a stand-in's tool, failed. | Read the line above it. (NASM's own failures are its errors at their lines, then `ASM0007`.) |
 | `MSB4236` / SDK not found | `global.json` or `nuget.config` does not lead to `AsmFoundation.Sdk`. | Check `msbuild-sdks` and the feeds (see [The toolchain](toolchain/index.md)). |
 | `MSB4025 … ProjectType '' not found` | `.slnx` entry without a type. | Add `Type="13B669BE-BB05-4DDF-9536-439F39A36129"` (`dotnet sln add` writes it). |
 

@@ -34,7 +34,7 @@ public sealed class WarningSwitchTests(SdkUnderTest sdk)
     {
         CommandResult build = Build();
         Assert.True(build.ExitCode != 0, $"WarningSwitches built, but must fail: {build.Tail()}");
-        Assert.Contains($"orphan.asm(9): error : {OrphanText} [-w+error=label-orphan]", build.StdOut);
+        Assert.Contains($"orphan.asm(9): error label-orphan: {OrphanText}", build.StdOut);
     }
 
     /// <summary>Without TreatWarningsAsErrors it is a warning at its line, and the build succeeds.</summary>
@@ -43,7 +43,7 @@ public sealed class WarningSwitchTests(SdkUnderTest sdk)
     {
         CommandResult build = Build("-p:TreatWarningsAsErrors=false");
         Assert.True(build.ExitCode == 0, build.Tail());
-        Assert.Contains($"orphan.asm(9): warning : {OrphanText} [-w+label-orphan]", build.StdOut);
+        Assert.Contains($"orphan.asm(9): warning label-orphan: {OrphanText}", build.StdOut);
     }
 
     /// <summary>NoWarn with NASM's warning name turns it off: no message, a successful build.</summary>
@@ -82,7 +82,7 @@ public sealed class WarningSwitchTests(SdkUnderTest sdk)
     {
         CommandResult build = Build("-p:TreatWarningsAsErrors=false", "-p:WarningsAsErrors=label-orphan");
         Assert.True(build.ExitCode != 0, $"WarningSwitches built, but must fail: {build.Tail()}");
-        Assert.Contains($"orphan.asm(9): error : {OrphanText} [-w+error=label-orphan]", build.StdOut);
+        Assert.Contains($"orphan.asm(9): error label-orphan: {OrphanText}", build.StdOut);
     }
 
     /// <summary>WarningsNotAsErrors keeps the one warning a warning under TreatWarningsAsErrors.</summary>
@@ -91,6 +91,53 @@ public sealed class WarningSwitchTests(SdkUnderTest sdk)
     {
         CommandResult build = Build("-p:WarningsNotAsErrors=label-orphan");
         Assert.True(build.ExitCode == 0, build.Tail());
-        Assert.Contains($"orphan.asm(9): warning : {OrphanText} [-w+label-orphan]", build.StdOut);
+        Assert.Contains($"orphan.asm(9): warning label-orphan: {OrphanText}", build.StdOut);
+    }
+
+    /// <summary>
+    /// The command line's -nowarn takes the NASM warning's name, which is its MSBuild code: the
+    /// warning is not listed and the build succeeds. (0.4.0 logged NASM's warnings without a
+    /// code, so -nowarn could not name them.)
+    /// </summary>
+    [Fact]
+    public void The_command_lines_nowarn_takes_the_warning_name()
+    {
+        CommandResult build = Build("-p:TreatWarningsAsErrors=false", "-nowarn:label-orphan");
+        Assert.True(build.ExitCode == 0, build.Tail());
+        Assert.DoesNotContain("lonely_label", build.StdOut);
+    }
+
+    /// <summary>The command line's -warnaserror with the name makes that warning an error, and the build fails.</summary>
+    [Fact]
+    public void The_command_lines_warnaserror_takes_the_warning_name()
+    {
+        CommandResult build = Build("-p:TreatWarningsAsErrors=false", "-warnaserror:label-orphan");
+        Assert.True(build.ExitCode != 0, $"WarningSwitches built, but must fail: {build.Tail()}");
+        Assert.Contains($"orphan.asm(9): error label-orphan: {OrphanText}", build.StdOut);
+    }
+
+    /// <summary>
+    /// -warnaserror makes every warning an error but the one -warnnotaserror names: NASM's
+    /// warning stays a warning, and the build succeeds.
+    /// </summary>
+    [Fact]
+    public void The_command_lines_warnnotaserror_keeps_the_named_warning()
+    {
+        CommandResult build = Build("-p:TreatWarningsAsErrors=false", "-warnaserror", "-warnnotaserror:label-orphan");
+        Assert.True(build.ExitCode == 0, build.Tail());
+        Assert.Contains($"orphan.asm(9): warning label-orphan: {OrphanText}", build.StdOut);
+    }
+
+    /// <summary>
+    /// A warning raised inside a macro names, in the same message, where the macro is defined:
+    /// NASM writes that as a line of its own after the warning, which the SDK folds into it, so
+    /// an IDE's error list shows both in one entry (macro.asm, built only with WarningCase=Macro).
+    /// </summary>
+    [Fact]
+    public void A_warning_from_a_macro_names_the_macros_definition()
+    {
+        CommandResult build = Build("-p:TreatWarningsAsErrors=false", "-p:WarningCase=Macro");
+        Assert.True(build.ExitCode == 0, build.Tail());
+        Assert.Contains("macro.asm(9): warning number-overflow: byte exceeds bounds (macro.asm(4): from macro `OVERFLOWING_BYTE' defined here)", build.StdOut);
     }
 }
