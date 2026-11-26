@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    CliGraph's C# app: calls Lib's add_ints through the binding the SDK writes from its PROTO
+    line (Lib.Add.AddInts), as in CliBuild. In a static graph build the asm targets the app's
+    consumer targets call on Lib must be declared, and Lib's instance predicted, or -isolate
+    stops the build (MSB4252).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Lib/Lib.asmproj" />
+  </ItemGroup>
+</Project>

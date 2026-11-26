@@ -1,0 +1,17 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    CliGraph's program: main returns mul_ints(6, 7) from Shared (main.asm for x64, main.s for
+    ARM64, from CliBuild), and it links Multi's libc build too. Two RIDs, built on every machine
+    with the bundled toolchain, so that a static graph build has two RID builds to predict, each
+    with its own instances of the static libraries.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>libc</TargetFramework>
+    <RuntimeIdentifiers>linux-x64;win-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Shared/Shared.asmproj" />
+    <ProjectReference Include="../Multi/Multi.asmproj" />
+  </ItemGroup>
+</Project>

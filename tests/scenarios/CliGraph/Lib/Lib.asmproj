@@ -1,0 +1,7 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    CliGraph's library: add_ints, from the asmlib template (add.asm for x64, add.s for ARM64),
+    with the PROTO line App's C# bindings come from. It names no RID, so a portable build of App
+    gets the build machine's, and App built for a RID gets that one.
+  -->
+</Project>

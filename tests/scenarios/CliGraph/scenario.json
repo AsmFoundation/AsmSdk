@@ -1,0 +1,74 @@
+{
+  "$schema": "../scenario.schema.json",
+  "description": "MSBuild's static graph with asm projects (the owner's choice of 2026-11-26: support -graph -isolate). With -isolate, a project may call only the project instances the graph predicted from ProjectReference items, with the targets ProjectReferenceTargets declared (MSB4252 otherwise; 0.4.0 failed at the C# app's first call into the asm library and at the program's first call into its static library). Restore first: NuGet's restore fails -isolate for any project, C# alone included. A C# app with an asm library, an asm program with two RIDs and the static libraries it links (one of them for both target frameworks): build, rebuild, clean, -o, and publish of the program and of the app for this machine's RID, each with -isolate.",
+  "steps": [
+    {
+      "run": "dotnet restore CliGraph.slnx",
+      "description": "Restore apart from the graph build, which runs with --no-restore."
+    },
+    {
+      "run": "dotnet build CliGraph.slnx -graph -isolate --no-restore",
+      "description": "The whole solution: the app's calls into Lib (GetAsmConsumerInfo, GetAsmApiFile, GetAsmNativeRuntimeAssets) and each of Prog's RID builds' calls into Shared and Multi for that RID were predicted by the graph.",
+      "files": [
+        "App/bin/Debug/net10.0/App.dll",
+        "Lib/bin/Debug/freestanding/{rid}/{lib:Lib}",
+        "Prog/bin/Debug/libc/linux-x64/Prog",
+        "Prog/bin/Debug/libc/win-x64/Prog.exe",
+        "Shared/bin/Debug/freestanding/linux-x64/libShared.a",
+        "Shared/bin/Debug/freestanding/win-x64/Shared.lib",
+        "Multi/bin/Debug/libc/linux-x64/libMulti.a",
+        "Multi/bin/Debug/libc/win-x64/Multi.lib"
+      ]
+    },
+    {
+      "run": "dotnet App/bin/Debug/net10.0/App.dll",
+      "description": "The app finds its library and calls it through the bindings the graph build wrote.",
+      "stdout": ["add_ints(40, 2) = 42"]
+    },
+    {
+      "run": "dotnet build CliGraph.slnx -graph -isolate --no-restore --no-incremental",
+      "description": "A rebuild: the common targets declare GetTargetFrameworks for Build and Clean but not for Rebuild, so .NET's own rebuild fails -isolate (a C# app and library alone, measured with SDK 11.0.100); the SDK declares it for the projects that use it."
+    },
+    {
+      "run": "dotnet clean CliGraph.slnx -graph -isolate",
+      "description": "Clean asks each asm reference for GetAsmConsumerInfo too.",
+      "missing": [
+        "App/bin/Debug/net10.0/App.dll",
+        "Lib/bin/Debug/freestanding/{rid}/{lib:Lib}",
+        "Prog/bin/Debug/libc/linux-x64/Prog",
+        "Prog/bin/Debug/libc/win-x64/Prog.exe"
+      ]
+    },
+    {
+      "run": "dotnet build App -graph -isolate --no-restore",
+      "description": "The app alone: Lib is only a reference here, built for the app as its consumer targets ask.",
+      "files": ["App/bin/Debug/net10.0/App.dll", "Lib/bin/Debug/freestanding/{rid}/{lib:Lib}"]
+    },
+    {
+      "run": "dotnet App/bin/Debug/net10.0/App.dll",
+      "stdout": ["add_ints(40, 2) = 42"]
+    },
+    {
+      "run": "dotnet build Prog -graph -isolate --no-restore -o out/prog",
+      "description": "-o: one folder per RID, and nothing else. The references build into their own bin/ in a graph build (a RID build's folders would make each RID's view of a reference an instance of its own, and the graph's transitive edges built that instance's RID builds a second time, into folders such as linux-x64/win-x64/).",
+      "files": ["out/prog/linux-x64/Prog", "out/prog/win-x64/Prog.exe"],
+      "missing": ["out/prog/linux-x64/win-x64", "out/prog/win-x64/win-x64", "out/prog/linux-x64/libShared.a"]
+    },
+    {
+      "run": "dotnet publish Prog -graph -isolate --no-restore",
+      "description": "A publish: asm projects declare the Publish protocol themselves (C# gets it from Microsoft.Managed.After.targets, which they do not import), and each RID build is published. No reference is built in a publish context of its own (no ASM0013 for the static libraries, no publish folder of theirs).",
+      "absent": ["ASM0013"],
+      "files": ["Prog/bin/Release/libc/publish/linux-x64/Prog", "Prog/bin/Release/libc/publish/win-x64/Prog.exe"],
+      "missing": ["Shared/bin/Release/libc", "Multi/bin/Release/libc/publish"]
+    },
+    {
+      "run": "dotnet restore App -r {rid}",
+      "description": "A RID-specific publish restores for that RID first."
+    },
+    {
+      "run": "dotnet publish App -r {rid} -graph -isolate --no-restore -o out/app",
+      "description": "The app for this machine's RID, its library next to it. The consumer calls GetAsmConsumerInfo without the RID, an instance the graph gets from a graph-only twin of the reference.",
+      "files": ["out/app/App.dll", "out/app/{lib:Lib}"]
+    }
+  ]
+}

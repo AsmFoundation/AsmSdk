@@ -1,4 +1,4 @@
-<Project>
+<Project InitialTargets="_AsmDropGraphOnlyConsumerReferences">
   <!--
     AsmFoundation.Sdk - the consumer targets: imported into a .NET project that references an
     .asmproj (directly, or through another project), through the implicit AsmFoundation.Sdk
@@ -156,6 +156,96 @@
     <WasmDebugLevel Condition="'$(Configuration)' == 'Release'">0</WasmDebugLevel>
     <WasmDebugLevel Condition="'$(Configuration)' == 'Debug'">-1</WasmDebugLevel>
   </PropertyGroup>
+  <!--
+    Static graph builds (dotnet build -graph, and -graph -isolate; graph builds only, so every
+    other build stays as it was: IsGraphBuild is a global property the graph sets on every
+    node). The graph builds the project instances that the ProjectReference items predict,
+    with the targets that ProjectReferenceTargets items declare, before this project runs; with
+    -isolate this project may call nothing else (MSB4252). See AsmFoundation.References.targets
+    in the SDK for the asm side and the sources of these rules.
+      - The targets these consumer targets call on references: GetAsmConsumerInfo, GetAsmApiFile,
+        GetAsmNativeRuntimeAssets and GetAsmLinkInputs on asm projects; GetAsmNativeLibraries
+        and GetAsmNativeAssets on .NET projects in between. Declared for every reference, so
+        each is skipped where it does not exist (a plain C# library).
+      - The global properties each .asmproj reference is called with, at evaluation, exactly as
+        _AsmConfigureEachAsmProjectReference sets them when it runs: the consumer's own
+        switches removed (_AsmConsumerPropertiesToRemove), the RIDs a portable build asks for
+        (the reference's RuntimeIdentifiers metadata, as AsmRequestedRuntimeIdentifiers), and
+        a RID-specific build's RID. A portable build calls GetAsmConsumerInfo on that same
+        instance (its answer does not depend on the RIDs asked for).
+      - A RID-specific build calls GetAsmConsumerInfo without its RID: a graph-only twin of each
+        .asmproj reference without it gives the graph that instance too (_AsmGraphOnly, removed
+        again before any target runs by _AsmDropGraphOnlyConsumerReferences).
+    Footguns: a RID-specific build may pick another RID for a reference that does not build its
+    own (linux-arm64 for linux-musl-arm64), an instance the graph cannot predict; and a build with
+    a global RuntimeIdentifier (dotnet build -r) fails -isolate in .NET's own common targets, C#
+    projects alone included (GetTargetFrameworks removes the RID; measured with SDK 11.0.100).
+  -->
+  <PropertyGroup Condition="'$(UsingAsmFoundationSdk)' != 'true' and '$(IsGraphBuild)' == 'true'">
+    <_AsmConsumerReferenceTargets>GetAsmConsumerInfo;GetAsmApiFile;GetAsmNativeRuntimeAssets;GetAsmLinkInputs;GetAsmNativeLibraries;GetAsmNativeAssets</_AsmConsumerReferenceTargets>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(UsingAsmFoundationSdk)' != 'true' and '$(IsGraphBuild)' == 'true'">
+    <!-- The graph runs a node's targets in the order these items come in. These targets come
+         after the common targets' Build, Clean and Rebuild lists (NuGet's targets, this file
+         among them, are imported right after Microsoft.Common.CurrentVersion.targets), so a
+         referenced asm project is built before it is asked for its API file or its runtime
+         assets. C#'s Publish list comes later (Microsoft.Managed.After.targets), so Publish starts
+         with its main reference target here: without it, GetAsmApiFile ran before the asm
+         project's Build, found no API file on a first publish, and the app got no bindings
+         (measured: CS0103). That target cannot be marked SkipNonexistentTargets, hence its own
+         item. -->
+    <ProjectReferenceTargets Include="Build" Targets="$(_AsmConsumerReferenceTargets)" SkipNonexistentTargets="true" />
+    <ProjectReferenceTargets Include="Rebuild" Targets="$(_AsmConsumerReferenceTargets)" SkipNonexistentTargets="true" />
+    <ProjectReferenceTargets Include="Publish" Targets="$(_MainReferenceTargetForPublish)" Condition="'$(_MainReferenceTargetForPublish)' != ''" />
+    <ProjectReferenceTargets Include="Publish" Targets="$(_AsmConsumerReferenceTargets)" SkipNonexistentTargets="true" />
+    <!-- Clean configures the asm references too (_AsmConfigureAsmProjectReferences runs after
+         the framework negotiation, which Clean runs), and asks each for GetAsmConsumerInfo. -->
+    <ProjectReferenceTargets Include="Clean" Targets="GetAsmConsumerInfo" SkipNonexistentTargets="true" />
+    <!-- A rebuild (dotnet build with its no-incremental option) negotiates frameworks as a build
+         does, but the common targets declare GetTargetFrameworks for Build and Clean only:
+         -isolate failed every rebuild of a .NET project with references, C# alone included
+         (measured with SDK 11.0.100). Declared as the common targets declare it for Build. -->
+    <ProjectReferenceTargets Include="Rebuild" Targets="GetTargetFrameworks" OuterBuild="true" SkipNonexistentTargets="true" />
+    <!-- Publish negotiates frameworks too, and a multi-targeted reference's outer build gets only
+         the targets marked OuterBuild (as for the asm side's Publish list). -->
+    <ProjectReferenceTargets Include="Publish" Targets="GetTargetFrameworks" OuterBuild="true" SkipNonexistentTargets="true" />
+    <!-- The RID-less twins, taken before the request below is added (the removal would take
+         the RID out again anyway: the graph removes after it adds, as the MSBuild task does). -->
+    <_AsmConsumerGraphTwin Include="@(ProjectReference->WithMetadataValue('Extension', '.asmproj'))" Condition="'$(RuntimeIdentifier)' != ''" />
+    <ProjectReference Update="@(ProjectReference->WithMetadataValue('Extension', '.asmproj'))">
+      <GlobalPropertiesToRemove>%(ProjectReference.GlobalPropertiesToRemove);$(_AsmConsumerPropertiesToRemove)</GlobalPropertiesToRemove>
+      <_AsmGraphRequest Condition="'$(RuntimeIdentifier)' != ''">RuntimeIdentifier=$(RuntimeIdentifier)</_AsmGraphRequest>
+      <_AsmGraphRequest Condition="'$(RuntimeIdentifier)' == '' and '%(ProjectReference.RuntimeIdentifiers)' != ''">AsmRequestedRuntimeIdentifiers=$([System.String]::Copy('%(ProjectReference.RuntimeIdentifiers)').Replace(';', ',').Replace(' ', ''))</_AsmGraphRequest>
+    </ProjectReference>
+    <ProjectReference Update="@(ProjectReference->WithMetadataValue('Extension', '.asmproj'))">
+      <AdditionalProperties Condition="'%(ProjectReference._AsmGraphRequest)' != '' and '%(ProjectReference.AdditionalProperties)' == ''">%(ProjectReference._AsmGraphRequest)</AdditionalProperties>
+      <AdditionalProperties Condition="'%(ProjectReference._AsmGraphRequest)' != '' and '%(ProjectReference.AdditionalProperties)' != ''">%(ProjectReference.AdditionalProperties);%(ProjectReference._AsmGraphRequest)</AdditionalProperties>
+    </ProjectReference>
+    <!-- Its main target GetTargetFrameworks, not a build: this build never builds the
+         reference without its RID (Targets replaces the edge's default-targets marker). -->
+    <!-- %(GlobalPropertiesToRemove) unqualified: the new item's own, copied from the twin (a
+         reference qualified with the source item type evaluates to nothing in an Include). -->
+    <ProjectReference Include="@(_AsmConsumerGraphTwin)">
+      <GlobalPropertiesToRemove>%(GlobalPropertiesToRemove);RuntimeIdentifier;$(_AsmConsumerPropertiesToRemove)</GlobalPropertiesToRemove>
+      <Targets>GetTargetFrameworks</Targets>
+      <_AsmGraphOnly>true</_AsmGraphOnly>
+      <Private>false</Private>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+  </ItemGroup>
+
+  <!--
+    _AsmDropGraphOnlyConsumerReferences: the twins above exist for the graph alone, which has
+    read them by now; removed before any target runs (an initial target of every project that
+    imports these targets), or this project would build and deliver each asm reference twice.
+    Not in an asm project: its own targets drop its graph-only references.
+  -->
+  <Target Name="_AsmDropGraphOnlyConsumerReferences" Condition="'$(UsingAsmFoundationSdk)' != 'true' and '$(IsGraphBuild)' == 'true'">
+    <ItemGroup>
+      <ProjectReference Remove="@(ProjectReference)" Condition="'%(ProjectReference._AsmGraphOnly)' == 'true'" />
+    </ItemGroup>
+  </Target>
+
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmSelectRuntimeIdentifier" AssemblyFile="$(_AsmConsumerTasksAssembly)" Condition="'$(UsingAsmFoundationSdk)' != 'true'" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmAddNativeAssetsToDepsFile" AssemblyFile="$(_AsmConsumerTasksAssembly)" Condition="'$(UsingAsmFoundationSdk)' != 'true'" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmResolveNativeLayouts" AssemblyFile="$(_AsmConsumerTasksAssembly)" Condition="'$(UsingAsmFoundationSdk)' != 'true'" />

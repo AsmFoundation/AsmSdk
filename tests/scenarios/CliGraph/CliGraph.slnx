@@ -1,0 +1,11 @@
+<Solution>
+  <!-- CliGraph: MSBuild's static graph (dotnet build -graph, -graph -isolate) across a C# app, an
+       asm library, an asm program, the static library it links and a static library for both
+       target frameworks. The .asmproj entries carry the generic project type dotnet sln add
+       writes for them. -->
+  <Project Path="App/App.csproj" />
+  <Project Path="Lib/Lib.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+  <Project Path="Shared/Shared.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+  <Project Path="Multi/Multi.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+  <Project Path="Prog/Prog.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+</Solution>

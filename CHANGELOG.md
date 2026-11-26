@@ -75,6 +75,25 @@ Each SDK release names the one it was tested with.
   macro is defined. NASM writes its messages to `<object>.messages` (`-Z`), which the new
   `AsmLogNasmMessages` task logs; `fatal:` messages are errors now (they were plain output).
   `ASM0008` (warning): the messages file could not be read.
+- **MSBuild's static graph with `-isolate`** (the owner's choice, "Support -isolate"):
+  `dotnet build`, `clean`, a rebuild and `dotnet publish` with `-graph -isolate`, where a project
+  may call only the project instances the graph predicted from `ProjectReference` items, with the
+  targets `ProjectReferenceTargets` declared. 0.4.0 stopped with `MSB4252` at a C# app's first
+  call into an asm library and at a program's first call into its static library. In graph builds
+  only (`IsGraphBuild`), so every other build is unchanged: the asm targets that projects call on
+  their references are declared (with the main reference target first in a C# app's Publish list,
+  so a library is built before it is asked for its API file; and a Publish list for asm projects,
+  which C# gets from Microsoft.Managed.After.targets); each RID outer build references its own RID
+  builds, with its dispatch's global properties, so the graph builds them first and predicts
+  their references; a RID build's `.asmproj` references get its RID, and a graph-only twin
+  without it for the framework negotiation that removes it; asm references drop the RID builds'
+  folders and the publish switch, as a .NET app's already do, so every view of a reference is one
+  instance (the graph's transitive edges otherwise built a reference's RID builds a second time,
+  into folders such as `publish/linux-x64/win-x64/`); and `GetTargetFrameworks` is declared for
+  Rebuild, which .NET's common targets omit (a C# app and library alone failed a rebuild with
+  `-isolate`). The graph-only references are removed before any target runs. Restore first
+  (NuGet fails `-isolate`); a build with `-r` fails it at .NET's own negotiation for C#
+  references, asm references pass.
 - **`docs/guide/dotnet-cli.md`:** every `dotnet` command with asm projects, the switches the
   suite runs against them, and where the .NET CLI draws the line.
 - **Tests of the dotnet CLI.** Scenarios `CliBuild` (build, clean, publish and restore switches:
@@ -89,11 +108,16 @@ Each SDK release names the one it was tested with.
   project's folder, `--no-build`, an artifacts path, `-f`). `WatchTests` runs `dotnet watch` and
   edits an include file; ProgramTests and WebAssemblyTests check the environment and a launch
   profile's arguments through wasmtime, WSL and Docker; WarningSwitchTests the command line's
-  warning switches by NASM name. The scenario format gained a step's `cwd`, `missing` files, and
-  the `{os}`, `{arch}` and `{otherarch}` placeholders.
+  warning switches by NASM name; `CliGraph` the static graph with `-isolate` (build, rebuild,
+  clean, `-o`, a program's and an app's publish). The scenario format gained a step's `cwd`,
+  `missing` files, and the `{os}`, `{arch}` and `{otherarch}` placeholders.
 
 ### Fixed
 
+- **`dotnet build -graph` failed for a project referencing a `freestanding;libc` asm project**
+  (`MSB4057: The target "GetNativeManifest" does not exist`): asm projects declared no
+  `InnerBuildProperty`, so the static graph sent a framework build's targets to the
+  multi-targeted outer build. They declare `TargetFramework`, as C# projects do.
 - **`dotnet clean` left a library's `<name>.h` and `<name>.api.json`** in
   `bin/<Configuration>/<tfm>/` (also with `-o`, an artifacts path and `TargetFrameworks`): the
   RID outer build, which writes them, never recorded its files for clean. It runs

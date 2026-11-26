@@ -1,0 +1,12 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    CliGraph's static library for both target frameworks (sub_ints): Prog, a libc program, links
+    its libc build, NuGet's nearest framework. In MSBuild's static graph its frameworks are inner
+    builds (InnerBuildProperty, as for a multi-targeted C# library), which the graph reaches
+    from each of Prog's RID builds. It names no RID: it is built for the RIDs of Prog's builds.
+  -->
+  <PropertyGroup>
+    <TargetFrameworks>freestanding;libc</TargetFrameworks>
+    <OutputType>StaticLibrary</OutputType>
+  </PropertyGroup>
+</Project>

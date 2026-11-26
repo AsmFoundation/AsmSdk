@@ -8,9 +8,11 @@
 > gets it from a profile) builds its asm references for their default RIDs, so a program fails
 > to link a static library of another RID; `dotnet watch` ignores `.inc` edits; `-e` and launch
 > profile variables, and a profile's arguments, never reach wasmtime, WSL or Docker; NASM's
-> warnings have no code, so `-nowarn:` and `-warnaserror:` cannot name them; a tool packed with
-> `-p:PackageId=` on the command line fails; and `--include-symbols` with `snupkg` writes an
-> empty `.snupkg`. The [changelog](changelog.md) lists every change.
+> warnings have no code, so `-nowarn:` and `-warnaserror:` cannot name them; `dotnet build -graph
+> -isolate` stops at the first call into an asm project, and `-graph` alone fails for a project
+> that references a `freestanding;libc` one; a tool packed with `-p:PackageId=` on the command line
+> fails; and `--include-symbols` with `snupkg` writes an empty `.snupkg`. The
+> [changelog](changelog.md) lists every change.
 
 An `.asmproj` works with the `dotnet` commands the way a `.csproj` does. This page lists each
 command, what it does with asm projects, and the switches the test suite runs against them on
@@ -22,13 +24,13 @@ line are at the end.
 
 | Command | With asm projects | Checked by |
 |---|---|---|
-| `dotnet build` | Builds each RID the project or its users ask for. `-c`, `-f`, `-r`, the arch switch (`-a arm64`: this OS, that CPU), the os switch (`--os linux`), the use-current-runtime switch (`--ucr`: this machine's RID, as `-r` would), `-o` (one folder per RID inside it), an artifacts path (`--artifacts-path`, or `UseArtifactsOutput`), `--no-incremental`, `--no-dependencies`, `--no-restore`, `-graph`, `-p:`, `-bl`, `-tl`; `-nowarn:`, `-warnaserror:` and `-warnnotaserror:` with NASM's warning names (`label-orphan`), which are its warnings' codes | CliBuild, PlugAndPlay, WarningSwitchTests |
-| `dotnet clean` | Deletes every RID build and the library's own `<name>.h` and `<name>.api.json`, with the same `-c`, `-o` or artifacts path the build had | CliBuild |
+| `dotnet build` | Builds each RID the project or its users ask for. `-c`, `-f`, `-r`, the arch switch (`-a arm64`: this OS, that CPU), the os switch (`--os linux`), the use-current-runtime switch (`--ucr`: this machine's RID, as `-r` would), `-o` (one folder per RID inside it), an artifacts path (`--artifacts-path`, or `UseArtifactsOutput`), `--no-incremental`, `--no-dependencies`, `--no-restore`, `-graph` and `-graph -isolate` (MSBuild's static graph, below), `-p:`, `-bl`, `-tl`; `-nowarn:`, `-warnaserror:` and `-warnnotaserror:` with NASM's warning names (`label-orphan`), which are its warnings' codes | CliBuild, CliGraph, PlugAndPlay, WarningSwitchTests |
+| `dotnet clean` | Deletes every RID build and the library's own `<name>.h` and `<name>.api.json`, with the same `-c`, `-o` or artifacts path the build had; `-graph -isolate` too | CliBuild, CliGraph |
 | `dotnet restore` | Lock files (`--use-lock-file`, `--locked-mode`, `RestoreLockedMode`), `--packages`, `-r`, `--force`, `--no-cache`; the toolchain download is a `PackageDownload`, which lock files do not list | CliBuild |
 | `dotnet run` | Runs a program: on this machine, its emulation, wasmtime, WSL or Docker ([Programs](programs.md#dotnet-run)). Arguments after `--`, launch profiles (`-lp`, `--no-launch-profile`; through wasmtime, WSL and Docker a profile's arguments reach the program through a launcher the SDK starts in between), `-e`, `--no-build`, `-c`, `-f`, an artifacts path, a run from the project's folder | CliRun, ProgramTests, WebAssemblyTests |
 | `dotnet test` | Tests asm code from C# tests, with Microsoft.Testing.Platform or VSTest (`--filter`, `--logger`, `-r` on the test project, `--no-build`). `dotnet test` of an `.asmproj` itself finds no test project, as for any library | PlugAndPlay, PlugAndPlayVSTest, AsmUnitTests |
 | `dotnet pack` | Packs the libraries and programs of every RID ([References and packages](references-and-packages.md)). `--version`, `--version-suffix`, `--no-build`, `--include-source`. `--include-symbols` with `SymbolPackageFormat=snupkg` makes no `.snupkg`: that format holds portable PDBs, and an asm package has none | CliPack |
-| `dotnet publish` | Publishes a program for each RID, or the one of `-r`, `--ucr` or a publish profile (`-p:PublishProfile=<name>`: its `RuntimeIdentifier` and `PublishDir`); `-o`, `--no-build`, an artifacts path | CliBuild, ProgramTests |
+| `dotnet publish` | Publishes a program for each RID, or the one of `-r`, `--ucr` or a publish profile (`-p:PublishProfile=<name>`: its `RuntimeIdentifier` and `PublishDir`); `-o`, `--no-build`, an artifacts path, `-graph -isolate` | CliBuild, CliGraph, ProgramTests |
 | `dotnet sln` | `.sln` and `.slnx`: `add` (with the SDK's project type, `--solution-folder`, `--in-root`), `list`, `remove`, `migrate` | CliSolution, PlugAndPlay |
 | `dotnet reference` | `add` from an asm project to another, `list`, `remove`. From a `.csproj` to an `.asmproj`, `add` is refused by the CLI (below) | CliSolution, PlugAndPlay |
 | `dotnet package` | `add` (central package management too), `list` (`--include-transitive`, `--outdated`, `--vulnerable`, `--format json`), `remove`; `dotnet nuget why` | CliPack |
@@ -55,8 +57,12 @@ line are at the end.
   reach MSBuild without a code, and `-nowarn:` or `-warnaserror:` cannot pick one out; a plain
   `-warnaserror` covers them. NASM's warnings carry their names as codes
   ([Projects](projects.md)).
-- **`dotnet build -graph -isolate`** (MSBuild's isolated graph builds) stops a .NET project that
-  references an asm project with `MSB4252`: the SDK asks an asm project for its outputs with the
-  RID of the consumer, which the static graph does not predict. `-graph` alone works.
+- **Static graph builds** (`dotnet build -graph`, and `-graph -isolate`, where a project may call
+  only the project instances the graph predicted, with the targets it was told of): restore
+  first and build with `--no-restore`, because NuGet's restore fails `-isolate` for any project,
+  C# alone included. A build with a global RuntimeIdentifier (`-r`) fails `-isolate` at .NET's
+  own framework negotiation for a C# reference (also C# alone; measured with SDK 11.0.100); asm
+  references pass. In a graph build an asm reference builds into its own `bin/`, not the
+  referencing program's `-o` folder.
 - **`dotnet run` has no use-current-runtime switch**: `dotnet run --ucr` passes `--ucr` to the
   program. Use `-r <rid>`.

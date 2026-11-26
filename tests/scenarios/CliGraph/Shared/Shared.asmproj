@@ -1,0 +1,10 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    CliGraph's static library: mul_ints (mul.asm for x64, mul.s for ARM64), declared for its
+    users in include/Shared.inc, as in CliBuild. It names no RID: Prog's RID builds reach it with
+    theirs, and the static graph must predict each of those instances.
+  -->
+  <PropertyGroup>
+    <OutputType>StaticLibrary</OutputType>
+  </PropertyGroup>
+</Project>
