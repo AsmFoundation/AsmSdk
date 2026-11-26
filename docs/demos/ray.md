@@ -83,6 +83,6 @@ node Kernel/run.mjs               # calls it from Node; a page loads it the same
 ```
 
 The [WebAssembly guide](../guide/webassembly.md) covers the language, the `FUNCTION` macros and the
-traps. One trap this kernel met: `f32.const` takes a decimal only when it is short and exact
-(`0.5`, `40.0`), so its other constants are hex floats, the form llvm-mc prints (`0x1.0624dep-10`
-is 0.001).
+traps. One trap this kernel met: `f32.const` takes a decimal only when llvm-mc can prove it exact
+(`0.5` and `40.0` are, `0.001` is not), so its other constants are hex floats, the form llvm-mc
+prints (`0x1.0624dep-10` is 0.001 rounded to f32).
