@@ -467,11 +467,14 @@ Each was measured with the bundled LLVM 23.1.5 and .NET 10.0.15:
   is not supported", even for a `.L` name, so a macro cannot keep a counter or a flag in a
   symbol. A label (defined once) and a macro that is purged and defined again can stand in, as
   the PROTO guard does.
-- **`f32.const` takes few decimals.** Short, exact ones assemble (`1.0`, `0.5`, `256.0`). An integer
-  (`f32.const 1`) does not, and neither does any other decimal, even the exact
-  `0.4199999868869781494140625` ("Cannot parse real"). Write a hex float, the form llvm-mc
-  prints: `f32.const 0x1.ae147ap-2` is 0.42 rounded to f32, and Python's `float.hex` gives it.
-  The [Wasm Demos](../demos/index.md) write all their constants this way.
+- **`f32.const` takes few decimals.** llvm-mc reads a float operand as a double and refuses any it
+  cannot prove exact: a decimal assembles only when it is a double whose significant digits fit
+  in 63 bits (`1.0`, `0.5`, `256.0`, `1e3`). `0.42` and `0.1` stop with "Cannot parse real", and
+  so does the exact `0.4199999868869781494140625`; an integer (`f32.const 1`) stops with "invalid
+  operand for instruction". Write a hex float, the form llvm-mc prints: `f32.const 0x1.ae147ap-2`
+  is 0.42 rounded to f32, and Python's `float.hex` gives it. An f32 operand more precise than an
+  f32 is rounded without a word (`f32.const 16777217.0` stores 16777216.0). The
+  [Wasm Demos](../demos/index.md) write all their constants this way.
 
 ## Diagnostics
 

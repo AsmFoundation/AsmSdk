@@ -117,11 +117,17 @@
 //     "type mismatch" at the line where it stops agreeing (a local.tee whose
 //     value nothing takes is the usual cause; an untyped select is refused too,
 //     so choose with if/else or with arithmetic).
-//   - f32.const and f64.const take a decimal only when it is short and exact:
-//     "1.0", "0.5" and "256.0" assemble, "1", "0.42" and even the exact
-//     "0.4199999868869781494140625" stop with "Cannot parse real". Write such a
-//     number as a hex float, the form llvm-mc prints: f32.const 0x1.ae147ap-2
-//     is 0.42 (Python's float.hex of the value rounded to f32 gives it).
+//   - f32.const, f64.const and a float v128.const read each operand as a double
+//     and stop on any they cannot prove exact: a decimal passes only when it is
+//     a double whose significant digits fit in 63 bits. "1.0", "0.5", "3.75"
+//     and "1e3" assemble; "0.42", "0.1" and even the exact
+//     "0.4199999868869781494140625" (82 bits of digits) stop with "Cannot parse
+//     real". An integer ("1") stops with "invalid operand for instruction", as
+//     "inf" does (write infinity), and a 0 that no point follows ("06.5") starts
+//     an octal integer. Write such a number as a hex float, the form llvm-mc
+//     prints: f32.const 0x1.ae147ap-2 is 0.42 (Python's float.hex of the value
+//     rounded to f32 gives it). An f32 operand more precise than an f32 is
+//     rounded without a word: f32.const 16777217.0 stores 16777216.0.
 //   - The names here are upper case; "call" is the instruction, "CALL" the
 //     macro.
 //   - PROTO and the function macros go between functions, never inside one:

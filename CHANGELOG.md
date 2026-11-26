@@ -169,9 +169,14 @@ Each SDK release names the one it was tested with.
         for bit against a renderer that repeats every f32 operation. ExampleTests runs it, and
         checks that the modules the site serves are the build's, byte for byte.
       - Found on the way, now in `asmsdk-wasm.inc`, the guide and the troubleshooting page:
-        `f32.const` takes a decimal only when it is short and exact ("Cannot parse real",
-        otherwise), so constants are hex floats; and a `local.tee` whose value nothing takes is
-        a "type mismatch" at the end of its loop.
+        llvm-mc reads a float operand as a double and refuses any it cannot prove exact (a
+        decimal passes only when it is a double whose significant digits fit in 63 bits:
+        "Cannot parse real" otherwise; an integer is "invalid operand for instruction"), so
+        constants are hex floats; an f32 operand more precise than an f32 is rounded without a
+        word; and a `local.tee` whose value nothing takes is a "type mismatch" at the end of
+        its loop. Measured on 9,000 random literals against llvm-mc 23.1.5, every acceptance
+        and every stored bit as the rule says (the asmsdk plugin's linter carries it as
+        ASMWASM015/016).
   - **Fixed on the way:** an asm library that reaches a .NET WebAssembly app through a .NET
     library (`Crc32C.Browser` through `Crc32C.Net`) is linked into the app like a direct
     reference. The native layout steps now skip a WebAssembly app, which deploys no native file:
