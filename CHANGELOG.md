@@ -130,6 +130,12 @@ Each SDK release names the one it was tested with.
 
 ### Fixed
 
+- **With the .NET 10.0.1xx SDKs, a project referencing an object files project failed to link**
+  (`duplicate symbol`): those SDKs' NuGet writes an asm project's assets file so that its own
+  project references come back as transitive ones, and the .NET SDK added each as a second
+  `ProjectReference` (measured with SDK 10.0.101; SDK 10.0.404 and 11.0.100 do not), whose
+  objects reached the linker again. A reference added that way is dropped now when it names a
+  project the project references itself.
 - **`dotnet build -graph` failed for a project referencing a `freestanding;libc` asm project**
   (`MSB4057: The target "GetNativeManifest" does not exist`): asm projects declared no
   `InnerBuildProperty`, so the static graph sent a framework build's targets to the

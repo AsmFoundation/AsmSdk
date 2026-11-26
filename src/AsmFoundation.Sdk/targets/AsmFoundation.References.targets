@@ -638,6 +638,36 @@
   </Target>
 
   <!--
+    _AsmDropTransitiveCopiesOfOwnReferences: a reference the .NET SDK adds while the build runs
+    (IncludeTransitiveProjectReferences, from the assets file restore wrote: such items carry
+    NuGetPackageId) that names a project this project references itself goes again, in every
+    build. The .NET 10.0.1xx SDKs' NuGet writes an asm project's assets file so that its own
+    project references come back as transitive ones (measured with SDK 10.0.101: ObjectsUser's
+    one reference became two, its ProjectReference item and "..\ObjectsLib\ObjectsLib.asmproj";
+    restored by 11.0.100, one), and the copy got the same outputs again: an object files
+    project's objects reached the linker twice, "duplicate symbol: obj_seven", and failed the
+    build (an archive twice is harmless, an object twice is not). Compared by full path, since
+    the copy is written with backslashes; the project's own item, with its metadata, stays.
+    Before _AsmPrepareTransitiveGraphReferences, which then sees only the true transitive ones.
+    How: every added reference is taken out and those that are not the project's own are put
+    back, by full path, with their metadata (a transform keeps the source item's). A Remove
+    conditioned on AnyHaveMetadataValue with the batched path as its argument matched nothing
+    (measured with SDK 10.0.101: both items stayed), hence the set operations.
+  -->
+  <Target Name="_AsmDropTransitiveCopiesOfOwnReferences" AfterTargets="IncludeTransitiveProjectReferences">
+    <ItemGroup>
+      <_AsmOwnReferencePath Include="@(ProjectReference->'%(FullPath)')" Condition="'%(ProjectReference.NuGetPackageId)' == ''" />
+      <_AsmAddedReferencePath Include="@(ProjectReference->'%(FullPath)')" Condition="'%(ProjectReference.NuGetPackageId)' != ''" />
+      <_AsmAddedReferenceKept Include="@(_AsmAddedReferencePath)" Exclude="@(_AsmOwnReferencePath)" />
+      <ProjectReference Remove="@(ProjectReference)" Condition="'%(ProjectReference.NuGetPackageId)' != ''" />
+      <ProjectReference Include="@(_AsmAddedReferenceKept)" />
+      <_AsmOwnReferencePath Remove="@(_AsmOwnReferencePath)" />
+      <_AsmAddedReferencePath Remove="@(_AsmAddedReferencePath)" />
+      <_AsmAddedReferenceKept Remove="@(_AsmAddedReferenceKept)" />
+    </ItemGroup>
+  </Target>
+
+  <!--
     _AsmPrepareTransitiveGraphReferences: the .asmproj references the .NET SDK adds while the
     build runs (IncludeTransitiveProjectReferences: what the project's references reference, read
     from the assets file restore wrote, such as the static library a static library links) get

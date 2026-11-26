@@ -8,5 +8,10 @@
     <!-- The sample package goes to the same local feed the samples restore from. -->
     <PackageOutputPath>$(MSBuildThisFileDirectory)../artifacts/packages/</PackageOutputPath>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- Except NuGet's vulnerability audit (NU1901-NU1904), as in tests/scenarios and
+         tests/projects: an advisory published later against a package a sample pulls in (a .NET
+         SDK's own ILCompiler or runtime pack, say) must show, not fail every build that changed
+         nothing (SDK 10.0.101's ILCompiler 10.0.1 has a high-severity advisory: NU1903). -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
   </PropertyGroup>
 </Project>

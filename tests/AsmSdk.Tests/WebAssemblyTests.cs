@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using AsmSdk.Tests.Infrastructure;
 using Xunit;
 
@@ -159,7 +160,11 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
     /// does not build the app either (CI run 45351481101), so CI's Windows x64 runner installs a
     /// .NET 10 SDK of its own. The property is the switch .NET's own imports test, and the one
     /// the SDK's ASM0054 check reads, so these tests run exactly where the apps can be linked.
-    /// Evaluation only, once per project.
+    /// The switch is on whenever the SDK matches the app's .NET version, installed workload or
+    /// not, so .NET's own MissingWorkloadPack items count too: a .NET 10 SDK without wasm-tools
+    /// answered "true", and every browser app test then failed with NETSDK1147 instead of
+    /// skipping (measured with SDK 10.0.101 installed alone, nine tests). Evaluation only, once per
+    /// project.
     /// </remarks>
     internal static void RequireWasmNativeBuild(SdkUnderTest sdk, string project, string property)
     {
@@ -169,13 +174,79 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
             Assert.Skip("ASMSDK_TEST_WASM_APPS=none");
         }
 
-        CommandResult answer = sdk.Once($"{project} {property}", () => sdk.DotnetCommand("msbuild", project, $"-getProperty:{property}", "-nologo"));
+        CommandResult answer = sdk.Once($"{project} {property} MissingWorkloadPack", () => sdk.DotnetCommand("msbuild", project, $"-getProperty:{property}", "-getItem:MissingWorkloadPack", "-nologo"));
         CommandResult version = sdk.Once("dotnet --version", () => sdk.DotnetCommand("--version"));
-        RequireForWasmApps(answer.ExitCode == 0 && answer.StdOut.Trim() == "true",
-            $"The dotnet on PATH ({version.StdOut.Trim()}) has no native WebAssembly build for {Path.GetFileName(project)}: {property} is '{answer.StdOut.Trim()}' " +
-            $"(exit {answer.ExitCode}). It needs the wasm-tools workload for browser-wasm, or wasi-experimental and WASI_SDK_PATH for wasi-wasm, " +
+        (string value, string[] missing) = ReadWorkloadAnswer(answer, property);
+        RequireForWasmApps(answer.ExitCode == 0 && value == "true" && missing.Length == 0,
+            $"The dotnet on PATH ({version.StdOut.Trim()}) has no native WebAssembly build for {Path.GetFileName(project)}: {property} is '{value}'" +
+            (missing.Length == 0 ? "" : $", missing workload packs {string.Join(", ", missing)}") +
+            $" (exit {answer.ExitCode}). It needs the wasm-tools workload for browser-wasm, or wasi-experimental and WASI_SDK_PATH for wasi-wasm, " +
             "of the app's .NET version: for these net10.0 apps, a .NET 10 SDK",
             rid);
+    }
+
+    /// <summary>
+    /// Reads dotnet msbuild's answer to -getProperty and -getItem together: a JSON object with
+    /// the property under "Properties" and the items under "Items".
+    /// </summary>
+    /// <param name="answer">The command's result.</param>
+    /// <param name="property">The property asked for.</param>
+    /// <returns>
+    /// The property's value and the MissingWorkloadPack items' names; an empty value and no items
+    /// when the command failed or printed no such object (the caller's message then shows its
+    /// exit code, and the run skips or fails as for a value other than "true").
+    /// </returns>
+    private static (string Value, string[] Missing) ReadWorkloadAnswer(CommandResult answer, string property)
+    {
+        // The object is all the command prints when it succeeds; anything before its first brace
+        // (a notice of a preview SDK, say) is not part of it.
+        string output = answer.StdOut;
+        int start = output.IndexOf('{');
+        if (answer.ExitCode != 0 || start < 0)
+        {
+            return ("", []);
+        }
+
+        try
+        {
+            using JsonDocument json = JsonDocument.Parse(output[start..]);
+            string value = json.RootElement.TryGetProperty("Properties", out JsonElement properties) && properties.TryGetProperty(property, out JsonElement found)
+                ? found.GetString() ?? ""
+                : "";
+            string[] missing = json.RootElement.TryGetProperty("Items", out JsonElement items) && items.TryGetProperty("MissingWorkloadPack", out JsonElement packs)
+                ? packs.EnumerateArray().Select(pack => pack.TryGetProperty("Identity", out JsonElement name) ? name.GetString() ?? "?" : "?").ToArray()
+                : [];
+            return (value, missing);
+        }
+        catch (JsonException)
+        {
+            // Not the object -getProperty/-getItem print: as if nothing was answered.
+            return ("", []);
+        }
+    }
+
+    /// <summary>
+    /// Requires that .NET itself not stop every build of a browser app for workload packs it
+    /// wants and lacks: a .NET SDK of the app's own .NET version without the wasm-tools workload
+    /// lists them as MissingWorkloadPack items, and its _CheckForMissingWorkload fails the first
+    /// target with NETSDK1147, before any target a test reads (measured with SDK 10.0.101 alone).
+    /// Elsewhere such an app evaluates and runs its early targets without the workload.
+    /// </summary>
+    /// <param name="app">The browser app's project name (tests/projects/&lt;app&gt;/&lt;app&gt;.csproj).</param>
+    /// <exception cref="Exception">Xunit's skip exception; an assertion failure when the run is required.</exception>
+    /// <remarks>
+    /// The same evaluation, and the same cached answer, as <see cref="RequireWasmNativeBuild(SdkUnderTest, string, string)"/>,
+    /// whose switch does not matter here: only the missing packs do.
+    /// </remarks>
+    private void RequireNoMissingWorkloadPacks(string app)
+    {
+        const string Property = "UsingBrowserRuntimeWorkload";
+        string project = Repo.TestProjectPath(app, app + ".csproj");
+        CommandResult answer = sdk.Once($"{project} {Property} MissingWorkloadPack", () => sdk.DotnetCommand("msbuild", project, $"-getProperty:{Property}", "-getItem:MissingWorkloadPack", "-nologo"));
+        (_, string[] missing) = ReadWorkloadAnswer(answer, Property);
+        RequireForWasmApps(missing.Length == 0,
+            $"The dotnet on PATH wants the workload packs {string.Join(", ", missing)} for {app} and does not have them: .NET stops every build of it (NETSDK1147). Install the wasm-tools workload of the app's .NET version",
+            "browser-wasm");
     }
 
     /// <summary>Requires .NET's native WebAssembly build for a .NET app of tests/projects (see the static overload).</summary>
@@ -773,9 +844,11 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
     /// evaluation, for a package its props in a target before PrepareForBuild: the value is read
     /// after that target ran (-getProperty with -t), which .NET's boot configuration tasks, run
     /// later, see too. Evaluation and one early target only: the apps with project references run
-    /// on every machine, with the workloads or without. The package apps need .NET's native
-    /// WebAssembly build, because their props' ASM0054 check runs before PrepareForBuild as well
-    /// and stops them without it (measured with SDK 11.0.100 and no workload).
+    /// on every machine, with the workloads or without, unless .NET itself stops them for
+    /// workload packs it wants and lacks (<see cref="RequireNoMissingWorkloadPacks"/>). The package
+    /// apps need .NET's native WebAssembly build, because their props' ASM0054 check runs before
+    /// PrepareForBuild as well and stops them without it (measured with SDK 11.0.100 and no
+    /// workload).
     /// </summary>
     /// <param name="app">The browser app (<see cref="BrowserApps"/>).</param>
     [Theory]
@@ -785,6 +858,10 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
         if (app.Contains("Package", StringComparison.Ordinal))
         {
             RequireWasmNativeBuild(app, "UsingBrowserRuntimeWorkload");
+        }
+        else
+        {
+            RequireNoMissingWorkloadPacks(app);
         }
 
         PackWasmLibraryFor(app);
