@@ -55,7 +55,7 @@ public sealed class TemplateTests(SdkUnderTest sdk)
         Assert.Equal(
             new SortedSet<string>(StringComparer.Ordinal)
             {
-                "AsmFoundation.Templates.nuspec", "LICENSE", "README.md",
+                "AsmFoundation.Templates.nuspec", "LICENSE", "README.md", "icon.png",
                 "content/asmexe/.template.config/dotnetcli.host.json", "content/asmexe/.template.config/template.json",
                 "content/asmexe/AsmApp.1.asmproj", "content/asmexe/main.asm", "content/asmexe/main.s",
                 "content/asmlib/.template.config/dotnetcli.host.json", "content/asmlib/.template.config/template.json",

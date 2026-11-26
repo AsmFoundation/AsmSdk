@@ -25,6 +25,9 @@
     <Description>Enterprise-grade project, dependency and build management for assembly, on MSBuild and NuGet. The SDK behind .asmproj projects: x64 (NASM) and ARM64 (GNU syntax) assembly built into shared libraries, static libraries and programs for Windows, Linux and macOS with dotnet build, consumed through PackageReference and ProjectReference, and packed with dotnet pack. A C# project that references an .asmproj gets the binary of its platform by .NET's runtime identifier rules. Ships with a bundled NASM + LLVM toolchain, so no assembler or linker needs to be installed.</Description>
     <PackageTags>assembly;nasm;asm;asmproj;msbuild;sdk;native;x86-64;x64;arm64;aarch64;windows;linux;macos;cross-platform</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- The AsmFoundation A (src/icon.png, shared by every package of this repository): nuget.org, the IDEs'
+         package managers and a nuget.org link's preview show it instead of NuGet's default box. -->
+    <PackageIcon>icon.png</PackageIcon>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -51,6 +54,7 @@
     <None Include="buildTransitive/*.targets" Pack="true" PackagePath="buildTransitive/" />
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Include="../../LICENSE" Pack="true" PackagePath="/" />
+    <None Include="../icon.png" Pack="true" PackagePath="/" />
   </ItemGroup>
 
   <!--

@@ -25,6 +25,8 @@
     <Description>dotnet new templates for assembly projects built with AsmFoundation.Sdk: an assembly library (asmlib), an assembly program (asmexe), a static library (asmstatic), a solution with a C# app, the assembly library it calls and its tests (asmnet), a WebAssembly library (asmwasm), and a solution with a .NET WebAssembly app and the WebAssembly library it calls (asmwasmapp). The projects build for this machine with dotnet build, run with dotnet run, test with dotnet test, and target Windows, Linux and macOS on x64 and ARM64, and WebAssembly.</Description>
     <PackageTags>dotnet-new;templates;assembly;asm;nasm;native;interop;msbuild-sdk</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- The AsmFoundation A (src/icon.png), as on every package of this repository. -->
+    <PackageIcon>icon.png</PackageIcon>
     <!-- Nothing managed: no assembly, no dependencies, only the templates. The template
          sources are not items of this project (EnableDefaultItems), so the C# files in them are
          never compiled here, and no assembly info is generated to compile instead. -->
@@ -45,6 +47,7 @@
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Include="../../LICENSE" Pack="true" PackagePath="/" />
+    <None Include="../icon.png" Pack="true" PackagePath="/" />
     <!-- The template sources, as written: bin/ and obj/ of a build someone ran in place stay out. -->
     <_AsmTemplateSource Include="templates/**/*" Exclude="templates/**/bin/**;templates/**/obj/**" />
   </ItemGroup>

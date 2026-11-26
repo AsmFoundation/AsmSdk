@@ -18,6 +18,12 @@ Each SDK release names the one it was tested with.
   AsmFoundation's line under the title and a teal accent for Discord. `docs/og.cs` writes the
   Open Graph and Twitter tags into DocFX's output after each build (the template writes none);
   `docs/cards/card.html` is the demo cards' source.
+- **A package icon.** AsmFoundation.Sdk, AsmFoundation.Templates and the AsmFoundation.Toolchain
+  packages carry the AsmFoundation A (`src/icon.png`, 256 px) as their `PackageIcon`, so
+  nuget.org, Visual Studio's and Rider's package managers and a nuget.org link's preview show it
+  instead of NuGet's default box. Not released yet: the SDK and the templates get it with their
+  next version; the toolchain packages only with a new `packageVersion` in
+  `toolchain/versions.json`, since a release that keeps 0.2.0 skips them as duplicates.
 
 ## [0.4.0] — 2026-11-26
 

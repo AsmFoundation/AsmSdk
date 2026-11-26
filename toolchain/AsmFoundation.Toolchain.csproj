@@ -21,6 +21,10 @@
     <DevelopmentDependency>true</DevelopmentDependency>
     <PackageTags>assembly;nasm;llvm-mc;lld;llvm;toolchain;asmproj;arm64;x64</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- The AsmFoundation A (src/icon.png), as on every package of this repository. A change here changes the
+         package, so it reaches nuget.org only with the next packageVersion in versions.json: a release that
+         keeps the version skips the toolchain packages as duplicates, icon or not. -->
+    <PackageIcon>icon.png</PackageIcon>
     <_ToolchainVersionsJson>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)versions.json'))</_ToolchainVersionsJson>
     <!-- The toolchain's own version (versions.json "packageVersion"), not the SDK's. -->
     <Version>$([System.Text.RegularExpressions.Regex]::Match($(_ToolchainVersionsJson), '"packageVersion"\s*:\s*"([^"]+)"').Result('$1'))</Version>
@@ -36,6 +40,7 @@
   <ItemGroup>
     <None Include="$(_ToolsDirectory)**" Pack="true" PackagePath="tools/" />
     <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="../src/icon.png" Pack="true" PackagePath="/" />
   </ItemGroup>
 
   <!-- Fail with the fix instead of packing an empty toolchain. -->
