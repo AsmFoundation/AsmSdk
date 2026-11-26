@@ -2,9 +2,10 @@
 
 This page covers how each kind of output is linked on each OS, how a program reaches its C
 library without the target's sysroot or SDK, and the link options that matter in production.
-Every link line here is the one the 0.3.0 targets produce, with the bundled lld 23.1.5. The
-error messages are lld's own. [Platforms and runtime identifiers](platforms.md) covers the
-seven RIDs, and how one source serves several of them.
+Every link line here is the one the 0.3.0 and 0.4.0 targets produce, with the bundled lld
+23.1.5. The error messages are lld's own. [Platforms and runtime identifiers](platforms.md)
+covers the RIDs, and how one source serves several of them; WebAssembly's links are in
+[WebAssembly](webassembly.md).
 
 
 ## Choosing a target framework
@@ -50,9 +51,10 @@ link ends with the OS's common arguments, then the `ExportsFile` arguments, then
 | freestanding executable | `-static -e <StartupObject or _start> -o <name> <objects> <link inputs>` |
 | libc executable | `-pie --dynamic-linker <loader> -z relro -z now --hash-style=gnu -e _start -o <name> crt1.o <objects> <link inputs> libasmsdk_nonshared.a --no-as-needed <C library stub>` |
 
-The C library stub is `libc.so.6` (glibc) or `libc.musl-x86_64.so.1` (musl). The loader is
-`/lib64/ld-linux-x86-64.so.2` (linux-x64), `/lib/ld-linux-aarch64.so.1` (linux-arm64) or
-`/lib/ld-musl-x86_64.so.1` (linux-musl-x64). `AsmDynamicLinker` overrides the loader.
+The C library stub is `libc.so.6` (glibc), `libc.musl-x86_64.so.1` or
+`libc.musl-aarch64.so.1` (musl). The loader is `/lib64/ld-linux-x86-64.so.2` (linux-x64),
+`/lib/ld-linux-aarch64.so.1` (linux-arm64), `/lib/ld-musl-x86_64.so.1` (linux-musl-x64) or
+`/lib/ld-musl-aarch64.so.1` (linux-musl-arm64). `AsmDynamicLinker` overrides the loader.
 
 **Windows** (lld-link). Common arguments: `-nodefaultlib -machine:x64` (or `arm64`) `-Brepro`,
 plus `-debug` when debug symbols are on.
@@ -102,10 +104,9 @@ for a `libc` one. A program with an `ExportsFile` gets `-implib:<name>.lib` inst
 - **Static library:** deleting the archive first means objects of removed sources do not
   linger in it.
 
-**Order:** your objects come first, then `AsmLinkLibrary` items in the order added, so
-references and packages come after anything you list yourself, then the system libraries.
-(Not released yet: the item is `NativeLibrary`, NativeAOT's name for the same inputs, and
-`AsmLinkLibrary` is error ASM0109.)
+**Order:** your objects come first, then `NativeLibrary` items (NativeAOT's name for the same
+inputs) in the order added, so references and packages come after anything you list yourself,
+then the system libraries. 0.3.0's `AsmLinkLibrary` is error ASM0109.
 The lld drivers resolve symbols from archives regardless of order, unlike GNU `ld`, so the
 order matters only with `AsmToolchain=System` on Linux.
 
@@ -233,7 +234,7 @@ any build machine, without the target's sysroot or SDK.
 
 | Platform | Symbol list | What the SDK writes |
 |---|---|---|
-| Linux (glibc, musl) | `linux.symbols`: 292 functions and 4 data objects (`stdin`, `stdout`, `stderr`, `environ`) | a stub shared library named `libc.so.6` or `libc.musl-x86_64.so.1`, assembled with NASM (x64) or llvm-mc (ARM64), and `libasmsdk_nonshared.a` |
+| Linux (glibc, musl) | `linux.symbols`: 292 functions and 4 data objects (`stdin`, `stdout`, `stderr`, `environ`) | a stub shared library named `libc.so.6`, `libc.musl-x86_64.so.1` or `libc.musl-aarch64.so.1`, assembled with NASM (x64) or llvm-mc (ARM64), and `libasmsdk_nonshared.a` |
 | macOS | `macos.symbols`: 257 functions (with `dyld_stub_binder`) and 4 data objects | `libSystem.tbd`, a text stub with the install name `/usr/lib/libSystem.B.dylib`, the format of Apple's own SDK stubs |
 | Windows | `ucrtbase.symbols`: the 2,484 C exports of `ucrtbase.dll` | `ucrtbase.lib`, an import library, and `asmsdk_winstdio.lib` |
 | Windows, every output | `kernel32.symbols`: the 1,693 exports of `kernel32.dll` | `kernel32.lib`, an import library |
@@ -298,7 +299,7 @@ The macOS list has the same groups, with macOS's names: `__error` for errno, `kq
 `AsmLibcSymbol` takes the C name on every OS: the SDK adds macOS's underscore. On Windows it
 adds the name to the UCRT import library, so the name must be a real `ucrtbase.dll` export.
 A function that exists only in another DLL needs that DLL's import library, as an
-`AsmLinkLibrary` item (`NativeLibrary`, not released yet).
+`NativeLibrary` item.
 
 **Versions and limits:**
 
@@ -406,9 +407,10 @@ Static linking avoids the question.
   bundled toolchain does not have. Use `AsmToolchain=System` on a Linux build machine with
   glibc's development files, and pass your own link line through `LinkerArg` items or an
   extension target (see [Extending the build](extending.md)).
-- **musl on ARM64** (`linux-musl-arm64`) is not one of the seven RIDs. A .NET app built for it
-  gets a project's `linux-arm64` build through the RID graph. That build loads into a .NET
-  process on Alpine only when it is `freestanding`.
+- **musl on ARM64** (`linux-musl-arm64`) is a RID of its own since 0.4.0. A project that does
+  not list it gives a .NET app built for it the `linux-arm64` build, through the RID graph,
+  which loads into a .NET process on Alpine only when it is `freestanding`: list
+  `linux-musl-arm64` for a `libc` library.
 - **CPU features:** the SDK does not restrict instructions. Code that uses AVX2, AVX-512 or
   ARM64 extensions beyond the baseline must check for them at run time (CPUID on x64; on
   ARM64, the ID registers on Linux, `IsProcessorFeaturePresent` on Windows, `sysctlbyname`

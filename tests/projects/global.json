@@ -1,5 +1,5 @@
 {
   "msbuild-sdks": {
-    "AsmFoundation.Sdk": "0.3.0"
+    "AsmFoundation.Sdk": "0.4.0"
   }
 }

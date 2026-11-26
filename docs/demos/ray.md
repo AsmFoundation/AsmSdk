@@ -15,10 +15,6 @@ marched through the scene four rays at a time, and the picture sharpens while yo
 </div>
 <script type="module" src="demo.js"></script>
 
-> [!NOTE]
-> **Not released yet:** built with AsmSdk's main branch, which has WebAssembly
-> ([Wasm Demos](index.md)).
-
 ## The kernel
 
 The scene is a distance field. For any point, the distance to the nearest surface is the smallest
@@ -73,12 +69,9 @@ demo are your browser's, and stop once the picture is complete.
 
 ## Build one yourself
 
-> [!NOTE]
-> **Not released yet:** WebAssembly, and the `asmwasm` template, are on AsmSdk's main branch.
-
 ```sh
 dotnet new asmwasm -n Kernel      # a WebAssembly library in LLVM's WebAssembly assembly
-dotnet build Kernel               # Kernel/bin/Release/freestanding/browser-wasm/Kernel.wasm
+dotnet build Kernel               # Kernel/bin/Debug/freestanding/browser-wasm/Kernel.wasm
 node Kernel/run.mjs               # calls it from Node; a page loads it the same way
 ```
 

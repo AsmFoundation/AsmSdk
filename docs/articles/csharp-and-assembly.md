@@ -29,7 +29,7 @@ A shared library in assembly takes three files. `global.json` names the SDK, as 
 MSBuild SDK:
 
 ```json
-{ "msbuild-sdks": { "AsmFoundation.Sdk": "0.3.0" } }
+{ "msbuild-sdks": { "AsmFoundation.Sdk": "0.4.0" } }
 ```
 
 The project file:

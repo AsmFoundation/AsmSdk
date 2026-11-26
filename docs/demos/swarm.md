@@ -16,10 +16,6 @@ to a fading density image, which the module colours into the frame.
 </div>
 <script type="module" src="demo.js"></script>
 
-> [!NOTE]
-> **Not released yet:** built with AsmSdk's main branch, which has WebAssembly
-> ([Wasm Demos](index.md)).
-
 ## The kernel
 
 The particles are four arrays (x, y and the two velocities), so one `v128.load` brings the same
@@ -69,12 +65,9 @@ particles, and about 1.5 ms to colour the frame. The figures under the demo are 
 
 ## Build one yourself
 
-> [!NOTE]
-> **Not released yet:** WebAssembly, and the `asmwasm` template, are on AsmSdk's main branch.
-
 ```sh
 dotnet new asmwasm -n Kernel      # a WebAssembly library in LLVM's WebAssembly assembly
-dotnet build Kernel               # Kernel/bin/Release/freestanding/browser-wasm/Kernel.wasm
+dotnet build Kernel               # Kernel/bin/Debug/freestanding/browser-wasm/Kernel.wasm
 node Kernel/run.mjs               # calls it from Node; a page loads it the same way
 ```
 

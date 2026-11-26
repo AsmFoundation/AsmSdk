@@ -110,10 +110,6 @@ offsets past 4 GiB, with a build that starts at 0xFFFFFFF0 against `xxd -o 0xFFF
 
 ## The WASI build
 
-> [!NOTE]
-> **Not released yet:** WebAssembly is on the main branch only (see
-> [WebAssembly](../guide/webassembly.md)).
-
 The project lists a second runtime, `wasi-wasm`, and a second source for it, `main.wasi.s`: the
 same tool as a WASI command, about 2.5 KB, which wasmtime (or any WASI host) runs, and
 `dotnet run -r wasi-wasm` starts there.

@@ -98,7 +98,7 @@ public sealed class ExampleTests(SdkUnderTest sdk)
     // ---- Crc32C: the packages and the consumer ----
 
     /// <summary>
-    /// The asm package for .NET: each of the seven native RIDs' libraries under
+    /// The asm package for .NET: each of the eight native RIDs' libraries under
     /// runtimes/&lt;rid&gt;/native/ (where .NET finds a RID-specific native asset), the import
     /// libraries of the Windows DLLs under native/ (for asm consumers), each WebAssembly RID's
     /// archive (what a .NET WebAssembly app links, through the props) and module (for JavaScript
@@ -122,7 +122,7 @@ public sealed class ExampleTests(SdkUnderTest sdk)
                 "build/netstandard1.0/Samples.Crc32C.targets", "buildTransitive/netstandard1.0/Samples.Crc32C.targets",
                 "runtimes/win-x64/native/crc32c.dll", "runtimes/win-arm64/native/crc32c.dll",
                 "runtimes/linux-x64/native/libcrc32c.so", "runtimes/linux-arm64/native/libcrc32c.so",
-                "runtimes/linux-musl-x64/native/libcrc32c.so",
+                "runtimes/linux-musl-x64/native/libcrc32c.so", "runtimes/linux-musl-arm64/native/libcrc32c.so",
                 "runtimes/osx-x64/native/libcrc32c.dylib", "runtimes/osx-arm64/native/libcrc32c.dylib",
                 "native/win-x64/freestanding/crc32c.dll.lib", "native/win-arm64/freestanding/crc32c.dll.lib",
                 "native/browser-wasm/freestanding/crc32c.a", "native/browser-wasm/freestanding/crc32c.wasm",
@@ -172,9 +172,9 @@ public sealed class ExampleTests(SdkUnderTest sdk)
     // ---- Crc32C: running it ----
 
     /// <summary>
-    /// The library's own xunit tests (Crc32C.Tests) pass on this machine, whichever of the seven
+    /// The library's own xunit tests (Crc32C.Tests) pass on this machine, whichever of the eight
     /// platforms it is: every path against a C# reference, with this platform's build of the
-    /// library (the portable output carries all seven).
+    /// library (the portable output carries all eight).
     /// </summary>
     [Fact]
     public void Crc32C_unit_tests_pass()

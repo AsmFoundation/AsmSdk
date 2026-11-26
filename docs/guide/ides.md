@@ -6,20 +6,11 @@ action each. Building from the IDE runs the same `dotnet build` targets as the c
 
 | What the IDE shows | Item type | Default |
 |---|---|---|
-| `.asm` and `.s` sources | `AsmSource` | `**/*.asm;**/*.s` (`EnableDefaultAsmItems`) |
-| `.inc` include files | `AsmInclude` | `**/*.inc` (`EnableDefaultAsmItems`) |
-| every other file: a linker version script, a C header, a README | `None` | `**/*` minus the asm items (`EnableDefaultNoneItems`) |
+| `.asm` and `.s` sources | `Compile` | `**/*.asm;**/*.s` (`EnableDefaultCompileItems`) |
+| `.inc` include files, and every other file: a linker version script, a C header, a README | `None` | `**/*` minus the sources (`EnableDefaultNoneItems`) |
 
 `bin/`, `obj/`, the project file and the other `DefaultItemExcludes` are never items, exactly as
 in a `.csproj`.
-
-> [!NOTE]
-> **Not released yet:** on the main branch, the sources are `Compile` items
-> (`EnableDefaultCompileItems`) and the include files `None` items, the item types every IDE
-> knows, so the IDE's Build Action says `Compile`, as for C#, and no `AvailableItemName` is
-> declared. Measured before the switch: Rider's engine (ReSharper InspectCode 2026.3) never
-> analyzes a `.asm` or `.s` `Compile` item as C#, and Visual Studio's C# language service needs
-> the `CSharp` and `Managed` capabilities, which an `.asmproj` does not have.
 
 > **Before 0.2.0** an `.asmproj` looked empty in Rider and Visual Studio, and opening a solution
 > assembled and linked every asm project. 0.2.0 fixed both; the sections below say how.
@@ -28,16 +19,15 @@ in a `.csproj`.
 
 IDEs build their project tree from MSBuild items, but only from item types they know: their
 built-in ones (`Compile`, `None`, `Content`, `EmbeddedResource`, …) and the names listed in the
-project's `AvailableItemName` items. The SDK declares its two:
+project's `AvailableItemName` items. The sources are `Compile` items and the include files
+`None` items, so every IDE shows them without being told, and the **Build Action** says
+`Compile`, as for C#. 0.2.0 and 0.3.0 used item types of their own (`AsmSource`, `AsmInclude`)
+and had to declare them as `AvailableItemName` items.
 
-```xml
-<AvailableItemName Include="AsmSource" />
-<AvailableItemName Include="AsmInclude" />
-```
-
-Rider's MSBuild host and Visual Studio's project system both read it. It also puts `AsmSource`
-and `AsmInclude` in the IDE's **Build Action** list, so moving a file between "assembled" and
-"included" is a property change, as for C#.
+No C# engine compiles them as C#, measured before the switch: Rider's engine (ReSharper
+InspectCode 2026.3) never analyzes a `.asm` or `.s` `Compile` item as C#, though it does a
+`.cs` one in the same project, and Visual Studio's C# language service needs the `CSharp` and
+`Managed` capabilities, which an `.asmproj` does not have (a test checks they stay absent).
 
 The `None` glob is the SDK's own, not `Microsoft.NET.Sdk`'s. The managed glob removes
 `**/*$(DefaultLanguageSourceExtension)` from `None` right after including `**/*`, and an
@@ -68,7 +58,8 @@ The IDE's **Build** runs the normal targets: NASM per out-of-date source, then t
 calling MSBuild at all, Visual Studio and Rider run a *fast up-to-date check*. The SDK hands
 them its inputs and outputs:
 
-- `UpToDateCheckInput`: the `AsmSource` and `AsmInclude` items and the `ExportsFile`;
+- `UpToDateCheckInput`: the `Compile` items, the `None` items ending in `.inc`, the
+  `CustomAdditionalCompileInputs` items and the `ExportsFile`;
 - `UpToDateCheckBuilt`: the output of each RID the project builds (none for
   `OutputType=Objects`).
 
@@ -86,10 +77,24 @@ already diagnostics.
   language support; a TextMate grammar for x86 or NASM syntax adds highlighting
   (**Settings | Editor | TextMate Bundles**).
 - **Visual Studio:** a `.slnx` lists an `.asmproj` with the generic MSBuild project type,
-  `Type="13B669BE-BB05-4DDF-9536-439F39A36129"` (see [Projects](projects.md)). Not released
-  yet: `dotnet sln add` writes that type itself.
+  `Type="13B669BE-BB05-4DDF-9536-439F39A36129"` (see [Projects](projects.md)), which
+  `dotnet sln add` writes itself.
 - **VS Code:** the C# Dev Kit's solution view uses the same project system as Visual Studio.
   Highlighting comes from a NASM or x86 grammar extension.
+
+## C# bindings in the IDE
+
+A C# project that references an asm library gets its [generated bindings](interop.md#generated-bindings)
+in IntelliSense too, from the same design-time builds:
+
+- **A referenced `.asmproj`:** the baseline the SDK writes (`obj/.../AsmBindings/<Namespace>.g.cs`)
+  is one of the sources the IDE's C# engine compiles, from the library's first build on. A
+  design-time build never builds a reference, so before that build there is no API file and
+  no binding: build the solution once.
+- **`[AsmLibrary]` in the code:** the IDE runs the bindings generator, handed to it as an
+  analyzer with the library's API file, as the build does.
+- **A package:** its baseline is part of the package (`contentFiles/`), so the IDE knows it
+  as soon as the package is restored, with no build.
 
 ## Running and debugging
 
@@ -121,3 +126,10 @@ Debug builds carry debug information (`DebugSymbols=true` in Debug):
 It also replays Rider's design-time build (its targets and properties) and requires that no
 tool runs and no object is written. A control build with the same targets but without the two
 properties must run the tools, so the test would catch a regression.
+
+For the C# bindings it replays both IDEs' design-time builds of a C# project: Rider's, whose
+C# engine reads the project's items (its `CoreCompile` is skipped once the last build's
+outputs are up to date), and Visual Studio's, which sets `BuildingInsideVisualStudio` and so
+always hands its engine the compiler's command line. Both must hold the written baseline after
+the library's first build and none before it, the generator and API file when the code names
+`[AsmLibrary]`, and a package's baseline after its restore alone.

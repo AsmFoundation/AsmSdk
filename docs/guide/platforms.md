@@ -1,10 +1,10 @@
 # Platforms and runtime identifiers
 
-From 0.3.0, one `.asmproj` builds for seven platforms, named the way .NET names them: by
-runtime identifier (RID). Any build machine builds any of them. This page covers the RIDs, how
-a project chooses them, how its sources and calls differ per platform, and what each platform's
-output looks like. Everything here was measured with the 0.3.0 targets, NASM 3.02 and LLVM
-23.1.5.
+One `.asmproj` builds for eight native platforms and two WebAssembly ones, named the way .NET
+names them: by runtime identifier (RID). Any build machine builds any of them. This page covers
+the RIDs, how a project chooses them, how its sources and calls differ per platform, and what
+each platform's output looks like. Everything here was measured with the 0.3.0 and 0.4.0
+targets, NASM 3.02 and LLVM 23.1.5.
 
 | RID | Object format, linker | Shared library | Static library | Executable | C library (`libc`) |
 |---|---|---|---|---|---|
@@ -13,30 +13,17 @@ output looks like. Everything here was measured with the 0.3.0 targets, NASM 3.0
 | `linux-x64` | ELF, ld.lld | `libname.so` | `libname.a` | `name` | glibc 2.34+ (`libc.so.6`) |
 | `linux-arm64` | ELF, ld.lld | `libname.so` | `libname.a` | `name` | glibc 2.34+ (`libc.so.6`) |
 | `linux-musl-x64` | ELF, ld.lld | `libname.so` | `libname.a` | `name` | musl (`libc.musl-x86_64.so.1`): Alpine |
+| `linux-musl-arm64` | ELF, ld.lld | `libname.so` | `libname.a` | `name` | musl (`libc.musl-aarch64.so.1`, loader `/lib/ld-musl-aarch64.so.1`): Alpine on Graviton |
 | `osx-x64` | Mach-O, ld64.lld | `libname.dylib` | `libname.a` | `name` (libc only) | libSystem |
 | `osx-arm64` | Mach-O, ld64.lld | `libname.dylib` | `libname.a` | `name` (libc only) | libSystem |
+| `browser-wasm` | WebAssembly, wasm-ld | `name.wasm` (a module) + `name.a` | `name.a` | none | none (an app's own) |
+| `wasi-wasm` | WebAssembly, wasm-ld | `name.wasm` (a module) + `name.a` | `name.a` | `name.wasm` (a WASI command) | none (an app's own) |
 
 x64 code is NASM (`.asm`). ARM64 code is GNU syntax (`.s`), which the bundled `llvm-mc`
-assembles. The two can live side by side in one project.
-
-> [!NOTE]
-> **Not released yet:** the main branch adds an eighth RID, `linux-musl-arm64`: musl on ARM64,
-> such as Alpine on Graviton. It behaves like `linux-musl-x64`, with `libc.musl-aarch64.so.1`
-> and the loader `/lib/ld-musl-aarch64.so.1`. AsmFoundation.Sdk 0.3.0 on nuget.org builds the
-> seven RIDs above. See the [changelog](changelog.md).
-
-> [!NOTE]
-> **Not released yet: WebAssembly.** The main branch also builds `browser-wasm` and
-> `wasi-wasm`, from LLVM's WebAssembly assembly in `.s` files qualified for it
-> (`name.wasm.s`), linked by the bundled `wasm-ld`:
->
-> | RID | Object format, linker | Library | Static library | Executable | C library (`libc`) |
-> |---|---|---|---|---|---|
-> | `browser-wasm` | WebAssembly, wasm-ld | `name.wasm` (a module) + `name.a` | `name.a` | none | none (an app's own) |
-> | `wasi-wasm` | WebAssembly, wasm-ld | `name.wasm` (a module) + `name.a` | `name.a` | `name.wasm` (a WASI command) | none (an app's own) |
->
-> The qualifiers `wasm` (both RIDs), `browser` and `wasi` join the list below, and `unix`
-> stays Linux and macOS. See [WebAssembly](webassembly.md).
+assembles. The two can live side by side in one project. WebAssembly code is LLVM's
+WebAssembly assembly, in `.s` files qualified for it (`name.wasm.s`), linked by the bundled
+`wasm-ld`: the qualifiers `wasm` (both RIDs), `browser` and `wasi` join the list below, and
+`unix` stays Linux and macOS. See [WebAssembly](webassembly.md).
 
 
 ## Choosing the RIDs
@@ -49,8 +36,8 @@ A project lists the RIDs its code supports, with .NET's property:
 </PropertyGroup>
 ```
 
-There is no default: a project that names no RID, and that nothing asks to build for a RID,
-stops with **ASM0010**. A project gets its RIDs in one of three ways:
+A project gets its RIDs in one of four ways (the first that gives any wins, in the order `-r`,
+a referencing project's RIDs, the project's own list, the build machine's RID):
 
 1. **Its own `RuntimeIdentifiers`** (or a single `RuntimeIdentifier`): `dotnet build` builds
    each one.
@@ -62,29 +49,22 @@ stops with **ASM0010**. A project gets its RIDs in one of three ways:
    ```
 3. **The command line:** `dotnet build -r linux-arm64` builds exactly that RID. It must be one
    the project lists (**ASM0012**), and one AsmSdk builds (**ASM0011**).
+4. **The build machine's RID**, when none of the above names one: `win-x64`, `win-arm64`,
+   `linux-x64`, `linux-arm64`, `linux-musl-x64` (Alpine x64), `linux-musl-arm64`, `osx-x64`
+   or `osx-arm64`, as a C++ project or a NativeAOT publish builds for its own platform first.
 
-A solution build is the one exception to ASM0010. A solution builds each project by itself,
-with no RID, besides building it through its referencing projects. A project that lists no RID
-on purpose prints "builds nothing for it by itself" there instead of failing.
+So `dotnet build`, `dotnet run` and `dotnet test` work on a new project as they are, and a
+solution build builds the project too (0.3.0 built nothing there, and a .NET app that
+referenced the project got no library). What leaves the machine says when it would carry this
+one RID alone: `dotnet pack` of the project, and a portable `dotnet publish` or `dotnet pack`
+of a .NET project that references it, warn **ASM0013** with the line to add. A publish for
+one RID (`-r`) asks for its own RID, and does not warn.
 
-> [!NOTE]
-> **Not released yet: the build machine's RID is the default.** On the main branch, a project
-> that lists no RID, and that nothing asks for one, builds for the RID of the machine building
-> it, as a C++ project or a NativeAOT publish builds for its own platform first. The order:
->
-> 1. `-r <rid>`;
-> 2. the RIDs a referencing project asks for;
-> 3. the project's own `RuntimeIdentifiers`;
-> 4. the build machine's RID: `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`,
->    `linux-musl-x64` (Alpine x64), `linux-musl-arm64`, `osx-x64` or `osx-arm64`.
->
-> So `dotnet build`, `dotnet run` and `dotnet test` work on a new project as they are, and a
-> solution build builds the project too: in 0.3.0 it built nothing, and a .NET app that
-> referenced the project got no library. What leaves the machine says when it would carry this
-> one RID alone: `dotnet pack` of the project, and a portable `dotnet publish` or `dotnet pack`
-> of a .NET project that references it, warn **ASM0013** with the line to add. A publish for
-> one RID (`-r`) asks for its own RID, and does not warn. ASM0010 remains for a build machine
-> that is none of the eight (FreeBSD, 32-bit Arm), which has no default.
+**ASM0010** stops a project that gets no RID at all: one that names none, that nothing asks to
+build for a RID, on a build machine that is none of the eight (FreeBSD, 32-bit Arm), which has
+no default. A solution build is the one exception there: a solution builds each project by
+itself, with no RID, besides building it through its referencing projects, and a project that
+lists no RID prints "builds nothing for it by itself" instead of failing.
 
 ### How the build runs
 
@@ -138,13 +118,12 @@ Objects keep the qualifier (`io.linux.o`), so variants never share an object. Th
 their own errors:
 
 - **ASM0020:** two files of one name apply equally to a RID (`x.linux.asm` and `x.linux.s`).
-- **ASM0021:** a `.asm` qualified for ARM64 only, which NASM cannot assemble (not released
-  yet: or for WebAssembly only).
-- **ASM0023:** a listed RID that no source builds (typically ARM64 with only `.asm` files; not
-  released yet: a wasm RID, which takes `.s` files qualified for WebAssembly only).
-- **ASM0024:** one file listed twice as an `AsmSource` (the default glob plus an explicit
-  item), as .NET reports `NETSDK1022` for `Compile` items. (Not released yet: the sources
-  are `Compile` items themselves.)
+- **ASM0021:** a `.asm` qualified for ARM64 only, or for WebAssembly only, which NASM cannot
+  assemble.
+- **ASM0023:** a listed RID that no source builds (typically ARM64 with only `.asm` files, or a
+  wasm RID, which takes `.s` files qualified for WebAssembly only).
+- **ASM0024:** one file listed twice as a `Compile` item (the default glob plus an explicit
+  item), as .NET reports `NETSDK1022` in a `.csproj`.
 
 
 ## Writing code that runs everywhere
@@ -157,15 +136,16 @@ puts a platform layer on every include path, and defines the platform's symbols.
 
 Every assembler run receives:
 
-- `WINDOWS`, `LINUX` or `MACOS`, plus `MUSL` on `linux-musl-x64` (with `LINUX`);
+- `WINDOWS`, `LINUX` or `MACOS`, plus `MUSL` on `linux-musl-x64` and `linux-musl-arm64` (with
+  `LINUX`);
 - `X64` or `ARM64`;
 - `FREESTANDING` or `LIBC`, and `DEBUG` or `RELEASE`, as before.
 
 NASM gets them with `-D`, `llvm-mc` with `--defsym NAME=1`, so `%ifdef MACOS` in NASM and
 `.ifdef MACOS` in GNU syntax test the same thing. `DisableImplicitFrameworkDefines=true`
-turns off all but the configuration's, as in .NET. (Not released yet: a WebAssembly build
-defines `BROWSER` or `WASI` and `WASM`, as labels instead of defsym constants, which llvm-mc's
-wasm writer refuses; see [WebAssembly](webassembly.md#defines).)
+turns off all but the configuration's, as in .NET. A WebAssembly build defines `BROWSER` or
+`WASI` and `WASM`, as labels instead of defsym constants, which llvm-mc's wasm writer refuses;
+see [WebAssembly](webassembly.md#defines).
 
 ### x64: asmsdk.inc
 
@@ -209,9 +189,9 @@ ENDFUNCTION
   know *executable code*. In Debug builds (CodeView), NASM 3.02 also crashed on such a section.
 - **`.note.GNU-stack` is Linux-only:** wrap it in `%ifdef LINUX`. For macho64 the line is an
   error (`unknown section name .note.GNU-stack`). win64 makes it one more empty, executable code
-  section. (Not released yet: `ImplicitUsings`, on by default, declares it on Linux in front of
-  every source, together with `%include "asmsdk.inc"` and `default rel`; see
-  [Projects](projects.md#implicitusings).)
+  section. `ImplicitUsings`, on by default, declares it on Linux in front of every source,
+  together with `%include "asmsdk.inc"` and `default rel`; see
+  [Projects](projects.md#implicitusings).
 
   ```nasm
   %ifdef LINUX
@@ -259,8 +239,8 @@ ENDFUNCTION lookup
 | `CALL name` / `TAILCALL name` | `bl` / `b` with the OS's name for a C symbol: one of this module, of a linked static library, or of the C library (the linker routes it through a stub). On x86-64 GNU syntax: `call` / `jmp`, through `@PLT` on Linux. |
 | `ADDRESS reg, label` | The position-independent address of a label of this file. |
 | `RODATA` | Switches to read-only data, which each format names differently (`.section .rodata` is an error on Mach-O). |
-| `PROTO [fast] <C prototype>` (not released yet) | Declares the function's C signature for the generated C# bindings, as `PROTO` in NASM (see [Writing NASM](writing-nasm.md#proto-a-functions-c-prototype)). WebAssembly sources have it too, checked against each function's whole wasm type (see [WebAssembly](webassembly.md#proto-the-c-bindings)). |
-| `STRUCT name, <field>, ...` (not released yet) | Declares a struct, as `STRUCT` in NASM, with the same line (see [Writing NASM](writing-nasm.md#struct-a-struct-for-the-asm-code-and-for-c)): `ldr x9, [x0, #crc_state.data]`. The SDK reads the line before assembling and the source's wrapper includes its constants, `name.field` and `name_size`, as symbols (`.set`), which llvm-mc keeps as local symbols of the object. The SDK does the layout because GNU macros cannot: llvm-mc hands a macro `uint8_t* data` as the one token `uint8_t*data` (measured). Not in WebAssembly sources yet: an error. |
+| `PROTO [fast] <C prototype>` | Declares the function's C signature for the generated C# bindings, as `PROTO` in NASM (see [Writing NASM](writing-nasm.md#proto-a-functions-c-prototype)). WebAssembly sources have it too, checked against each function's whole wasm type (see [WebAssembly](webassembly.md#proto-the-c-bindings)). |
+| `STRUCT name, <field>, ...` | Declares a struct, as `STRUCT` in NASM, with the same line (see [Writing NASM](writing-nasm.md#struct-a-struct-for-the-asm-code-and-for-c)): `ldr x9, [x0, #crc_state.data]`. The SDK reads the line before assembling and the source's wrapper includes its constants, `name.field` and `name_size`, as symbols (`.set`), which llvm-mc keeps as local symbols of the object. The SDK does the layout because GNU macros cannot: llvm-mc hands a macro `uint8_t* data` as the one token `uint8_t*data` (measured). Not in WebAssembly sources yet: an error. |
 
 `x18` is the platform register on Windows (the TEB) and macOS: never use it.
 On macOS every *variadic* argument goes on the stack (Apple's ARM64 convention), while Windows

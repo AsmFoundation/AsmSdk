@@ -82,7 +82,7 @@ jobs:
 - **Pre-release SDKs:** while a project uses an SDK version that is not on nuget.org, commit
   the folder feed, or download it in a step before the build, and keep a `nuget.config`
   mapping as in [References and packages](references-and-packages.md#feeds-and-publishing).
-- **WebAssembly (not released yet):** every runner builds `browser-wasm` and `wasi-wasm` with
+- **WebAssembly:** every runner builds `browser-wasm` and `wasi-wasm` with
   the bundled tools. The outputs need a host to run in:
   - Node runs the modules, and is on every hosted runner;
   - wasmtime runs WASI programs: download its release archive for the runner and add it to

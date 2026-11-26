@@ -12,9 +12,9 @@
       </PropertyGroup>
 
     Call it from C#: add <ProjectReference Include="../AsmLibrary.1/AsmLibrary.1.asmproj" /> to the
-    .csproj, then declare each function on a static partial class:
-      [LibraryImport("AsmLibrary.1", EntryPoint = "add_ints")]
-      internal static partial int AddInts(int a, int b);
+    .csproj. The SDK writes C# bindings from add.asm's PROTO line, in a namespace named after this
+    library in PascalCase (a library named calc gives Calc.Add.AddInts(40, 2)), so nothing is
+    declared by hand. C gets AsmLibrary.1.h, written next to the libraries.
 
     The SDK version is the one on the first line; change it there to upgrade.
     Documentation: https://asmfoundation.github.io/AsmSdk/

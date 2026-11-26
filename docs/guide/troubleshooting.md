@@ -5,7 +5,8 @@ was reproduced with AsmFoundation.Sdk 0.1.0, NASM 3.02 and `ld.lld` 23.1.5, and 
 written with the current property names. The `ASM0003`, `ASM0100` to `ASM0108` and
 `Ambiguous project name` rows, and the target framework rows, come from 0.2.0. The other
 `ASM00xx` codes, and the Windows and macOS rows, come from 0.3.0 and its lld-link, ld64.lld
-and llvm-mc.
+and llvm-mc. The rows of what 0.4.0 added (WebAssembly, programs, the bindings, `ASM0013`,
+`ASM0109` to `ASM0112`) come from 0.4.0.
 
 **First, get the real message.** A failed assembler run is reported as **ASM0007**, naming the
 source, right after the assembler's own line (`…/a.asm:5: error: …`). `-v:q` hides that line.
@@ -34,12 +35,12 @@ with the tool's own message just above it.
 
 | Message | Cause | Fix |
 |---|---|---|
-| `MSB4236: The SDK 'AsmFoundation.Sdk' specified could not be found` | no feed has that version, or `global.json` lacks `msbuild-sdks` | add `{"msbuild-sdks": {"AsmFoundation.Sdk": "0.3.0"}}`, or name the version on the project's first line (`<Project Sdk="AsmFoundation.Sdk/0.3.0">`); add the feed to `nuget.config` (folder feeds work) |
-| `The NuGetSdkResolver did not resolve this SDK because there was no version specified in the project or global.json` with `Sdk="AsmFoundation.Sdk/*"` (or `/0.*`, `/latest`, or `"*"` in `global.json`) | an MSBuild SDK takes an exact version only: the resolver has no floating versions (measured) | an exact version: `0.3.0` |
+| `MSB4236: The SDK 'AsmFoundation.Sdk' specified could not be found` | no feed has that version, or `global.json` lacks `msbuild-sdks` | add `{"msbuild-sdks": {"AsmFoundation.Sdk": "0.4.0"}}`, or name the version on the project's first line (`<Project Sdk="AsmFoundation.Sdk/0.4.0">`); add the feed to `nuget.config` (folder feeds work) |
+| `The NuGetSdkResolver did not resolve this SDK because there was no version specified in the project or global.json` with `Sdk="AsmFoundation.Sdk/*"` (or `/0.*`, `/latest`, or `"*"` in `global.json`) | an MSBuild SDK takes an exact version only: the resolver has no floating versions (measured) | an exact version: `0.4.0` |
 | `ASM0003: TargetFramework 'netstandard2.0' is not an AsmSdk target framework` | a `TargetFramework` other than `freestanding` or `libc`, such as 0.1.0's hidden `netstandard2.0` | `freestanding` or `libc`, or `TargetFrameworks=freestanding;libc` |
 | `ASM0100` to `ASM0107: … was removed in AsmFoundation.Sdk 0.2.0`, then `ASM0108` | a 0.1.0 setting (`AsmLibraryName`, `AsmRuntime`, `AsmDefineConstants`, `AsmDefine`, `AsmDebugInfo`, `AsmEntryPoint`, `AsmLinkFlags`, `AsmOutputKind`) | the replacement each error names; the [changelog](changelog.md) has the whole table |
-| `ASM0109: AsmLinkLibrary items were replaced after AsmFoundation.Sdk 0.3.0 by NativeLibrary items` (not released yet) | the project lists `AsmLinkLibrary` items | `<NativeLibrary Include="…" />`, NativeAOT's item name; the error shows the line |
-| `ASM0109: The package X was packed by AsmFoundation.Sdk 0.3.0 or older` (not released yet) | the package's props add `AsmLinkLibrary` items, which this SDK does not link | pack the package again with this SDK, and reference the new version |
+| `ASM0109: AsmLinkLibrary items were replaced after AsmFoundation.Sdk 0.3.0 by NativeLibrary items` | the project lists `AsmLinkLibrary` items | `<NativeLibrary Include="…" />`, NativeAOT's item name; the error shows the line |
+| `ASM0109: The package X was packed by AsmFoundation.Sdk 0.3.0 or older` | the package's props add `AsmLinkLibrary` items, which this SDK does not link | pack the package again with this SDK, and reference the new version |
 | `Ambiguous project name 'x'` (restore) | two projects of one restore graph share an `AssemblyName`, for example a static and a shared build of the same library (`libgrpcasm.a`, `libgrpcasm.so`). `PackageId` defaults to `AssemblyName`, as in .NET, and NuGet names projects by it. 0.1.0's `AsmLibraryName` did not touch it, so this appears when migrating. | give each project its own `<PackageId>`; the file names still follow `AssemblyName` |
 | `NU1201: Project X is not compatible with netstandard1.0 (.NETStandard,Version=v1.0)` | a `freestanding` project references a `libc`-only project: freestanding code cannot link C library code | make the reference `freestanding` (or `TargetFrameworks=freestanding;libc`), or make this project `libc` |
 | `NU1202: Package X is not compatible with netstandard1.0` | the same with a `libc`-only package | the same, in the package's project |
@@ -49,7 +50,7 @@ with the tool's own message just above it.
 | `ASM0001: The bundled toolchain was not found in '…'` | built with `--no-restore` on a clean cache, cleaned caches, or a different `NUGET_PACKAGES` at build time | `dotnet restore`, then build; keep `NUGET_PACKAGES` the same |
 | `ASM0002: AsmToolchain must be 'Bundled' or 'System'` | typo | fix the value |
 | `MSB4025 … ProjectType '' not found` on `dotnet build x.slnx` | an `.asmproj` entry without a type | `<Project Path="…asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />` |
-| `… has an unknown project type and cannot be added to the solution file` from `dotnet sln add` | the .NET CLI does not know the `.asmproj` extension | add the entry by hand (`.slnx`: one line with the type GUID), or use `new_asmproj.py --sln`. Not released yet: the SDK names the type (`DefaultProjectTypeGuid`), and `dotnet sln add` works |
+| `… has an unknown project type and cannot be added to the solution file` from `dotnet sln add` | a project of AsmFoundation.Sdk 0.3.0 or older, which names no project type: the .NET CLI does not know the `.asmproj` extension | update the SDK: from 0.4.0 it names the type (`DefaultProjectTypeGuid`), and `dotnet sln add` writes it. Or add the entry by hand (`.slnx`: one line with the type GUID), or use `new_asmproj.py --sln` |
 | `Project … cannot be added due to incompatible targeted frameworks between the two projects` from `dotnet add reference` (or `dotnet reference add`) to an `.asmproj` | the .NET CLI parses the referenced project's `TargetFramework` text, and does not know NuGet's aliases (`freestanding`, `libc`); NuGet and the build accept them ([dotnet/sdk#57317](https://github.com/dotnet/sdk/issues/57317)) | write the line in the `.csproj`: `<ProjectReference Include="../Native/Native.asmproj" />` |
 | a classic `.sln` build reports 0 errors but never builds the asm project | the `.sln` lists the project but has no `ProjectConfigurationPlatforms` lines for it | add `{guid}.Debug\|Any CPU.ActiveCfg` / `.Build.0` lines (and Release), or move to `.slnx` |
 | a changed SDK has no effect while you develop the SDK itself | MSBuild nodes cached the old files | build with `-nodeReuse:false`, and use a fresh `NUGET_PACKAGES` |
@@ -60,12 +61,12 @@ See [Platforms and runtime identifiers](platforms.md) for how a project chooses 
 
 | Message | Cause | Fix |
 |---|---|---|
-| `ASM0010: This project names no runtime identifier to build` | no `RuntimeIdentifiers` in the project, no referencing project asking for one, no `-r`. Not released yet: only on a build machine that is none of the eight RIDs; elsewhere the project builds for the machine's RID | list the RIDs the code supports: `<RuntimeIdentifiers>win-x64;linux-x64;osx-arm64</RuntimeIdentifiers>`; or name them on the `ProjectReference` (`RuntimeIdentifiers="…"`); or build with `-r <rid>` |
-| `warning ASM0013: X lists no RuntimeIdentifiers, so this pack carries it for win-x64 alone` (or `this portable publish of App carries its library for the build machine's platform alone`), not released yet | a project without `RuntimeIdentifiers` builds for the build machine's RID; a pack or a portable publish leaves the machine with that one | list the platforms to ship in the asm project, or on the `ProjectReference`; publish with `-r <rid>`; or `<NoWarn>ASM0013</NoWarn>` when one platform is the intent |
+| `ASM0010: This project names no runtime identifier to build` | no `RuntimeIdentifiers` in the project, no referencing project asking for one, no `-r`, on a build machine that is none of the eight RIDs (FreeBSD, 32-bit Arm): on the others, the project builds for the machine's RID | list the RIDs the code supports: `<RuntimeIdentifiers>win-x64;linux-x64;osx-arm64</RuntimeIdentifiers>`; or name them on the `ProjectReference` (`RuntimeIdentifiers="…"`); or build with `-r <rid>` |
+| `warning ASM0013: X lists no RuntimeIdentifiers, so this pack carries it for win-x64 alone` (or `this portable publish of App carries its library for the build machine's platform alone`) | a project without `RuntimeIdentifiers` builds for the build machine's RID; a pack or a portable publish leaves the machine with that one | list the platforms to ship in the asm project, or on the `ProjectReference`; publish with `-r <rid>`; or `<NoWarn>ASM0013</NoWarn>` when one platform is the intent |
 | `ASM0011: AsmSdk does not build for linux-x86` | a RID outside the seven: `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `linux-musl-x64`, `osx-x64`, `osx-arm64` | one of those |
 | `ASM0012: osx-arm64 was asked for (by a referencing project or -r), but this project's RuntimeIdentifiers are …` | a referencing project, a `ProjectReference`'s `RuntimeIdentifiers`, or `-r` asks for a RID the project does not list | add it to the project's list if the code supports it; otherwise build the referencing project for a listed RID |
-| `ASM0040: X.asmproj builds no runtime identifier that linux-arm64 can use. It builds …; linux-arm64 can use …` | a .NET project built for one RID references an asm project none of whose RIDs serves it, by the .NET RID graph | add a serving RID to the asm project (the message lists them), or build the .NET project for another RID. Not released yet: when the app copes without the library, `<OptionalOnUnlistedRuntimes>true</OptionalOnUnlistedRuntimes>` in the asm project makes this the warning `ASM0049` |
-| `warning ASM0049: X.asmproj builds no runtime identifier that linux-arm64 can use (it builds …), and it is optional on the RIDs it does not list` (not released yet) | the asm project sets `OptionalOnUnlistedRuntimes=true`, and this RID-specific build goes on without it | nothing, if the app handles `DllNotFoundException` for it; otherwise add a serving RID to the asm project |
+| `ASM0040: X.asmproj builds no runtime identifier that linux-arm64 can use. It builds …; linux-arm64 can use …` | a .NET project built for one RID references an asm project none of whose RIDs serves it, by the .NET RID graph | add a serving RID to the asm project (the message lists them), or build the .NET project for another RID. When the app copes without the library, `<OptionalOnUnlistedRuntimes>true</OptionalOnUnlistedRuntimes>` in the asm project makes this the warning `ASM0049` |
+| `warning ASM0049: X.asmproj builds no runtime identifier that linux-arm64 can use (it builds …), and it is optional on the RIDs it does not list` | the asm project sets `OptionalOnUnlistedRuntimes=true`, and this RID-specific build goes on without it | nothing, if the app handles `DllNotFoundException` for it; otherwise add a serving RID to the asm project |
 | `ASM0041: Cannot read the runtime identifier graph` | the .NET SDK's `RuntimeIdentifierGraphPath` points to a missing or unreadable file | repair the .NET SDK installation |
 | `ASM0042: Cannot read … deps.json` | the `.deps.json` the .NET SDK wrote is missing or malformed when the SDK adds the asm libraries | rebuild; report it if it persists |
 | `ASM0043: BinariesCopyPath '../out' on the reference to X.asmproj cannot be used: it leaves the output folder` | a `BinariesCopyPath` that is absolute, has `..`, a character no OS takes in a file name, or a placeholder other than `{rid}` | `Auto`, `Runtimes`, `AppFolder`, `RidFolders`, or a folder inside the output such as `native/{rid}` |
@@ -82,11 +83,11 @@ See [Platforms and runtime identifiers](platforms.md) for how a project chooses 
 | `ASM0023: No source of this project builds linux-arm64` | an ARM64 RID in a project of `.asm` files only: NASM assembles x86-64 alone | add a `.s` file (GNU syntax) for ARM64, or remove the ARM64 RIDs |
 | `ASM0021: x.arm64.asm is a NASM file (.asm) qualified for 'arm64'` | a `.asm` file named for ARM64 targets only | write ARM64 code in a `.s` file |
 | `ASM0020: For win-x64, x.win.asm and x.win.s apply equally` | two files of one name, equally specific for a RID | keep one, or qualify one more narrowly (`x.win-x64.asm`) |
-| `ASM0023: No source of this project builds browser-wasm. WebAssembly is LLVM's WebAssembly assembly in .s files qualified for it` (not released yet) | a wasm RID in a project with no source qualified for WebAssembly: unqualified `.s` files are ARM64 code | add `name.wasm.s` (both wasm RIDs), `name.browser.s` or `name.wasi.s`, or remove the RID |
-| `ASM0021: x.wasm.asm is a NASM file (.asm) qualified for 'wasm'` (not released yet) | a `.asm` file named for WebAssembly | write WebAssembly in a `.s` file (`x.wasm.s`) |
-| `ASM0025: x.c cannot be compiled by an .asmproj` (not released yet) | a `Compile` item that is not `.asm` or `.s` | make it a `None` item; build C or C# in a project of its own |
-| `ASM0110`, `ASM0111`, `ASM0112: AsmSource items were replaced after AsmFoundation.Sdk 0.3.0 by Compile items` (and `AsmInclude` by `None`, `EnableDefaultAsmItems` by `EnableDefaultCompileItems`), not released yet | the project names a 0.3.0 item or switch | the line the error shows |
-| `ASM0024: Duplicate AsmSource items: x.asm` | a source the default `**/*.asm;**/*.s` glob includes is listed again | remove the explicit item, or `EnableDefaultAsmItems=false` and list every source |
+| `ASM0023: No source of this project builds browser-wasm. WebAssembly is LLVM's WebAssembly assembly in .s files qualified for it` | a wasm RID in a project with no source qualified for WebAssembly: unqualified `.s` files are ARM64 code | add `name.wasm.s` (both wasm RIDs), `name.browser.s` or `name.wasi.s`, or remove the RID |
+| `ASM0021: x.wasm.asm is a NASM file (.asm) qualified for 'wasm'` | a `.asm` file named for WebAssembly | write WebAssembly in a `.s` file (`x.wasm.s`) |
+| `ASM0025: x.c cannot be compiled by an .asmproj` | a `Compile` item that is not `.asm` or `.s` | make it a `None` item; build C or C# in a project of its own |
+| `ASM0110`, `ASM0111`, `ASM0112: AsmSource items were replaced after AsmFoundation.Sdk 0.3.0 by Compile items` (and `AsmInclude` by `None`, `EnableDefaultAsmItems` by `EnableDefaultCompileItems`) | the project names a 0.3.0 item or switch | the line the error shows |
+| `ASM0024: Duplicate Compile items: x.asm` | a source the default `**/*.asm;**/*.s` glob includes is listed again | remove the explicit item, or `EnableDefaultCompileItems=false` and list every source |
 | `ASM0004: x.s is GNU-syntax assembly for llvm-mc, which AsmFoundation.Toolchain.<rid> 0.1.0 does not include` | a toolchain from before `llvm-mc` (also for an ARM64 `libc` build, whose C library stubs are GNU syntax) | `AsmToolchainVersion` 0.2.0 or later |
 | `error: unknown section name .note.GNU-stack` (macOS) | the Linux-only note in a source built for macOS | wrap it in `%ifdef LINUX` … `%endif` |
 | `error: unrecognised symbol type 'function'` (macOS) | `global f:function`, which is ELF's | `FUNCTION f` from `asmsdk.inc`, or `global f` in a macOS file |
@@ -94,7 +95,7 @@ See [Platforms and runtime identifiers](platforms.md) for how a project chooses 
 | `error: Mach-O 64-bit format does not support 32-bit absolute addresses` | a memory operand without `default rel` | `default rel` |
 | `error: unrecognised symbol type 'hidden'` or `'private_extern'` | each format's visibility keyword in another format's file | `HIDDEN_FUNCTION f` from `asmsdk.inc` |
 
-## WebAssembly (not released yet)
+## WebAssembly
 
 | Message | Cause | Fix |
 |---|---|---|
@@ -133,8 +134,8 @@ See [Platforms and runtime identifiers](platforms.md) for how a project chooses 
 | Message | Cause | Fix |
 |---|---|---|
 | `ASM0007: a.asm: the assembler exited with code 1; its object file was deleted` | any assembler error; the assembler's line comes just before | fix the error it names. The deleted object makes the next build assemble the source again |
-| `warning: implicit DEFAULT ABS is deprecated [-w+implicit-abs-deprecated]` (an error with `TreatWarningsAsErrors`) | a memory operand in a file without `default rel` | add `default rel` at the top of every source. Not released yet: `ImplicitUsings` (on by default) puts it in front of every source; this warning then means `<ImplicitUsings>disable</ImplicitUsings>` |
-| `error : instruction expected, found `FUNCTION …'` (and `label `RETURN' alone on a line without a colon`) | `asmsdk.inc` is not included: a source without `%include "asmsdk.inc"`, or (not released yet) a project with `<ImplicitUsings>disable</ImplicitUsings>` | `%include "asmsdk.inc"` at the top, or leave `ImplicitUsings` on |
+| `warning: implicit DEFAULT ABS is deprecated [-w+implicit-abs-deprecated]` (an error with `TreatWarningsAsErrors`) | a memory operand in a file without `default rel`: `ImplicitUsings` (on by default) puts it in front of every source, so the project sets `<ImplicitUsings>disable</ImplicitUsings>` | add `default rel` at the top of every source, or leave `ImplicitUsings` on |
+| `error : instruction expected, found `FUNCTION …'` (and `label `RETURN' alone on a line without a colon`) | `asmsdk.inc` is not included: a source without `%include "asmsdk.inc"` in a project with `<ImplicitUsings>disable</ImplicitUsings>` | `%include "asmsdk.inc"` at the top, or leave `ImplicitUsings` on |
 | `warning: 32-bit absolute section-crossing relocation [-w+reloc-abs-dword]` | absolute addressing, usually the same root cause. Also given for `dd f wrt ..imagebase` (Windows unwind tables), which is right | `default rel` |
 | `error: unable to open include file 'b.inc'` | NASM looks in the project folder and the `-I` folders, never beside the including file | `%include "sub/b.inc"`, or `<AsmIncludeDirectory Include="sub/" />`; for a package or reference, check it ships the file under `include/` |
 | `error: label, instruction or prefix expected at start of line, found 'rel'` | a symbol named like a keyword or mnemonic (`rel`, `wait`, `syscall`) | write it as `$rel` in the definition and in every reference |
@@ -163,15 +164,15 @@ See [Platforms and runtime identifiers](platforms.md) for how a project chooses 
 | `attempted static link of dynamic object <path>/libx.so` (Linux) | a freestanding `Exe` was given a `.so` (a referenced `Library`, or a package with `AsmPackageLinkKind=Shared`) | produce a static library: `StaticLibrary` or `AsmProduceStaticLibrary=true` |
 | `undefined symbol: strsignal` in a `libc` program or a Windows or macOS library | the C library list does not have the function | `<AsmLibcSymbol Include="strsignal" />`; on Windows the name must be a `ucrtbase.dll` export |
 | `undefined symbol: x` in an `Exe`, or in a `.so` linked with `-z defs` | a misspelled `extern`, a missing source or reference, or a symbol that is hidden in another library | fix the name; add the reference; export the symbol |
-| `undefined symbol: main` (or a static library's function, or an `ExportsFile` export) on Windows only, although a NASM source defines it | the source has no `section` directive before the label: NASM's COFF output writes a label defined before the first section directive as an undefined symbol, though its code lands in `.text` (measured with NASM 2.16.03, 3.01 and 3.02; ELF and Mach-O are not affected). A static library archives such a symbol without complaint; the link of whatever uses it fails | `section .text` before the first label. Not released yet: `ImplicitUsings` (on by default) ends with `section .text`, and `asmsdk.inc`'s function macros start with `__SECT__`, so a source that names no section links on every OS, with `ImplicitUsings` off too |
-| `duplicate symbol: helper` (defined twice at `helpers.asm:5`) | an `.asm` file is `%include`d and also assembled as a source | rename it `.inc`, or `<AsmSource Remove="helpers.asm" />` |
+| `undefined symbol: main` (or a static library's function, or an `ExportsFile` export) on Windows only, although a NASM source defines it | the source has no `section` directive before the label: NASM's COFF output writes a label defined before the first section directive as an undefined symbol, though its code lands in `.text` (measured with NASM 2.16.03, 3.01 and 3.02; ELF and Mach-O are not affected). A static library archives such a symbol without complaint; the link of whatever uses it fails. From 0.4.0, `ImplicitUsings` (on by default) ends with `section .text`, and `asmsdk.inc`'s function macros start with `__SECT__`, so this takes a source that includes neither | `section .text` before the first label, or leave `ImplicitUsings` on |
+| `duplicate symbol: helper` (defined twice at `helpers.asm:5`) | an `.asm` file is `%include`d and also assembled as a source | rename it `.inc`, or `<Compile Remove="helpers.asm" />` |
 | `cannot open <project>/obj/Debug/<tfm>/asm/obj/x.o: no such file or directory` (0.1.0, 0.2.0) | a `ProjectReference` to an `OutputType=Objects` project passed object paths relative to the wrong folder | fixed in 0.3.0, which passes absolute paths |
 
 ## Builds that pass but behave wrongly
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| editing a shared `.inc` outside the project does not rebuild | only `AsmInclude` items and package or reference folders are dependencies | add `<AsmInclude Include="../common/include/**/*.inc" />` |
+| editing a shared `.inc` outside the project does not rebuild | only the `None` items ending in `.inc`, the `CustomAdditionalCompileInputs` items and package or reference folders are dependencies | add `<None Include="../common/include/**/*.inc" />` |
 | a packaged library's consumers can't find its include file | the producer had no `include/` folder, so nothing was packed | move public files to `include/`, or declare `AsmPublicInclude` items |
 | `DEBUG` code is missing in Debug builds | `DisableImplicitConfigurationDefines=true` | remove it, or add `DEBUG` to `DefineConstants` yourself |
 | a shared library exports a dependency's functions | a linked static library's globals (Linux, macOS) or `FUNCTION` directives (Windows) are exported again | `HIDDEN_FUNCTION` or `LOCAL_FUNCTION` in the dependency; an `ExportsFile` (Linux, macOS); `<LinkerArg Include="--exclude-libs ALL" />` on Linux |
@@ -179,9 +180,9 @@ See [Platforms and runtime identifiers](platforms.md) for how a project chooses 
 | `RUNPATH` is empty although `-rpath $ORIGIN` is set | Linux and macOS build machines run the link command through `/bin/sh` | per-OS quoting; see [Runtimes and linking](runtimes-and-linking.md) |
 | outputs differ between two machines | NASM embeds each source's absolute path | the same checkout path, or `-s` in Release |
 | a typo in an `extern` in a `.so` links fine and fails only at load time with `undefined symbol` | Linux shared libraries may have undefined symbols | `<LinkerArg Include="-z defs" />` |
-| the C# project gets the `[AsmLibrary]` types, and its build loads the bindings generator, though no code uses the attribute (not released yet) | the switch is a word search of the project's C# files: `AsmLibrary` in a comment, a string or another name turns the generator on. It writes the same baseline | nothing, or reword the text; to check, the switch reads `Compile` items only |
-| `error CS0101: The namespace '<global namespace>' already contains a definition for 'Apiproto'` in a C# project with asm references (not released yet, measured) | a type of the project is named like an asm library's baseline namespace (the library's name in PascalCase) | name the baseline's namespace: `<AsmBindings Include="apiproto" Namespace="Native.Apiproto" />`, or rename the type |
-| `error CS8936: Feature 'ref fields' is not available in C# 10.0` in `obj/.../AsmBindings/*.g.cs` or a package's `AsmBindings/*.cs` (not released yet, measured with `LangVersion` 10) | the project sets a `LangVersion` below 11; the string wrappers' `scoped` locals need C# 11 (the generator would warn `ASM0147` and write nothing) | `<LangVersion>11</LangVersion>` or later, or `AsmGenerateBindings=false` and imports of your own |
+| the C# project gets the `[AsmLibrary]` types, and its build loads the bindings generator, though no code uses the attribute | the switch is a word search of the project's C# files: `AsmLibrary` in a comment, a string or another name turns the generator on. It writes the same baseline | nothing, or reword the text; to check, the switch reads `Compile` items only |
+| `error CS0101: The namespace '<global namespace>' already contains a definition for 'Apiproto'` in a C# project with asm references (measured) | a type of the project is named like an asm library's baseline namespace (the library's name in PascalCase) | name the baseline's namespace: `<AsmBindings Include="apiproto" Namespace="Native.Apiproto" />`, or rename the type |
+| `error CS8936: Feature 'ref fields' is not available in C# 10.0` in `obj/.../AsmBindings/*.g.cs` or a package's `AsmBindings/*.cs` (measured with `LangVersion` 10) | the project sets a `LangVersion` below 11; the string wrappers' `scoped` locals need C# 11 (the generator would warn `ASM0147` and write nothing) | `<LangVersion>11</LangVersion>` or later, or `AsmGenerateBindings=false` and imports of your own |
 
 ## Running
 
@@ -198,10 +199,9 @@ See [Platforms and runtime identifiers](platforms.md) for how a project chooses 
 
 ## Programs: run, publish, deliver and pack
 
-> [!NOTE]
-> **Not released yet:** these come from the main branch (see [Programs](programs.md)). With
-> AsmFoundation.Sdk 0.3.0, `dotnet run` of a program says "The current OutputType is
-> 'Library'" and `dotnet publish` fails with `MSB3030`.
+See [Programs](programs.md). With AsmFoundation.Sdk 0.3.0 or older, `dotnet run` of a program
+says "The current OutputType is 'Library'" and `dotnet publish` fails with `MSB3030`: update
+the SDK.
 
 | Message | Cause | Fix |
 |---|---|---|
@@ -210,9 +210,9 @@ See [Platforms and runtime identifiers](platforms.md) for how a project chooses 
 | `ASM0092: X has no built program to run` | `dotnet run --no-build` before any build | build first |
 | `ASM0093: AsmRunIn 'x' is not a way to run a program` | a typo | `Auto`, `Host`, `Wsl` or `Docker` |
 | `exec format error` from `dotnet run` in Docker | a build for another CPU on a Linux machine without QEMU in `binfmt_misc` | install it (`docker run --privileged --rm tonistiigi/binfmt --install all`), or run the build of the machine's CPU |
-| `error while loading shared libraries: libcalc.so` | a program run from somewhere other than its build or publish folder, without its library next to it; or a program built by AsmSdk 0.3.0, which set no run path | copy the whole folder; rebuild with the main branch |
+| `error while loading shared libraries: libcalc.so` | a program run from somewhere other than its build or publish folder, without its library next to it; or a program built by AsmSdk 0.3.0, which set no run path | copy the whole folder; rebuild with AsmSdk 0.4.0 or later |
 | `ASM0047: calc.dll would be copied to lib/, but a Windows program finds the DLLs it links only in its own folder` | `BinariesCopyPath` other than `AppFolder` for a Windows RID | set the value for the other RIDs only (a condition on `$(RuntimeIdentifier)`) |
-| `ASM0048` (warning): `… links calc.dll.lib, the import library of calc.dll, but the package … does not say where calc.dll is` | a package packed by AsmSdk 0.3.0, whose props do not name the DLL | repack the package with the main branch, or copy the DLL next to the program |
+| `ASM0048` (warning): `… links calc.dll.lib, the import library of calc.dll, but the package … does not say where calc.dll is` | a package packed by AsmSdk 0.3.0, whose props do not name the DLL | repack the package with AsmSdk 0.4.0 or later, or copy the DLL next to the program |
 | `ASM0051: A packed program keeps the libraries and programs it needs next to it, and these are in subfolders` | `dotnet pack` of a program (or a .NET library that carries one) whose libraries are in a `BinariesCopyPath` folder: NuGet copies `runtimes/` files flat into an app built for one RID | keep them next to the program (`AppFolder`, the default) |
 | `ASM0053: PackAsTool makes a program a .NET tool, and X builds a SharedLibrary` | `PackAsTool` on something that is not a program, or with several target frameworks | `OutputType=Exe`, one `TargetFramework` |
 | a .NET app does not find the program it references | it looked only in its own folder, and a portable build keeps the program in `runtimes/<rid>/native/` | search `NATIVE_DLL_SEARCH_DIRECTORIES`, then the app folder (the code is in [Programs](programs.md#a-net-app-starts-it)) |

@@ -2,37 +2,29 @@
 
 This page builds three things:
 
-1. a shared library written in assembly, for seven platforms;
-2. a program that prints through the C library, for the same seven;
-3. a C# program that calls the library, and runs on any of them.
+1. a shared library written in assembly, for eight platforms;
+2. a program that prints through the C library, for the same eight;
+3. a C# program that calls the library through the bindings the SDK writes, and runs on any
+   of them.
 
 All three go in one solution, built with `dotnet build`.
 
-> [!NOTE]
-> **Not released yet: plug and play.** On the main branch, the solution this page builds by
-> hand comes from a template:
->
-> ```sh
-> dotnet new install AsmFoundation.Templates
-> dotnet new asmnet -n Demo          # a C# app, the asm library it calls, and xunit tests
-> cd Demo
-> dotnet run --project Demo.App      # add_ints(40, 2) = 42
-> dotnet test
-> ```
->
-> `asmlib`, `asmexe` and `asmstatic` create one project each: a shared library, a program,
-> a static library. And what the steps below write by hand is no longer needed:
->
-> - **No `RuntimeIdentifiers` needed.** A project that lists none builds for the machine
->   building it: `win-x64` on Windows x64, `osx-arm64` on an Apple silicon Mac. List the
->   platforms to ship. A portable publish or a pack that would carry one platform only warns
->   `ASM0013`.
-> - **No boilerplate in the sources.** `ImplicitUsings`, on by default, puts the platform layer
->   in front of every file: `asmsdk.inc` and `default rel`, or `asmsdk-gnu.inc`, plus
->   `.note.GNU-stack` on Linux. A source is just code.
-> - **`dotnet sln add` takes an `.asmproj`,** and writes its project type itself.
->
-> See [Projects](projects.md#templates) for the templates' options.
+**The quick way:** the same solution, with tests, comes from a template:
+
+```sh
+dotnet new install AsmFoundation.Templates
+dotnet new asmnet -n Demo          # a C# app, the asm library it calls, and xunit tests
+cd Demo
+dotnet run --project Demo.App      # add_ints(40, 2) = 42
+dotnet test
+```
+
+`asmlib`, `asmexe` and `asmstatic` create one project each: a shared library, a program, a
+static library. Their projects list no `RuntimeIdentifiers`, so they build for the machine
+building them (`win-x64` on Windows x64, `osx-arm64` on an Apple silicon Mac) until you list
+the platforms to ship; a portable publish or a pack that would carry one platform only warns
+`ASM0013`. See [Projects](projects.md#templates) for the templates' options. The steps below
+build the same things by hand.
 
 ## What you need
 
@@ -43,7 +35,7 @@ All three go in one solution, built with `dotnet build`.
   [supported build machines](../toolchain/index.md#supported-build-machines).
 
 You don't install an assembler or a linker: restore downloads them. Every build machine builds
-for all seven platforms. What it can *run* is its own platform's build, plus the x64 builds
+for all eight platforms (and for [WebAssembly](webassembly.md)). What it can *run* is its own platform's build, plus the x64 builds
 under emulation on Windows on Arm and on Apple silicon (Rosetta 2).
 
 ## 1. Name the SDK
@@ -51,7 +43,7 @@ under emulation on Windows on Arm and on Apple silicon (Rosetta 2).
 Create `global.json` next to where your solution will be:
 
 ```json
-{ "msbuild-sdks": { "AsmFoundation.Sdk": "0.3.0" } }
+{ "msbuild-sdks": { "AsmFoundation.Sdk": "0.4.0" } }
 ```
 
 MSBuild resolves `<Project Sdk="AsmFoundation.Sdk">` through this entry, from nuget.org.
@@ -59,7 +51,7 @@ MSBuild resolves `<Project Sdk="AsmFoundation.Sdk">` through this entry, from nu
 A project can also name the version itself, on its first line, and then needs no `global.json`:
 
 ```xml
-<Project Sdk="AsmFoundation.Sdk/0.3.0">
+<Project Sdk="AsmFoundation.Sdk/0.4.0">
 ```
 
 That version wins over `global.json`'s. It suits a project that stands alone, or is copied
@@ -77,7 +69,7 @@ version specified").
 <Project Sdk="AsmFoundation.Sdk">
   <PropertyGroup>
     <AssemblyName>hello</AssemblyName>
-    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
   </PropertyGroup>
 </Project>
 ```
@@ -85,33 +77,21 @@ version specified").
 `Hello/hello.asm`, the x64 code:
 
 ```nasm
-default rel
-%include "asmsdk.inc"
-
-section .text
-FUNCTION hello_add, 2           ; int hello_add(int a, int b)
+PROTO int32_t hello_add(int32_t a, int32_t b)
+FUNCTION hello_add, 2
     lea     eax, [ARG1 + ARG2]  ; rcx + rdx on Windows, rdi + rsi elsewhere
     RETURN
 ENDFUNCTION
-
-%ifdef LINUX
-section .note.GNU-stack noalloc noexec nowrite progbits
-%endif
 ```
 
 `Hello/hello.s`, the ARM64 code:
 
 ```asm
-.include "asmsdk-gnu.inc"
-
-FUNCTION hello_add              // int hello_add(int a, int b)
+PROTO int32_t hello_add(int32_t a, int32_t b)
+FUNCTION hello_add
     add     w0, w0, w1          // the same registers on Windows, Linux and macOS
     ret
 ENDFUNCTION hello_add
-
-.ifdef LINUX
-    .section .note.GNU-stack,"",%progbits
-.endif
 ```
 
 Build it:
@@ -129,18 +109,20 @@ Hello/bin/Debug/freestanding/win-arm64/hello.dll
 Hello/bin/Debug/freestanding/linux-x64/libhello.so
 Hello/bin/Debug/freestanding/linux-arm64/libhello.so
 Hello/bin/Debug/freestanding/linux-musl-x64/libhello.so
+Hello/bin/Debug/freestanding/linux-musl-arm64/libhello.so
 Hello/bin/Debug/freestanding/osx-x64/libhello.dylib
 Hello/bin/Debug/freestanding/osx-arm64/libhello.dylib
 ```
 
 A Windows DLL also gets its import library, `hello.dll.lib`, for native code that links it, and in
-Debug its `hello.pdb`.
+Debug its `hello.pdb`. Next to the platform folders, `hello.api.json` records the `PROTO` line,
+which the C# bindings come from (step 4), and `hello.h` declares the function for C.
 
 - **The properties are .NET's own.** `AssemblyName` names the output, as it names a
   `.csproj`'s DLL; each OS adds its own prefix and extension. `RuntimeIdentifiers` lists the
   platforms, by .NET's runtime identifiers. A project lists the ones its code supports. A
-  project that lists none is built for what its referencing projects ask for, or fails with
-  ASM0010, which names the ways to choose.
+  project that lists none is built for what its referencing projects ask for, or for the
+  build machine's own.
 - **The target framework is `freestanding`** when the project sets none: the code links no
   C library. It is the `freestanding` folder in the output path, as `net10.0` is in a
   `.csproj`'s.
@@ -149,16 +131,20 @@ Debug its `hello.pdb`.
   the x64 platforms. `.s` files are GNU syntax, assembled by `llvm-mc`, and build the ARM64
   ones. A qualifier narrows a file further (`hello.linux.asm`, `hello.win-arm64.s`): see
   [Sources per platform](platforms.md#sources-per-platform).
-- **`asmsdk.inc` and `asmsdk-gnu.inc` are the platform layer.** `FUNCTION` declares and
-  exports a function the way each OS does. In x64 code, `ARG1` and `ARG2` are the first two
-  argument registers of the OS being built. ARM64 needs no such names: all three OSes pass
-  arguments in `x0`-`x7`.
+- **`asmsdk.inc` and `asmsdk-gnu.inc` are the platform layer,** which `ImplicitUsings` (on
+  by default) puts in front of every source, with `default rel` and, on Linux, the
+  `.note.GNU-stack` section. `FUNCTION` declares and exports a function the way each OS does.
+  In x64 code, `ARG1` and `ARG2` are the first two argument registers of the OS being built.
+  ARM64 needs no such names: all three OSes pass arguments in `x0`-`x7`.
+- **`PROTO` is the function's C prototype.** The SDK checks it against the `FUNCTION` on every
+  platform, and every platform must declare the same.
 - **A second `dotnet build` with no changes runs no tool at all.**
 
 > [!TIP]
-> `default rel` and the `%ifdef LINUX` around `.note.GNU-stack` matter more than they look.
-> They are two of the rules in [Writing NASM for AsmSdk](writing-nasm.md): the first decides
-> whether code links into a shared library, and the second whether it assembles for macOS.
+> `default rel` and the Linux-only `.note.GNU-stack` matter more than they look, which is why
+> the SDK writes them for you. They are two of the rules in
+> [Writing NASM for AsmSdk](writing-nasm.md): the first decides whether code links into a
+> shared library, and the second whether it assembles for macOS.
 
 ## 3. A program
 
@@ -170,7 +156,7 @@ Debug its `hello.pdb`.
     <OutputType>Exe</OutputType>
     <TargetFramework>libc</TargetFramework>
     <AssemblyName>hello-app</AssemblyName>
-    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
   </PropertyGroup>
 </Project>
 ```
@@ -178,8 +164,6 @@ Debug its `hello.pdb`.
 `HelloApp/main.asm`: an ordinary C `main` that prints a line with `puts`.
 
 ```nasm
-default rel
-%include "asmsdk.inc"
 extern puts
 
 section .rodata
@@ -194,17 +178,11 @@ FUNCTION main                       ; int main(void)
     xor     eax, eax                ; exit status 0
     RETURN
 ENDFUNCTION
-
-%ifdef LINUX
-section .note.GNU-stack noalloc noexec nowrite progbits
-%endif
 ```
 
 `HelloApp/main.s`: the same program for ARM64.
 
 ```asm
-.include "asmsdk-gnu.inc"
-
 RODATA
 message:    .asciz "hello from assembly"
 
@@ -217,10 +195,6 @@ FUNCTION main                       // int main(void)
     ldp     x29, x30, [sp], #16
     ret
 ENDFUNCTION main
-
-.ifdef LINUX
-    .section .note.GNU-stack,"",%progbits
-.endif
 ```
 
 `dotnet build HelloApp/HelloApp.asmproj` writes `HelloApp/bin/Debug/libc/<rid>/hello-app`
@@ -242,11 +216,10 @@ docker run --rm -v "$PWD:/w" -w /w mcr.microsoft.com/dotnet/runtime:10.0 \
   sh -c 'chmod +x HelloApp/bin/Debug/libc/linux-x64/hello-app && ./HelloApp/bin/Debug/libc/linux-x64/hello-app'
 ```
 
-> [!NOTE]
-> **Not released yet:** on the main branch, `dotnet run --project HelloApp` builds the
-> program and runs the build for this machine, and `dotnet run -r linux-x64` runs a Linux
-> build through WSL or in Docker. `dotnet publish` writes one folder per RID, and
-> `PackAsTool` packs the program as a .NET tool. See [Programs](programs.md).
+**Or let `dotnet run` do it:** `dotnet run --project HelloApp` builds the program and runs the
+build for this machine, and `dotnet run --project HelloApp -r linux-x64` runs a Linux build
+through WSL or in Docker. `dotnet publish` writes one folder per RID, and `PackAsTool` packs
+the program as a .NET tool. See [Programs](programs.md).
 
 - **`SHADOW_SPACE`** is 32 on Windows and 0 elsewhere. An x64 call needs `rsp` 16-byte aligned,
   and on Windows the caller also reserves 32 bytes above the return address for the callee.
@@ -268,7 +241,6 @@ docker run --rm -v "$PWD:/w" -w /w mcr.microsoft.com/dotnet/runtime:10.0 \
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>   <!-- [LibraryImport] generates unsafe code -->
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Hello/Hello.asmproj" />
@@ -279,10 +251,15 @@ docker run --rm -v "$PWD:/w" -w /w mcr.microsoft.com/dotnet/runtime:10.0 \
 `App/Program.cs`:
 
 ```csharp
-using System.Runtime.InteropServices;
+Console.WriteLine(Hello.Hello.HelloAdd(40, 2));
+```
 
-Console.WriteLine(Native.HelloAdd(40, 2));
+`Hello.Hello.HelloAdd` is the binding the SDK writes from the `PROTO` line: the namespace is
+the library's name, the class the source file's, the method the function's, in PascalCase.
+Nothing is declared by hand. The same call written by hand, for a library without `PROTO`
+lines, is a `[LibraryImport]` (see [Calling assembly from .NET](interop.md)):
 
+```csharp
 internal static partial class Native
 {
     // "hello": hello.dll on Windows, libhello.so on Linux, libhello.dylib on macOS
@@ -294,6 +271,8 @@ internal static partial class Native
 **What the reference does:**
 
 - it builds `Hello` first, for each of its platforms;
+- it writes the C# bindings of `Hello`'s `PROTO` lines into the app's compilation (see
+  [Generated bindings](interop.md#generated-bindings));
 - it copies each platform's library into `runtimes/<rid>/native/` beside `App.dll`, and lists
   them in `App.deps.json`, on build and on `dotnet publish`. The .NET host loads the one for
   the machine it runs on, as it does for a NuGet package's native libraries;
@@ -305,7 +284,7 @@ pick it. See [Calling assembly from .NET](interop.md#net-in-the-same-solution). 
 libraries somewhere else, such as `native/<rid>/`, set `BinariesCopyPath` on the reference
 ([Where the binaries go](interop.md#where-the-binaries-go-binariescopypath)).
 
-**Running it** works on any of the seven platforms:
+**Running it** works on any of the eight platforms:
 
 ```sh
 dotnet run --project App
@@ -331,17 +310,13 @@ docker run --rm -v "$PWD:/w" -w /w mcr.microsoft.com/dotnet/runtime:10.0 dotnet 
 
 - **The `Type` GUID is required.** It is the generic MSBuild project type. Without it,
   `dotnet build App.slnx` fails with `MSB4025 … ProjectType '' not found`.
-- **Add the entries by hand.** `dotnet sln add` refuses `.asmproj` files ("unknown project
-  type").
-
-> [!NOTE]
-> **Not released yet:** on the main branch, `dotnet sln App.slnx add Hello/Hello.asmproj`
-> works. The SDK names the project type (`DefaultProjectTypeGuid`), and the CLI writes the
-> `Type` above itself. `dotnet add reference` still refuses an `.asmproj` ("incompatible
-> targeted frameworks"): the CLI parses the `TargetFramework` text and doesn't know NuGet's
-> aliases (`freestanding`, `libc`), reported as
-> [dotnet/sdk#57317](https://github.com/dotnet/sdk/issues/57317). Write the `ProjectReference`
-> line as in step 4.
+- **`dotnet sln App.slnx add Hello/Hello.asmproj` writes it for you.** The SDK names the
+  project type (`DefaultProjectTypeGuid`), and the CLI writes the `Type` above itself.
+- **`dotnet add reference` still refuses an `.asmproj`** ("incompatible targeted
+  frameworks"): the CLI parses the `TargetFramework` text and doesn't know NuGet's aliases
+  (`freestanding`, `libc`), reported as
+  [dotnet/sdk#57317](https://github.com/dotnet/sdk/issues/57317). Write the `ProjectReference`
+  line as in step 4.
 
 `dotnet build App.slnx` now builds everything.
 

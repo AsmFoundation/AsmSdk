@@ -17,10 +17,6 @@ instruction updates 128 cells at once.
 </div>
 <script type="module" src="demo.js"></script>
 
-> [!NOTE]
-> **Not released yet:** built with AsmSdk's main branch, which has WebAssembly
-> ([Wasm Demos](index.md)).
-
 ## The kernel
 
 The board is one bit per cell: 512 bytes per row, so one `v128.load` brings 128 neighbouring cells.
@@ -65,12 +61,9 @@ the demo are your browser's.
 
 ## Build one yourself
 
-> [!NOTE]
-> **Not released yet:** WebAssembly, and the `asmwasm` template, are on AsmSdk's main branch.
-
 ```sh
 dotnet new asmwasm -n Kernel      # a WebAssembly library in LLVM's WebAssembly assembly
-dotnet build Kernel               # Kernel/bin/Release/freestanding/browser-wasm/Kernel.wasm
+dotnet build Kernel               # Kernel/bin/Debug/freestanding/browser-wasm/Kernel.wasm
 node Kernel/run.mjs               # calls it from Node; a page loads it the same way
 ```
 

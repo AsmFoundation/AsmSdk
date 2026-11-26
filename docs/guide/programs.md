@@ -1,12 +1,5 @@
 # Programs: run, publish, deliver and pack
 
-> [!NOTE]
-> **Not released yet:** everything on this page is on the main branch only. AsmFoundation.Sdk
-> 0.3.0 on nuget.org builds programs, but `dotnet run` refuses them ("The current OutputType
-> is 'Library'"), `dotnet publish` fails (MSB3030), a program that links an asm shared
-> library gets no copy of it, and `dotnet pack` packs no program. See the
-> [changelog](changelog.md).
-
 An asm program is an `.asmproj` with `<OutputType>Exe</OutputType>`. This page covers what
 happens to it after the build:
 
@@ -108,7 +101,7 @@ Which files are copied:
   import library `calc.dll.lib`, and `calc.dll` is the file copied. Its PDB goes along when
   there is one.
 - Not copied: a static library (its code is inside the program), and a link input the
-  project names itself with `AsmLinkLibrary`, renamed `NativeLibrary` on the main branch (a system library stays where it is).
+  project names itself with `NativeLibrary` (a system library stays where it is).
 
 ## dotnet publish
 

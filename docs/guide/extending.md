@@ -55,7 +55,7 @@ Pack (per target framework)
 
 | Target | Inputs → outputs | Condition |
 |---|---|---|
-| `AsmAssemble` | the sources selected for the RID, `@(_AsmDependency)`, the project file, the SDK's targets → `%(ObjectFile)`, batched per source | always |
+| `AsmAssemble` | the sources selected for the RID, `@(_AsmDependency)`, the project file, the SDK's targets, `obj/…/asm/assemble-options.txt` (the assemblers' options, rewritten only when they change), the `STRUCT` constants the SDK wrote for each source → `%(ObjectFile)`, batched per source | always |
 | `_AsmBuildSystemLibraries` | the SDK's symbol lists and stub sources, the project file → `obj/…/asm/stubs/`: the C library stand-in, `kernel32.lib` | a shared library or executable that uses the C library, and every Windows one |
 | `_AsmBuildCrt` | `stubs/crt1.asm`, `crt1-arm64.s` or `wincrt-<arch>` → `obj/…/asm/stubs/crt1.o` or `wincrt.obj` | a Linux or Windows libc executable without `StartupObject` |
 | `AsmLink` | `@(_AsmObject)`, `@(_AsmLinkInput)`, the `ExportsFile`, the project file → `$(TargetPath)`, `$(AsmStaticLibraryPath)` | `OutputType` is not `Objects` |
@@ -65,13 +65,13 @@ Pack (per target framework)
 - every object path, mirroring the source's subfolder, so `a/x.asm` and `b/x.asm` don't
   collide;
 - the include directories, local ones first, each with a trailing `/`;
-- the dependency list: `@(AsmInclude)`, plus every `**/*.inc` under include directories
-  that carry `AsmOrigin` (not released yet: the `None` items ending in `.inc` and the
-  `CustomAdditionalCompileInputs` items, instead of `@(AsmInclude)`);
+- the dependency list: the `None` items ending in `.inc` and the
+  `CustomAdditionalCompileInputs` items, plus every `**/*.inc` under include directories that
+  carry `AsmOrigin`;
 - the `-D` arguments from `DefineConstants`, to which `Properties.targets` has appended
   `DEBUG` or `RELEASE`, and `FREESTANDING` or `LIBC`;
 - the `ExportsFile` (`--version-script`) and `LinkerArg` arguments of the link;
-- the link inputs, from `@(AsmLinkLibrary)` (`@(NativeLibrary)`, not released yet).
+- the link inputs, from `@(NativeLibrary)`.
 
 **All paths handed to tools use forward slashes.** A trailing backslash before a closing
 quote (`"C:\dir\"`) would escape the quote under Windows command-line rules and merge two
@@ -79,8 +79,9 @@ arguments into one.
 
 ## Incremental builds
 
-- **An object is up to date** when it is newer than its source, every dependency `.inc`
-  and the project file. Editing any `.inc` in the dependency list reassembles every source
+- **An object is up to date** when it is newer than its source, every dependency `.inc`,
+  the project file and the assemblers' options file, which changes when an option does,
+  wherever it was set. Editing any `.inc` in the dependency list reassembles every source
   of the project. That is coarse, but never stale.
 - **A link is up to date** when the output is newer than every object, every link input
   and the project file. A rebuild of a referenced library re-links its consumers.
@@ -89,10 +90,10 @@ arguments into one.
 
   | Not tracked | Effect | Fix |
   |---|---|---|
-  | `.inc` files in your own `AsmIncludeDirectory` items outside the project | stale objects | list them as `AsmInclude` items |
-  | `incbin` files | stale objects | list them as `AsmInclude` items: any file works as a dependency (not released yet: `CustomAdditionalCompileInputs` items) |
+  | `.inc` files in your own `AsmIncludeDirectory` items outside the project | stale objects | list them as `None` items |
+  | `incbin` files | stale objects | list them as `CustomAdditionalCompileInputs` items: any file works as a dependency |
   | include files without the `.inc` extension | stale objects | the same |
-  | `Directory.Build.props` and other imported files | a changed define does not reassemble anything | rebuild (`dotnet build --no-incremental`) after changing them |
+  | linker arguments in `Directory.Build.props` and other imported files | a changed `LinkerArg` does not re-link | rebuild (`dotnet build --no-incremental`) after changing them |
 
 ## How references are resolved
 
@@ -100,7 +101,7 @@ arguments into one.
   1. `ResolveProjectReferences` builds the referenced project.
   2. `_AsmResolveProjectReferences` calls its `GetAsmLinkInputs` target.
   3. The returned items carry `AsmItemType`. `IncludeDirectory` items are added to
-     `AsmIncludeDirectory`, and `LinkInput` items to `AsmLinkLibrary` (`NativeLibrary`, not released yet), all with
+     `AsmIncludeDirectory`, and `LinkInput` items to `NativeLibrary`, all with
      `AsmOrigin="Project"`.
 
   Transitive project references, which the .NET SDK adds, are processed the same way.
@@ -134,7 +135,7 @@ between releases.
                     Overwrite="true" WriteOnlyWhenDifferent="true" />
   <ItemGroup>
     <AsmIncludeDirectory Include="$(IntermediateOutputPath)gen/" />
-    <AsmInclude Include="$(IntermediateOutputPath)gen/version.inc" />
+    <None Include="$(IntermediateOutputPath)gen/version.inc" />
     <FileWrites Include="$(IntermediateOutputPath)gen/version.inc" />
   </ItemGroup>
 </Target>
@@ -154,14 +155,14 @@ between releases.
   <MakeDir Directories="$(IntermediateOutputPath)gen" />   <!-- a clean obj/ has no gen/ yet -->
   <Exec Command="dotnet run tools/gen_tables.cs -- &quot;$(IntermediateOutputPath)gen/tables.asm&quot;" />
   <ItemGroup>
-    <AsmSource Include="$(IntermediateOutputPath)gen/tables.asm" />
+    <Compile Include="$(IntermediateOutputPath)gen/tables.asm" />
     <FileWrites Include="$(IntermediateOutputPath)gen/tables.asm" />
   </ItemGroup>
 </Target>
 ```
 
 With `Inputs` and `Outputs` on a target, MSBuild still runs the target's item groups when
-it skips the target as up to date. The `AsmSource` item exists either way.
+it skips the target as up to date. The `Compile` item exists either way.
 
 **Keep tools out of design-time builds.** IDEs run `Compile` and `CoreCompile` on every
 project load with `DesignTimeBuild=true` (see [IDEs](ides.md)). A target hooked to
@@ -180,11 +181,12 @@ leads to them, is skipped. A target hooked anywhere else that runs a tool needs
 
 **Change a link line:**
 
-- Use `LinkerArg` items for flags, `ExportsFile` for a version script, and `AsmLinkLibrary` (`NativeLibrary`, not released yet)
+- Use `LinkerArg` items for flags, `ExportsFile` for a version script, and `NativeLibrary`
   items for inputs.
 - Don't override `AsmLink`. To change the whole link, set
   `<OutputType>Objects</OutputType>` and link in your own target, after
-  `AsmAssemble`, from `@(AsmSource->'%(ObjectToolPath)')`.
+  `AsmAssemble`, from `@(_AsmObject)`, the objects' paths (an internal item, like every `_Asm`
+  name: not a stable API).
 
 ## Inspecting a build
 
@@ -192,7 +194,7 @@ leads to them, is skipped. A target hooked anywhere else that runs a tool needs
   and re-run it from the project folder to experiment.
 - **`dotnet msbuild X.asmproj -getProperty:TargetFileName -getProperty:AsmToolchainDirectory`**
   shows evaluated properties, without building.
-- **`dotnet msbuild X.asmproj -getItem:AsmSource -getItem:AsmIncludeDirectory`** shows the
+- **`dotnet msbuild X.asmproj -getItem:Compile -getItem:AsmIncludeDirectory`** shows the
   items, as JSON.
 - **`dotnet build -bl`** writes `msbuild.binlog`. Open it in the MSBuild Structured Log
   Viewer to see every target, its skip reason (up to date) and every property.

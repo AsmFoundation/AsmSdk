@@ -47,11 +47,10 @@ let .NET's own RID rules choose the library.
   Otherwise it is the nearest one the RID falls back to: an asm project that lists `linux-arm64`
   serves `linux-musl-arm64`, as a package's `runtimes/linux-arm64/` would. When none fits, the
   build stops with **ASM0040**, which lists what the asm project builds and what the app can
-  use. (Not released yet: an asm project with
-  `<OptionalOnUnlistedRuntimes>true</OptionalOnUnlistedRuntimes>` makes that the warning
-  **ASM0049** instead, and the build goes on without the library, for an app whose code checks
-  for it and copes with `DllNotFoundException`. The default stays the error, so nothing ships
-  without a library by accident.)
+  use. An asm project with `<OptionalOnUnlistedRuntimes>true</OptionalOnUnlistedRuntimes>`
+  makes that the warning **ASM0049** instead, and the build goes on without the library, for
+  an app whose code checks for it and copes with `DllNotFoundException`. The default stays the
+  error, so nothing ships without a library by accident.
 - **`RuntimeIdentifiers` on the reference** narrows what a portable build carries:
 
   ```xml
@@ -60,9 +59,9 @@ let .NET's own RID rules choose the library.
 
   A RID the asm project does not list is ASM0012, as with `-r`. An asm project that lists no
   RIDs of its own builds exactly these. A portable build that names none for such a project
-  stops with ASM0010. A RID-specific build needs no list: it builds its own RID.
-  (Not released yet: such a portable build gets the build machine's RID, and a portable
-  `dotnet publish` or `dotnet pack` of the app warns ASM0013 that it carries that one only.)
+  gets the build machine's RID, and a portable `dotnet publish` or `dotnet pack` of the app
+  warns ASM0013 that it carries that one only. A RID-specific build needs no list: it builds
+  its own RID.
 - **Only shared libraries are copied.** A referenced static library, program or object-file
   project is something an app cannot load. It is skipped with a message, and stays for the
   asm projects that link it. This includes the static libraries that the .NET SDK adds as
@@ -94,160 +93,157 @@ let .NET's own RID rules choose the library.
 
 ### Generated bindings
 
-> [!NOTE]
-> **Not released yet.** On the main branch, the imports above are generated. Declare each
-> function's C prototype beside it in the asm source (see
-> [Writing NASM](writing-nasm.md#proto-a-functions-c-prototype)):
->
-> ```nasm
-> PROTO int32_t hello_add(int32_t a, int32_t b)
-> FUNCTION hello_add, 2
-> ```
->
-> A C# project (.NET 7 or later) that references the asm library, as a project or as its
-> package, then calls it with nothing written:
->
-> ```csharp
-> int sum = Hello.Add.HelloAdd(40, 2);   // the library "hello", its source add.asm
-> ```
->
-> - **The baseline** is the namespace named after the library (its `AssemblyName`, each dotted
->   part in PascalCase: `hello` gives `Hello`, `Demo.Native` gives `Demo.Native`), with one
->   internal static class per `.asm` file, folders as namespaces (`Hello.Simd.Crc` for
->   `simd/crc.asm`), and the library's `STRUCT`s at the namespace's root. A file that has a function
->   of its own name gives its class the suffix `Asm`: `answer` in `answer.asm` is
->   `Hello.AnswerAsm.Answer()`, because C# forbids a member named like its type. Every function is
->   there, whatever else the project binds.
-> - **Who writes it:** the SDK. For a project reference it writes
->   `obj/<Configuration>/<tfm>/AsmBindings/<Namespace>.g.cs` at build time; an asm package
->   carries it, written when the package was packed (see [.NET through a package](#net-through-a-package)).
->   No source generator runs, and no attribute type enters the compilation, until the
->   project's code names `AsmLibrary`.
-> - **The project file shapes it**, for every library with the properties, for one with an
->   `AsmBindings` item (an environment variable of a property's name works too: MSBuild reads it
->   as the property):
->
->   ```xml
->   <PropertyGroup>
->     <AsmBindingsClassKind>Instance</AsmBindingsClassKind>
->     <AsmBindingsVisibility>Public</AsmBindingsVisibility>
->   </PropertyGroup>
->   <ItemGroup>
->     <AsmBindings Include="hello" Namespace="Acme.Native" Nesting="Flat" />
->   </ItemGroup>
->   ```
->
->   | Option (item metadata) | Property | Values |
->   |---|---|---|
->   | `Namespace` | (none: one per library) | the baseline's namespace; the library's name by default |
->   | `Nesting` | `AsmBindingsNesting` | `Files` (the default: a class per file, folders as namespaces), `Folders` (a class per folder; the root files' functions in `<Namespace>.Api`), `Flat` (every function in `<Namespace>.Api`) |
->   | `SpanOverloads` | `AsmBindingsSpanOverloads` | `true` (the default) or `false` |
->   | `Visibility` | `AsmBindingsVisibility` | `Internal` (the default), `Public`, or `ProtectedInternal` (the classes are then public, their members protected internal) |
->   | `ClassKind` | `AsmBindingsClassKind` | `Static` (the default: each binding is the `[DllImport]` extern itself) or `Instance` (classes to create, `new Hello.Add().HelloAdd(40, 2)`, each method around a private extern) |
->   | `Virtual` | `AsmBindingsVirtual` | `false` (the default) or `true`: instance methods a subclass overrides, a seam for tests |
->   | `Sealed` | `AsmBindingsSealed` | `false` (the default) or `true`: sealed instance classes |
->   | `DefaultBindings` | `AsmDefaultBindings` | `true` (the default) or `false`: no function classes, only the structs |
->
->   `ProtectedInternal`, `Virtual` and `Sealed` need `Instance`, and `Virtual` excludes `Sealed`
->   (`ASM0146`).
-> - **`[AsmLibrary]` in code** turns the bindings generator on. It writes the baseline (the same,
->   now shaped by the code too) and the copies the attributed classes ask for. The code wins: a
->   class's attribute, then the library's assembly attribute, the global one, the library's
->   `AsmBindings` item, then the properties.
->
->   ```csharp
->   using AsmFoundation.Interop;
->
->   // The baseline, shaped from code: the Default* options of an assembly attribute.
->   [assembly: AsmLibrary("hello", DefaultNamespace = "Acme.Native", DefaultNesting = AsmNesting.Flat)]
->   // The copies' default, for every library.
->   [assembly: AsmLibrary(SpanOverloads = false)]
->
->   // A copy of chosen functions in a class of the app's own.
->   [AsmLibrary("hello", Files = ["simd/crc.asm"])]
->   internal static partial class Crc { }
->
->   // A non-static partial class gets instance members: here overridable, a seam for tests.
->   [AsmLibrary("hello", Files = ["add.asm"], Virtual = true)]
->   internal partial class Adder { }
->   ```
->
->   - **The baseline's options** on an assembly attribute are named `Default*`: `DefaultNamespace`
->     (on the per-library attribute only), `DefaultNesting`, `DefaultSpanOverloads`,
->     `DefaultVisibility`, `DefaultClassKind`, `DefaultVirtual`, `DefaultSealed`, and
->     `DefaultBindings = false`, which leaves the function classes out. On a class they are
->     `ASM0146`.
->   - **A copy's options:** `Nesting` (`Files`, the default; `Folders`; `Flat`, the default of a
->     class that selects `Files` or a `Folder`), `SpanOverloads`, `Visibility`, `Virtual`,
->     `Files`, `Folder` and `AliasBinding`. A static class gets static members, a non-static
->     partial class instance members. Among the app's classes each function is bound once: a
->     second class that selects one is `ASM0142` unless it says `AliasBinding = true`. The
->     baseline keeps every function either way.
->   - **The switch** is a word search of the project's C# files for `AsmLibrary`, no compiler. A
->     mention in a comment or a string turns the generator on too; it writes the same baseline,
->     and adds the attribute's types (internal).
->   - **C# 11 or later:** the bindings use `scoped` and function pointers. Below C# 11 the
->     generator writes nothing and warns (`ASM0147`); its attribute's own source compiles down
->     to C# 7.3, so a `netstandard2.0` project that names it still builds. A written baseline
->     does not compile below C# 11 (`CS8936`, measured with `LangVersion` 10): such a project
->     sets `AsmGenerateBindings=false`.
-> - **Types:** the fixed-width integers, `float`, `double` and pointers pass as they are (a
->   blittable `[DllImport]`, no marshalling); `bool` is one byte; a `const char*` parameter is a
->   `string` converted to UTF-8 (on the stack when short); a function pointer is a
->   `delegate* unmanaged<...>`. A pointer followed by its length (a `size_t` named `len`,
->   `length`, `size`, `count`, or the pointer's name plus `_len` or `_count`) also gets a
->   `Span<T>` or `ReadOnlySpan<T>` overload, pinned for the call. `PROTO fast` adds
->   `[SuppressGCTransition]`.
-> - **Structs:** each `STRUCT` of the library (see
->   [Writing NASM](writing-nasm.md#struct-a-struct-for-the-asm-code-and-for-c)) becomes a
->   sequential C# struct at the root of the baseline's namespace, with the same fields:
->
->   ```csharp
->   unsafe
->   {
->       Hello.Rect rect = default;               // STRUCT rect, point min, point max, uint32_t flags
->       rect.Max.X = 4;
->       int area = Hello.Shapes.RectArea(&rect); // PROTO int32_t rect_area(const rect* r)
->   }
->   ```
->
->   - **The C# types:** an array is a `fixed` buffer, `bool` is `bool` (one byte, as in C) and
->     `char` is `byte`. A function pointer is a `delegate* unmanaged<...>`, and a nested struct
->     is its generated struct.
->   - **The layout:** .NET lays the fields out at C's offsets (the SDK's tests check it on every
->     machine they run on: the asm code reads back what C# wrote). Each summary shows the C line,
->     the size and every offset.
->   - **Visibility:** the structs are as visible as the baseline's classes. A public copy of a
->     function that takes one needs the baseline public too (`ASM0145`).
->   - **Names:** a struct named like a class of the namespace's root is reported (`ASM0143`). A
->     field named like its struct is `Value`.
-> - **Why `[DllImport]` and not `[LibraryImport]`:** source generators never see each other's
->   output, so .NET's LibraryImport generator would leave generated `[LibraryImport]` methods
->   without a body (measured: CS8795). The bindings are complete instead: blittable externs, with
->   the conversions LibraryImport would have written. They need unsafe code, so the SDK (or the
->   package) sets `AllowUnsafeBlocks` whenever there are bindings.
-> - **Errors:** `ASM0140` (an attribute or an `AsmBindings` item names no library the project has
->   bindings for), `ASM0141` (no such file or folder), `ASM0142` (bound twice among the app's
->   classes), `ASM0143` (a class that cannot hold bindings: not partial, or generic; a function
->   named like the app's class that binds it; or a name generated twice), `ASM0144` (an unreadable API file), `ASM0145` (a public copy of a function
->   that takes a struct the internal baseline holds), `ASM0146` (a value that is no option's,
->   options C# cannot follow together, a `Default*` option on a class, a namespace C# cannot
->   have), `ASM0147` (warning: C# older than 11).
-> - **`<AsmGenerateBindings>false</AsmGenerateBindings>`** turns it all off, for a project with
->   its own imports.
-> - **Libraries only.** A referenced asm program gets no bindings, even with `PROTO` lines (its
->   API file describes what it exports to its plugins): a program is started, never loaded.
->   A .NET WebAssembly app gets them as any app does: its asm reference is built for its RID,
->   whose `PROTO` lines are checked against each function's whole wasm type (see
->   [WebAssembly](webassembly.md#proto-the-c-bindings)).
+The imports above can be generated. Declare each function's C prototype beside it in the
+asm source (see [Writing NASM](writing-nasm.md#proto-a-functions-c-prototype)):
+
+```nasm
+PROTO int32_t hello_add(int32_t a, int32_t b)
+FUNCTION hello_add, 2
+```
+
+A C# project (.NET 7 or later) that references the asm library, as a project or as its
+package, then calls it with nothing written:
+
+```csharp
+int sum = Hello.Add.HelloAdd(40, 2);   // the library "hello", its source add.asm
+```
+
+- **The baseline** is the namespace named after the library (its `AssemblyName`, each dotted
+  part in PascalCase: `hello` gives `Hello`, `Demo.Native` gives `Demo.Native`), with one
+  internal static class per `.asm` file, folders as namespaces (`Hello.Simd.Crc` for
+  `simd/crc.asm`), and the library's `STRUCT`s at the namespace's root. A file that has a function
+  of its own name gives its class the suffix `Asm`: `answer` in `answer.asm` is
+  `Hello.AnswerAsm.Answer()`, because C# forbids a member named like its type. Every function is
+  there, whatever else the project binds.
+- **Who writes it:** the SDK. For a project reference it writes
+  `obj/<Configuration>/<tfm>/AsmBindings/<Namespace>.g.cs` at build time; an asm package
+  carries it, written when the package was packed (see [.NET through a package](#net-through-a-package)).
+  No source generator runs, and no attribute type enters the compilation, until the
+  project's code names `AsmLibrary`.
+- **The project file shapes it**, for every library with the properties, for one with an
+  `AsmBindings` item (an environment variable of a property's name works too: MSBuild reads it
+  as the property):
+
+  ```xml
+  <PropertyGroup>
+    <AsmBindingsClassKind>Instance</AsmBindingsClassKind>
+    <AsmBindingsVisibility>Public</AsmBindingsVisibility>
+  </PropertyGroup>
+  <ItemGroup>
+    <AsmBindings Include="hello" Namespace="Acme.Native" Nesting="Flat" />
+  </ItemGroup>
+  ```
+
+  | Option (item metadata) | Property | Values |
+  |---|---|---|
+  | `Namespace` | (none: one per library) | the baseline's namespace; the library's name by default |
+  | `Nesting` | `AsmBindingsNesting` | `Files` (the default: a class per file, folders as namespaces), `Folders` (a class per folder; the root files' functions in `<Namespace>.Api`), `Flat` (every function in `<Namespace>.Api`) |
+  | `SpanOverloads` | `AsmBindingsSpanOverloads` | `true` (the default) or `false` |
+  | `Visibility` | `AsmBindingsVisibility` | `Internal` (the default), `Public`, or `ProtectedInternal` (the classes are then public, their members protected internal) |
+  | `ClassKind` | `AsmBindingsClassKind` | `Static` (the default: each binding is the `[DllImport]` extern itself) or `Instance` (classes to create, `new Hello.Add().HelloAdd(40, 2)`, each method around a private extern) |
+  | `Virtual` | `AsmBindingsVirtual` | `false` (the default) or `true`: instance methods a subclass overrides, a seam for tests |
+  | `Sealed` | `AsmBindingsSealed` | `false` (the default) or `true`: sealed instance classes |
+  | `DefaultBindings` | `AsmDefaultBindings` | `true` (the default) or `false`: no function classes, only the structs |
+
+  `ProtectedInternal`, `Virtual` and `Sealed` need `Instance`, and `Virtual` excludes `Sealed`
+  (`ASM0146`).
+- **`[AsmLibrary]` in code** turns the bindings generator on. It writes the baseline (the same,
+  now shaped by the code too) and the copies the attributed classes ask for. The code wins: a
+  class's attribute, then the library's assembly attribute, the global one, the library's
+  `AsmBindings` item, then the properties.
+
+  ```csharp
+  using AsmFoundation.Interop;
+
+  // The baseline, shaped from code: the Default* options of an assembly attribute.
+  [assembly: AsmLibrary("hello", DefaultNamespace = "Acme.Native", DefaultNesting = AsmNesting.Flat)]
+  // The copies' default, for every library.
+  [assembly: AsmLibrary(SpanOverloads = false)]
+
+  // A copy of chosen functions in a class of the app's own.
+  [AsmLibrary("hello", Files = ["simd/crc.asm"])]
+  internal static partial class Crc { }
+
+  // A non-static partial class gets instance members: here overridable, a seam for tests.
+  [AsmLibrary("hello", Files = ["add.asm"], Virtual = true)]
+  internal partial class Adder { }
+  ```
+
+  - **The baseline's options** on an assembly attribute are named `Default*`: `DefaultNamespace`
+    (on the per-library attribute only), `DefaultNesting`, `DefaultSpanOverloads`,
+    `DefaultVisibility`, `DefaultClassKind`, `DefaultVirtual`, `DefaultSealed`, and
+    `DefaultBindings = false`, which leaves the function classes out. On a class they are
+    `ASM0146`.
+  - **A copy's options:** `Nesting` (`Files`, the default; `Folders`; `Flat`, the default of a
+    class that selects `Files` or a `Folder`), `SpanOverloads`, `Visibility`, `Virtual`,
+    `Files`, `Folder` and `AliasBinding`. A static class gets static members, a non-static
+    partial class instance members. Among the app's classes each function is bound once: a
+    second class that selects one is `ASM0142` unless it says `AliasBinding = true`. The
+    baseline keeps every function either way.
+  - **The switch** is a word search of the project's C# files for `AsmLibrary`, no compiler. A
+    mention in a comment or a string turns the generator on too; it writes the same baseline,
+    and adds the attribute's types (internal).
+  - **C# 11 or later:** the bindings use `scoped` and function pointers. Below C# 11 the
+    generator writes nothing and warns (`ASM0147`); its attribute's own source compiles down
+    to C# 7.3, so a `netstandard2.0` project that names it still builds. A written baseline
+    does not compile below C# 11 (`CS8936`, measured with `LangVersion` 10): such a project
+    sets `AsmGenerateBindings=false`.
+- **Types:** the fixed-width integers, `float`, `double` and pointers pass as they are (a
+  blittable `[DllImport]`, no marshalling); `bool` is one byte; a `const char*` parameter is a
+  `string` converted to UTF-8 (on the stack when short); a function pointer is a
+  `delegate* unmanaged<...>`. A pointer followed by its length (a `size_t` named `len`,
+  `length`, `size`, `count`, or the pointer's name plus `_len` or `_count`) also gets a
+  `Span<T>` or `ReadOnlySpan<T>` overload, pinned for the call. `PROTO fast` adds
+  `[SuppressGCTransition]`.
+- **Structs:** each `STRUCT` of the library (see
+  [Writing NASM](writing-nasm.md#struct-a-struct-for-the-asm-code-and-for-c)) becomes a
+  sequential C# struct at the root of the baseline's namespace, with the same fields:
+
+  ```csharp
+  unsafe
+  {
+      Hello.Rect rect = default;               // STRUCT rect, point min, point max, uint32_t flags
+      rect.Max.X = 4;
+      int area = Hello.Shapes.RectArea(&rect); // PROTO int32_t rect_area(const rect* r)
+  }
+  ```
+
+  - **The C# types:** an array is a `fixed` buffer, `bool` is `bool` (one byte, as in C) and
+    `char` is `byte`. A function pointer is a `delegate* unmanaged<...>`, and a nested struct
+    is its generated struct.
+  - **The layout:** .NET lays the fields out at C's offsets (the SDK's tests check it on every
+    machine they run on: the asm code reads back what C# wrote). Each summary shows the C line,
+    the size and every offset.
+  - **Visibility:** the structs are as visible as the baseline's classes. A public copy of a
+    function that takes one needs the baseline public too (`ASM0145`).
+  - **Names:** a struct named like a class of the namespace's root is reported (`ASM0143`). A
+    field named like its struct is `Value`.
+- **Why `[DllImport]` and not `[LibraryImport]`:** source generators never see each other's
+  output, so .NET's LibraryImport generator would leave generated `[LibraryImport]` methods
+  without a body (measured: CS8795). The bindings are complete instead: blittable externs, with
+  the conversions LibraryImport would have written. They need unsafe code, so the SDK (or the
+  package) sets `AllowUnsafeBlocks` whenever there are bindings.
+- **Errors:** `ASM0140` (an attribute or an `AsmBindings` item names no library the project has
+  bindings for), `ASM0141` (no such file or folder), `ASM0142` (bound twice among the app's
+  classes), `ASM0143` (a class that cannot hold bindings: not partial, or generic; a function
+  named like the app's class that binds it; or a name generated twice), `ASM0144` (an unreadable API file), `ASM0145` (a public copy of a function
+  that takes a struct the internal baseline holds), `ASM0146` (a value that is no option's,
+  options C# cannot follow together, a `Default*` option on a class, a namespace C# cannot
+  have), `ASM0147` (warning: C# older than 11).
+- **`<AsmGenerateBindings>false</AsmGenerateBindings>`** turns it all off, for a project with
+  its own imports.
+- **Libraries only.** A referenced asm program gets no bindings, even with `PROTO` lines (its
+  API file describes what it exports to its plugins): a program is started, never loaded.
+  A .NET WebAssembly app gets them as any app does: its asm reference is built for its RID,
+  whose `PROTO` lines are checked against each function's whole wasm type (see
+  [WebAssembly](webassembly.md#proto-the-c-bindings)).
 
 ## Where the binaries go: BinariesCopyPath
 
-> [!NOTE]
-> **Not released yet:** on the main branch, a `ProjectReference` or `PackageReference` to an
-> asm *program* delivers it the same way, with the libraries it links, for a .NET app that
-> starts it as a helper process. `BinariesCopyPath` also places the libraries that an asm
-> program links. See [Programs](programs.md#a-program-as-a-dependency).
+A `ProjectReference` or `PackageReference` to an asm *program* delivers it the same way, with
+the libraries it links, for a .NET app that starts it as a helper process. `BinariesCopyPath`
+also places the libraries that an asm program links. See
+[Programs](programs.md#a-program-as-a-dependency).
 
 By default the asm libraries go where NuGet puts a package's native files: `runtimes/<rid>/native/`
 in a portable build, beside the app in a RID-specific one. `BinariesCopyPath` puts them
@@ -374,19 +370,14 @@ The single-file rows rely on the consumer targets, which mark the asm libraries
 with `BinariesCopyPath` each row puts the library in that folder instead (see above).
 
 **A static library inside a NativeAOT program.** NativeAOT can link a static library into the
-program and call it directly: no library file ships, and nothing is looked up at run time.
-
-> [!NOTE]
-> **Not released yet:** on the main branch the consumer targets do this themselves. A
-> `ProjectReference` to a `StaticLibrary` project is all a `PublishAot` project needs:
-> `dotnet publish -r <rid>` builds the library for that RID and adds the `DirectPInvoke` item
-> (its `AssemblyName`, the name `[LibraryImport]` uses) and the `NativeLibrary` item (its `.lib`
-> or `.a`) shown below. Tested on every CI machine: the published executable runs, and no
-> library file is published beside it.
-
-With 0.3.0 the consumer targets leave static libraries alone, so name the library yourself, for
-the RID being published, and build it for that RID first
-(`dotnet build Crc.asmproj -c Release -r win-x64`):
+program and call it directly: no library file ships, and nothing is looked up at run time. A
+`ProjectReference` to a `StaticLibrary` project is all a `PublishAot` project needs:
+`dotnet publish -r <rid>` builds the library for that RID and adds the `DirectPInvoke` item (its
+`AssemblyName`, the name `[LibraryImport]` uses) and the `NativeLibrary` item (its `.lib` or
+`.a`). Tested on every CI machine: the published executable runs, and no library file is
+published beside it. These are the items the SDK adds, which a project on 0.3.0 (whose
+consumer targets left static libraries alone) writes itself, after building the library for
+the RID being published (`dotnet build Crc.asmproj -c Release -r win-x64`):
 
 ```xml
 <ItemGroup Condition="'$(RuntimeIdentifier)' != '' and '$(PublishAot)' == 'true'">
@@ -426,7 +417,7 @@ the RID being published, and build it for that RID first
   only): they move NuGet's items, and the .NET SDK itself writes the new place into
   `deps.json` as `localPath`. A C# consumer gets a generated loader for NativeAOT, as above.
   Without the attribute or the property, nothing changes.
-- **The C# bindings come with it** (not released yet). A package of a library with `PROTO` or
+- **The C# bindings come with it.** A package of a library with `PROTO` or
   `STRUCT` lines carries its [generated bindings](#generated-bindings), and a C# consumer for
   .NET 7 or later calls `Crc.Crc32.Append(...)` (the library `crc`, its source `crc32.asm`) as
   a project reference would, with no AsmFoundation.Sdk in its graph:
@@ -557,52 +548,50 @@ and on Alpine (`python:3.12-alpine`, musl).
 
 ## C and other languages
 
-> [!NOTE]
-> **Not released yet: the SDK writes the header.** On the main branch, a library or program with
-> `PROTO` or `STRUCT` lines gets `<AssemblyName>.h` from them at every build, beside its API file
-> (`bin/<Configuration>/<tfm>/hello.h`, and the same file in each RID's folder), and `dotnet pack`
-> puts it under the package's `include/`:
->
-> ```c
-> /*
->  * hello.h: the C declarations of hello, written by AsmFoundation.Sdk 0.4.0
->  * from its PROTO and STRUCT lines (hello.api.json). Do not edit: the next build writes it again.
->  */
-> #ifndef HELLO_H
-> #define HELLO_H
->
-> #include <stddef.h>
-> #include <stdint.h>
->
-> #ifdef __cplusplus
-> extern "C" {
-> #endif
->
-> /* add */
-> int32_t hello_add(int32_t a, int32_t b);
->
-> #ifdef __cplusplus
-> }
-> #endif
->
-> #endif /* HELLO_H */
-> ```
->
-> - **Structs:** each `STRUCT` becomes a C struct, with a check of its size and of each field's
->   offset against the layout the SDK gave the asm code: `_Static_assert` in C11, `static_assert`
->   in C++11, an array of negative size in older C and C++. A compiler that lays a struct out
->   otherwise (a packing pragma around the `#include`, a 32-bit target) stops at the header
->   instead of misbehaving at run time.
-> - **Checked:** headers of real libraries compiled as C11, C99 and C++11 with
->   `-Wall -Wextra -pedantic -Werror`, and C programs linked against the libraries read every
->   kind of struct field back right (the tests do this on the Linux and macOS machines).
-> - **Your own header wins:** with an `include/<AssemblyName>.h` of the project's own, the SDK
->   writes none, and `dotnet pack` warns `ASM0149`.
-> - **`<AsmGenerateCHeader>false</AsmGenerateCHeader>`** turns it off.
->
-> Released 0.3.0 has no such file: write the header yourself, as below.
+**The SDK writes the header.** A library or program with
+`PROTO` or `STRUCT` lines gets `<AssemblyName>.h` from them at every build, beside its API file
+(`bin/<Configuration>/<tfm>/hello.h`, and the same file in each RID's folder), and `dotnet pack`
+puts it under the package's `include/`:
 
-**Write a header next to the `.inc` file** (`include/hello.h`):
+```c
+/*
+ * hello.h: the C declarations of hello, written by AsmFoundation.Sdk 0.4.0
+ * from its PROTO and STRUCT lines (hello.api.json). Do not edit: the next build writes it again.
+ */
+#ifndef HELLO_H
+#define HELLO_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* add */
+int32_t hello_add(int32_t a, int32_t b);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* HELLO_H */
+```
+
+- **Structs:** each `STRUCT` becomes a C struct, with a check of its size and of each field's
+  offset against the layout the SDK gave the asm code: `_Static_assert` in C11, `static_assert`
+  in C++11, an array of negative size in older C and C++. A compiler that lays a struct out
+  otherwise (a packing pragma around the `#include`, a 32-bit target) stops at the header
+  instead of misbehaving at run time.
+- **Checked:** headers of real libraries compiled as C11, C99 and C++11 with
+  `-Wall -Wextra -pedantic -Werror`, and C programs linked against the libraries read every
+  kind of struct field back right (the tests do this on the Linux and macOS machines).
+- **Your own header wins:** with an `include/<AssemblyName>.h` of the project's own, the SDK
+  writes none, and `dotnet pack` warns `ASM0149`.
+- **`<AsmGenerateCHeader>false</AsmGenerateCHeader>`** turns it off.
+
+**Without `PROTO` lines, write the header yourself,** next to the `.inc` file
+(`include/hello.h`); the SDK then writes none, and packs yours:
 
 ```c
 #ifndef HELLO_H

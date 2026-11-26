@@ -73,7 +73,7 @@ llvm-mc --triple=aarch64-linux-gnu --filetype=obj [-g] $(AsmLlvmMcFlags)
 - `-g` (DWARF) is added in Debug builds, except for Windows, whose debuggers read PDBs.
 - `--defsym` takes integers only: a define `NAME` becomes `NAME=1`, and a non-numeric value
   is llvm-mc's error.
-- Not released yet, WebAssembly: `browser-wasm` uses `wasm32-unknown-emscripten`, and
+- WebAssembly: `browser-wasm` uses `wasm32-unknown-emscripten`, and
   `wasi-wasm` `wasm32-unknown-wasi`, both with `-mattr=+simd128,+tail-call`. The defines
   reach a wasm source as labels in its generated wrapper, never as `--defsym`: llvm-mc's wasm
   object writer stops on any constant symbol ("NAME: absolute addressing not supported!").

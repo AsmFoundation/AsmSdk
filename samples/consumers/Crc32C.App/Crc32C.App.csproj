@@ -2,7 +2,7 @@
   <!--
     Crc32C.App: a .NET program that uses the assembly library the way any NuGet user would, by
     version: one PackageReference to Samples.Crc32C.Net. NuGet brings its dependency
-    Samples.Crc32C along, and with it libcrc32c for each of its seven RIDs, which the build copies
+    Samples.Crc32C along, and with it libcrc32c for each of its eight native RIDs, which the build copies
     into the output folder (runtimes/<rid>/native/) and lists in deps.json; nothing in this
     project mentions assembly.
 

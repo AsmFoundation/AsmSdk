@@ -12,7 +12,10 @@ An `.asmproj` is to assembly what a `.csproj` is to C#:
   projects can consume.
 - **It sits in the same solution** (`.slnx` or `.sln`) as the C# projects that call it. A C#
   project that references it gets the library of the platform it is built or run for,
-  chosen by .NET's own runtime identifier rules.
+  chosen by .NET's own runtime identifier rules, and calls it through C# bindings the SDK
+  writes from the library's `PROTO` and `STRUCT` lines. C gets a header from the same lines.
+- **`dotnet run`** starts a program, and **`dotnet new`** creates projects from the
+  `AsmFoundation.Templates` package.
 
 ```xml
 <Project Sdk="AsmFoundation.Sdk">
@@ -25,25 +28,27 @@ An `.asmproj` is to assembly what a `.csproj` is to C#:
 
 ## What it builds
 
-Seven platforms, named by .NET's runtime identifiers (RIDs): `win-x64`, `win-arm64`,
-`linux-x64`, `linux-arm64`, `linux-musl-x64` (Alpine), `osx-x64` and `osx-arm64`. x64 code
-is NASM (`.asm`). ARM64 code is GNU syntax (`.s`), assembled by LLVM's `llvm-mc`. Any build
-machine builds every platform. See [Platforms and runtime identifiers](platforms.md).
+Ten platforms, named by .NET's runtime identifiers (RIDs): `win-x64`, `win-arm64`,
+`linux-x64`, `linux-arm64`, `linux-musl-x64` and `linux-musl-arm64` (Alpine), `osx-x64` and
+`osx-arm64`, and WebAssembly's `browser-wasm` and `wasi-wasm`. x64 code is NASM (`.asm`).
+ARM64 code is GNU syntax (`.s`), assembled by LLVM's `llvm-mc`, which also assembles
+WebAssembly's text (`.wasm.s`). Any build machine builds every platform. See
+[Platforms and runtime identifiers](platforms.md) and [WebAssembly](webassembly.md).
 
-| `OutputType` | Windows | Linux | macOS |
-|---|---|---|---|
-| `Library` (default) | `<name>.dll`, with its import library `<name>.dll.lib` | `lib<name>.so` | `lib<name>.dylib` |
-| `StaticLibrary` | `<name>.lib` | `lib<name>.a` | `lib<name>.a` |
-| `Exe` | `<name>.exe` | `<name>`: static, entering `_start`, or a PIE entering `main` | `<name>`, entering `main` (C library only) |
-| `Objects` | `.obj` files for another project to link | `.o` files | `.o` files |
+| `OutputType` | Windows | Linux | macOS | WebAssembly |
+|---|---|---|---|---|
+| `Library` (default) | `<name>.dll`, with its import library `<name>.dll.lib` | `lib<name>.so` | `lib<name>.dylib` | `<name>.wasm`, a module, and `<name>.a`, the archive a .NET WebAssembly app links |
+| `StaticLibrary` | `<name>.lib` | `lib<name>.a` | `lib<name>.a` | `<name>.a` |
+| `Exe` | `<name>.exe` | `<name>`: static, entering `_start`, or a PIE entering `main` | `<name>`, entering `main` (C library only) | `<name>.wasm`, a WASI command (`wasi-wasm`) |
+| `Objects` | `.obj` files for another project to link | `.o` files | `.o` files | `.o` files |
 
 Outputs go to `bin/<Configuration>/<TargetFramework>/<rid>/`.
 
 ## Nothing to install
 
 - **The toolchain is a NuGet package.** Restore downloads `AsmFoundation.Toolchain` for
-  the machine you build on: NASM 3.02, plus LLVM 23.1.5's `lld` (all three linkers),
-  `llvm-mc`, `llvm-ar` and `llvm-readobj`. See [The toolchain](../toolchain/index.md).
+  the machine you build on: NASM 3.02, plus LLVM 23.1.5's `lld` (all four linkers, with
+  WebAssembly's `wasm-ld`), `llvm-mc`, `llvm-ar` and `llvm-readobj`. See [The toolchain](../toolchain/index.md).
 - **The download is pinned.** Each SDK release names the toolchain version it was tested
   with, and every file behind the toolchain packages is pinned by SHA-256.
 - **The C library needs no sysroot.** A project that uses glibc, musl, the Universal C Runtime
@@ -65,7 +70,9 @@ AsmSdk rides on `Microsoft.NET.Sdk`, the way Microsoft's NoTargets SDK does:
 ## Where to go next
 
 - **New to it:** [Getting started](getting-started.md) builds a shared library, a program
-  and a C# caller for seven platforms in a few minutes.
+  and a C# caller for eight platforms in a few minutes, or takes them from a template.
+- **Calling it:** [Calling assembly from .NET](interop.md) covers the generated C# bindings,
+  the C header, and where the libraries go.
 - **Several platforms:** [Platforms and runtime identifiers](platforms.md) says which file
   builds which platform, and how one source serves Windows, Linux and macOS.
 - **Writing the code:** [Writing NASM for AsmSdk](writing-nasm.md) lists the rules that

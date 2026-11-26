@@ -9,10 +9,9 @@
 
     Call it from a .NET WebAssembly app (RuntimeIdentifier browser-wasm or wasi-wasm, with the
     wasm-tools workload): add <ProjectReference Include="../AsmWasm.1/AsmWasm.1.asmproj" /> to
-    its .csproj, then declare each function on a static partial class:
-      [LibraryImport("AsmWasm.1", EntryPoint = "add_ints")]
-      internal static partial int AddInts(int a, int b);
-    The "asmwasmapp" template sets such an app up for you.
+    its .csproj. The SDK writes C# bindings from add.wasm.s's PROTO line, in a namespace named
+    after this library in PascalCase (a library named calc gives Calc.Add.AddInts(40, 2)), so
+    nothing is declared by hand. The "asmwasmapp" template sets such an app up for you.
 
     The SDK version is the one on the first line; change it there to upgrade.
     Documentation: https://asmfoundation.github.io/AsmSdk/guide/webassembly.html

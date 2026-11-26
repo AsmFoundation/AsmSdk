@@ -10,17 +10,20 @@ NuGet.** This repo holds the MSBuild SDK behind `.asmproj`, the assembly project
 sits next to `.csproj`.
 
 - It builds assembly into shared libraries, static libraries and programs for **Windows,
-  Linux and macOS, on x64 and ARM64**, with `dotnet build`: seven runtime identifiers, from
-  any build machine.
+  Linux and macOS, on x64 and ARM64**, and for **WebAssembly** (browser and WASI), with
+  `dotnet build`: ten runtime identifiers, from any build machine.
 - A C# project that references an `.asmproj` gets the binary of the platform it is built or
-  run for, chosen by .NET's own runtime identifier rules.
+  run for, chosen by .NET's own runtime identifier rules, and calls it through C# bindings
+  the SDK writes from the library's `PROTO` and `STRUCT` lines, with nothing declared by hand.
+  C gets a header from the same lines.
 - It shares asm libraries as versioned NuGet packages.
 - Nothing needs to be installed: restore downloads a bundled toolchain (NASM 3.02, plus LLVM
   23.1.5's `llvm-mc`, `lld` and `llvm-ar`) for the build machine, and the SDK writes the C
   library stand-ins itself, so no sysroot or platform SDK is needed.
 - The project file reads like a `.csproj`: `RuntimeIdentifiers`, `TargetFramework`,
-  `OutputType`, `AssemblyName`, `DefineConstants`, `DebugSymbols` and `StartupObject` are
-  .NET's own properties, with their .NET meaning.
+  `OutputType`, `AssemblyName`, `DefineConstants`, `DebugSymbols`, `StartupObject`,
+  `ImplicitUsings` and `NoWarn` are .NET's own properties, and `Compile`, `None` and
+  `NativeLibrary` .NET's own items, with their .NET meaning.
 
 ```xml
 <Project Sdk="AsmFoundation.Sdk">
@@ -65,7 +68,7 @@ takes for granted to them:
 1. `global.json` next to your solution:
 
    ```json
-   { "msbuild-sdks": { "AsmFoundation.Sdk": "0.3.0" } }
+   { "msbuild-sdks": { "AsmFoundation.Sdk": "0.4.0" } }
    ```
 
 2. `Hello/Hello.asmproj` (as above), with `.asm` files (NASM, the x64 code) and `.s` files
@@ -88,29 +91,31 @@ In a `.slnx` solution, give the project the generic MSBuild project type:
 ```
 
 A project can name the SDK version itself instead of `global.json`:
-`<Project Sdk="AsmFoundation.Sdk/0.3.0">`.
+`<Project Sdk="AsmFoundation.Sdk/0.4.0">`.
 
 The [getting started guide](https://asmfoundation.github.io/AsmSdk/guide/getting-started.html)
-builds a library, a program and a C# caller for seven platforms.
+builds a library, a program and a C# caller for eight platforms.
 
-Not released yet: on `main`, plug and play. `dotnet new install AsmFoundation.Templates`, then
-`dotnet new asmnet -n Demo`, creates a C# app, the asm library it calls (through the C# bindings
-the SDK writes from the library's `PROTO` lines) and xunit tests, which
-`dotnet build`, `run` and `test` take as they are (`asmlib`, `asmexe` and `asmstatic` create one
-project each). A project that lists no `RuntimeIdentifiers` builds for the build machine's
-platform, with `ASM0013` when a pack or a portable publish would ship that one alone.
-`ImplicitUsings` puts `asmsdk.inc`, `default rel` and the Linux `.note.GNU-stack` in front of
-every source, and `dotnet sln add` writes the project type itself. `NoWarn`,
-`WarningsAsErrors` and `WarningsNotAsErrors` take NASM's warning names, `NativeLibrary`
-replaces `AsmLinkLibrary`, and Release builds are byte-identical in any folder.
+**Plug and play.** `dotnet new install AsmFoundation.Templates`, then `dotnet new asmnet -n Demo`,
+creates a C# app, the asm library it calls (through the C# bindings the SDK writes from the
+library's `PROTO` lines) and xunit tests, which `dotnet build`, `run` and `test` take as they
+are. `asmlib`, `asmexe`, `asmstatic` and `asmwasm` create one project each, and `asmwasmapp` a
+.NET WebAssembly app with its library. A project that lists no `RuntimeIdentifiers` builds for
+the build machine's platform, with `ASM0013` when a pack or a portable publish would ship that
+one alone. `ImplicitUsings` puts `asmsdk.inc`, `default rel` and the Linux `.note.GNU-stack` in
+front of every source, and `dotnet sln add` writes the project type itself. `NoWarn`,
+`WarningsAsErrors` and `WarningsNotAsErrors` take NASM's warning names, and Release builds are
+byte-identical in any folder.
 
-Not released yet: on `main`, **generated C# bindings**. A `PROTO` line beside a `FUNCTION`
+**Generated C# bindings.** A `PROTO` line beside a `FUNCTION`
 (`PROTO int32_t hello_add(int32_t a, int32_t b)`), and `STRUCT` lines for the structs it takes,
 give every C# project that references the library, as a project or as its package, a namespace
 named after it: `Hello.Add.HelloAdd(40, 2)`, with nothing declared and no AsmFoundation.Sdk
 needed for a package. The project file shapes it (`<AsmBindings Include="hello" Namespace="..."
 />`, instance or virtual classes), and `[AsmLibrary]` in code reshapes it and binds copies in
-the app's own classes. See [Generated bindings](docs/guide/interop.md#generated-bindings).
+the app's own classes. The same lines give C `hello.h`, with checks of every struct's layout,
+next to the library and in its package. See
+[Generated bindings](docs/guide/interop.md#generated-bindings).
 
 ## What it builds
 
@@ -118,27 +123,24 @@ the app's own classes. See [Generated bindings](docs/guide/interop.md#generated-
 |---|---|---|---|---|
 | `win-x64`, `win-arm64` | `<name>.dll` + `<name>.dll.lib` | `<name>.lib` | `<name>.exe` | the Universal C Runtime |
 | `linux-x64`, `linux-arm64` | `lib<name>.so` | `lib<name>.a` | `<name>` | glibc 2.34+ |
-| `linux-musl-x64` | `lib<name>.so` | `lib<name>.a` | `<name>` | musl (Alpine) |
+| `linux-musl-x64`, `linux-musl-arm64` | `lib<name>.so` | `lib<name>.a` | `<name>` | musl (Alpine) |
 | `osx-x64`, `osx-arm64` | `lib<name>.dylib` | `lib<name>.a` | `<name>` (`libc` only) | libSystem |
+| `browser-wasm` | `<name>.wasm` + `<name>.a` | `<name>.a` | none | none: `freestanding` |
+| `wasi-wasm` | `<name>.wasm` + `<name>.a` | `<name>.a` | `<name>.wasm`, a WASI command | none: `freestanding` |
 
-Not released yet: `main` also builds `linux-musl-arm64` (musl on ARM64, such as Alpine on
-Graviton), and **WebAssembly**: `browser-wasm` and `wasi-wasm`, from LLVM's WebAssembly
-assembly in `.s` files qualified for it (`name.wasm.s`). A library is a module, `<name>.wasm`,
-plus the archive `<name>.a`, which a .NET WebAssembly app (Blazor, WASI) links into its
-runtime. A `wasi-wasm` program is a WASI command that `dotnet run` starts in wasmtime (see
-[WebAssembly](docs/guide/webassembly.md)). AsmFoundation.Sdk 0.3.0 on nuget.org builds the
-seven RIDs above; see the [changelog](CHANGELOG.md).
+**WebAssembly** is LLVM's WebAssembly assembly in `.s` files qualified for it (`name.wasm.s`).
+A library is a module, `<name>.wasm`, plus the archive `<name>.a`, which a .NET WebAssembly
+app (Blazor, WASI) links into its runtime. A `wasi-wasm` program is a WASI command that
+`dotnet run` starts in wasmtime. See [WebAssembly](docs/guide/webassembly.md).
 
 `OutputType` picks the kind: `Library` (the default), `StaticLibrary`, `Exe`, or `Objects`
 for object files another project links. Outputs go to `bin/<Configuration>/<tfm>/<rid>/`.
 
-Not released yet: on `main`, a program (`Exe`) gets the asm shared libraries it links next to
-it, and the run path to find them there. `dotnet run` starts it on this machine, through WSL
-or in Docker. `dotnet publish` writes one folder per RID. A .NET app or another program can
-reference it, or its package, and gets it with its libraries. `<PackAsTool>true</PackAsTool>`
-packs it as a .NET tool for `dotnet tool install`. See
-[Programs](https://asmfoundation.github.io/AsmSdk/guide/programs.html) and the
-[changelog](CHANGELOG.md).
+A program (`Exe`) gets the asm shared libraries it links next to it, and the run path to find
+them there. `dotnet run` starts it on this machine, through WSL or in Docker. `dotnet publish`
+writes one folder per RID. A .NET app or another program can reference it, or its package, and
+gets it with its libraries. `<PackAsTool>true</PackAsTool>` packs it as a .NET tool for
+`dotnet tool install`. See [Programs](https://asmfoundation.github.io/AsmSdk/guide/programs.html).
 
 - **The platform layer:** `asmsdk.inc` (NASM) names each OS's argument registers (`ARG1`..),
   shadow space and PLT, and its `FUNCTION` macro exports a function the way each object format
@@ -174,12 +176,13 @@ tools can read the whole site as Markdown: start at
 
 | Path | Contents |
 |---|---|
-| `include/` | public include files |
+| `include/` | public include files, and `<name>.h`, the C header the SDK writes from the `PROTO` and `STRUCT` lines |
 | `src/` | the sources, with `AsmPackSources=true` |
 | `lib/<framework>/_._` | an empty marker per target framework, so NuGet knows which projects may use the package |
-| `native/<rid>/<tfm>/` | the static library, and a Windows DLL's import library |
+| `native/<rid>/<tfm>/` | the static library, a Windows DLL's import library, and a WebAssembly library's module and archive |
 | `runtimes/<rid>/native/` | the shared library (`nativeassets/<framework>/` when the project targets both frameworks) |
 | `build/<framework>/` and `buildTransitive/<framework>/` | the generated props, per target framework |
+| `contentFiles/cs/net7.0/AsmBindings/`, `build/bindings/` | the C# bindings: the baseline NuGet compiles into each C# consumer, and the API file and generator for `[AsmLibrary]` |
 
 `<tfm>` is `freestanding` or `libc`, and `<framework>` the NuGet framework behind it
 (`netstandard1.0` or `netstandard2.0`).
@@ -191,11 +194,13 @@ builds and checks it on every CI run:
 
 | Sample | Shows |
 |---|---|
-| `Crc32C` | CRC-32C as a freestanding shared library for seven RIDs: one x64 source for every OS through `asmsdk.inc`, an ARM64 source, exports file, run-time CPU dispatch, a 3-way kernel (SSE4.2 + PCLMULQDQ, CRC32 + PMULL) |
-| `Crc32C.Net`, `Crc32C.Tests`, `Crc32C.Bench` | its C# API, xunit tests and BenchmarkDotNet benchmark, which run on every platform |
+| `Crc32C` | CRC-32C as a freestanding shared library for the eight native RIDs and a module for the two WebAssembly ones: one x64 source for every OS through `asmsdk.inc`, an ARM64 source, a WebAssembly source, exports file, `PROTO` lines, run-time CPU dispatch, a 3-way kernel (SSE4.2 + PCLMULQDQ, CRC32 + PMULL) |
+| `Crc32C.Net`, `Crc32C.Tests`, `Crc32C.Bench` | its C# API, xunit tests and BenchmarkDotNet benchmark (the hand-written import against the generated binding), which run on every platform |
+| `Crc32C.Browser` | a .NET WebAssembly app that links the library's archive and hashes a file in the browser |
+| `WasmDemos` | the docs site's [Wasm Demos](https://asmfoundation.github.io/AsmSdk/demos/): hand-written WebAssembly, each kernel checked against a reference |
 | `consumers/Crc32C.App` | a .NET program using the library through two NuGet packages, by version |
 | `WordCount` | `wc` on glibc: libc calls through the PLT, `AsmLibcSymbol`, SSE2 counting |
-| `HexDump` | `xxd` with no libc: raw system calls, a static executable of about 4 KB |
+| `HexDump` | `xxd` with no libc: raw system calls, a static executable of about 4 KB, and the same program as a WASI command |
 | `Hello.Library` | shared library built for both target frameworks (`TargetFrameworks=freestanding;libc`), with `%ifdef LIBC` |
 | `Hello.Static` | static library with public includes, packed as a NuGet package |
 | `Hello.App` | freestanding executable linking `Hello.Static` through a ProjectReference |
@@ -204,9 +209,10 @@ builds and checks it on every CI run:
 | `consumers/Hello.Consumer` | consumes the `Hello.Static` package by version |
 | `Hello.Net` | C# program P/Invoking both shared libraries |
 
-The first five are walked through in the documentation's
-[Examples](https://asmfoundation.github.io/AsmSdk/examples/index.html). WordCount, HexDump
-and the `Hello.*` samples are Linux x64 code (system calls, glibc).
+Crc32C (with its C#, browser and NuGet projects), WordCount and HexDump are walked through in
+the documentation's [Examples](https://asmfoundation.github.io/AsmSdk/examples/index.html).
+WordCount, HexDump's native build and the `Hello.*` samples are Linux x64 code (system calls,
+glibc).
 
 ## How it works
 
@@ -219,6 +225,11 @@ and the `Hello.*` samples are Linux x64 code (system calls, glibc).
 - **.NET consumers:** every `.asmproj` carries an implicit `PackageReference` to the SDK's own
   package, whose `buildTransitive` targets reach referencing .NET projects and wire the native
   libraries in by RID. Packing removes that dependency again.
+- **Bindings:** the SDK reads a library's `PROTO` and `STRUCT` lines into its API file
+  (`<name>.api.json`), checked against the functions on every RID, and writes the C header
+  from it. A referencing C# project gets the C# bindings as source the SDK writes, or from the
+  bindings generator when its code names `[AsmLibrary]`; a package carries both, so its
+  consumers need no AsmFoundation.Sdk.
 - **Restore:** a `PackageDownload` fetches `AsmFoundation.Toolchain.<host-rid>`.
 - **The toolchain packages** are built by
   [`toolchain/fetch.cs`](toolchain/fetch.cs) from pins in
@@ -230,8 +241,10 @@ and the `Hello.*` samples are Linux x64 code (system calls, glibc).
 
 ## Limits
 
-- **x64 code is NASM, ARM64 code GNU syntax.** One x64 file serves every OS through
-  `asmsdk.inc`; ARM64 shares one calling convention across the three OSes.
+- **x64 code is NASM, ARM64 code GNU syntax, WebAssembly code LLVM's WebAssembly assembly.**
+  One x64 file serves every OS through `asmsdk.inc`; ARM64 shares one calling convention
+  across the three OSes.
+- **WebAssembly is `freestanding`,** and its sources take no `STRUCT` lines yet (an error).
 - **libc programs need glibc 2.34+ on glibc Linux.** That is when the `pthread_*` and `dl*`
   functions moved into `libc.so.6`.
 - **macOS has no freestanding programs** (Apple supports no static executables): a macOS
@@ -246,9 +259,10 @@ and the `Hello.*` samples are Linux x64 code (system calls, glibc).
 ## IDEs
 
 Rider, Visual Studio and VS Code show an `.asmproj` like a `.csproj`: its `.asm` and `.s`
-sources (`AsmSource`; not released yet: `Compile`), `.inc` files (`AsmInclude`; not released yet: `None`) and every other file of the
-folder (`None`). Opening a solution never assembles or links: design-time builds
-skip the tools. See [IDEs](https://asmfoundation.github.io/AsmSdk/guide/ides.html).
+sources (`Compile`), `.inc` files and every other file of the folder (`None`). Opening a
+solution never assembles or links: design-time builds skip the tools. A C# project's
+IntelliSense knows the generated bindings of its asm references from their first build on,
+and a package's from its restore. See [IDEs](https://asmfoundation.github.io/AsmSdk/guide/ides.html).
 
 ## Development
 
@@ -270,7 +284,7 @@ trusted publishing ([release.yml](.github/workflows/release.yml)).
 run on it (`dotnet build`, `run`, `test`, `publish`, `pack`, `tool install`, the programs they
 produce) and what each must print and leave. `ScenarioTests` runs each scenario as one test,
 named by its commands, so adding a scenario needs no C#. Our other projects' packages come
-from nuget.org at pinned versions (NumSharp, OptunaSharp, KvAsm.Client). Not released yet; see
+from nuget.org at pinned versions (NumSharp, OptunaSharp, KvAsm.Client). See
 [Scenario tests](https://asmfoundation.github.io/AsmSdk/ecosystem/scenarios.html).
 One scenario runs alone with
 `dotnet test --project tests/AsmSdk.Tests/AsmSdk.Tests.csproj --filter-trait "Scenario=<Name>"`.

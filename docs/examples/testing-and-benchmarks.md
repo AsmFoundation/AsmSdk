@@ -8,7 +8,7 @@ and [`samples/Crc32C.Bench`](https://github.com/AsmFoundation/AsmSdk/tree/main/s
 ## The tests
 
 The test project references the C# wrapper, which references the `.asmproj`, so building the
-tests builds the assembly too, for each of its seven RIDs, under `runtimes/<rid>/native/` next
+tests builds the assembly too, for each of its eight native RIDs, under `runtimes/<rid>/native/` next
 to the test assembly. The same test output runs on any of those platforms, with that
 platform's library.
 
@@ -129,7 +129,7 @@ public uint Dispatcher() => Crc32C.HashToUInt32(_data);
   checksum at every size, and `--check` does only that (CI runs it).
 
 ```sh
-# every benchmark, on any of the seven platforms
+# every benchmark, on any of the eight platforms
 dotnet run -c Release --project samples/Crc32C.Bench -- --filter '*'
 # only the check
 dotnet run -c Release --project samples/Crc32C.Bench -- --check
@@ -183,7 +183,7 @@ the lowest and highest of each, and BenchmarkDotNet's own reports.
 - **`SuppressGCTransition` is worth it below 4 KiB.** It saves 6.2 ns on an empty call; with real
   work part of the transition overlaps the work, and the dispatcher (no transition up to 4 KiB)
   leads the per-path calls (with it) by 0 to 4 ns.
-- **Not released yet: the generated binding.** The benchmark also times the binding the SDK
+- **The generated binding.** The benchmark also times the binding the SDK
   writes from `crc32c.asm`'s `PROTO` line. It costs what the hand-written import costs: the
   medians were 7.38 ns and 7.36 ns on 2026-11-26, native Windows, pinned to one performance core
   (see [Crc32C, Generated bindings](crc32c.md#generated-bindings); that run's setup differs

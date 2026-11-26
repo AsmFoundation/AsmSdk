@@ -1,5 +1,5 @@
 // =============================================================================
-// crc32c.s - libcrc32c, the ARM64 half: win-arm64, linux-arm64, osx-arm64.
+// crc32c.s - libcrc32c, the ARM64 half: win-arm64, linux-arm64, linux-musl-arm64, osx-arm64.
 // crc32c.asm is the x64 half, with the same exports and the same algorithm;
 // read it for the derivations, this file follows it step by step.
 //

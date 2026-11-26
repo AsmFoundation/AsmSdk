@@ -764,7 +764,7 @@
     (GetAsmNativeRuntimeAssets, from the same builds the references already ran) and what its
     .NET references know (GetAsmNativeAssets, recursively), each with RuntimeIdentifier,
     AsmProject, AsmLibraryName, AsmLibraryVersion, AsmImportName and AsmSymbols.
-    Nothing for a .NET WebAssembly consumer (not released yet): it links its asm code into its
+    Nothing for a .NET WebAssembly consumer: it links its asm code into its
     runtime and deploys no native file, and the native builds a .NET library reports (an asm
     library it references, portable, every native RID) serve no wasm RID, so laying them out
     stopped the app with ASM0040 (measured: Crc32C.Browser through Crc32C.Net). With nothing

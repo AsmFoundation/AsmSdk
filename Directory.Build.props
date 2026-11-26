@@ -8,7 +8,7 @@
     <!-- Version of AsmFoundation.Sdk. The toolchain packages carry their own version, in
          toolchain/versions.json, so that a new SDK release does not re-download ~100 MB of
          unchanged tools. -->
-    <Version>0.3.0</Version>
+    <Version>0.4.0</Version>
     <Authors>Eli Belash</Authors>
     <Company>AsmFoundation</Company>
     <Copyright>Copyright 2026 Eli Belash</Copyright>

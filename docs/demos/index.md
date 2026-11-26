@@ -3,10 +3,9 @@
 Three programs written by hand in WebAssembly's assembly language and built with AsmSdk, running
 in this page. They use one core and no GPU, and you install nothing.
 
-> [!NOTE]
-> **Not released yet:** WebAssembly is on AsmSdk's main branch only (see the
-> [changelog](../guide/changelog.md)). These modules were built by it, from
-> [`samples/WasmDemos`](https://github.com/AsmFoundation/AsmSdk/tree/main/samples/WasmDemos).
+AsmSdk built these modules from
+[`samples/WasmDemos`](https://github.com/AsmFoundation/AsmSdk/tree/main/samples/WasmDemos) (see
+[WebAssembly](../guide/webassembly.md)).
 
 | Demo | What it does | Module |
 |---|---|---|

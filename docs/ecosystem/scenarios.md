@@ -1,8 +1,7 @@
 # Scenario tests
 
-> [!NOTE]
-> **Not released yet.** The scenario tests are on `main` and are part of the repository's own
-> test suite. They change nothing in the SDK packages: no AsmFoundation.Sdk version holds them.
+The scenario tests are part of the repository's own test suite. They change nothing in the SDK
+packages: no AsmFoundation.Sdk package holds them.
 
 A scenario is a small repository in
 [`tests/scenarios`](https://github.com/AsmFoundation/AsmSdk/tree/main/tests/scenarios). It is a

@@ -1445,7 +1445,7 @@
     line, no file (a stale one is deleted). Not incremental by Inputs/Outputs: it reads a few
     hundred bytes per object, and the task rewrites the file only when its content changes,
     so its timestamp still tells consumers when the API changed.
-    WebAssembly too (not released yet; the owner's choice of 2026-11-24, "records kept in the
+    WebAssembly too (the owner's choice of 2026-11-24, "records kept in the
     module"): asmsdk-wasm.inc writes the same records into the object's asmapi custom section,
     each "fn" record with the function's whole wasm type, so ASM0132 compares the PROTO line,
     lowered to wasm types, with that type exactly. The section rides into the module, where

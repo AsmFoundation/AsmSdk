@@ -1,4 +1,4 @@
-<Project Sdk="AsmFoundation.Sdk/0.3.0">
+<Project Sdk="AsmFoundation.Sdk/0.4.0">
   <!--
     Written by hand: an asm program on the C library that uses the static library the asmstatic
     template created during the scenario (../Shared, made by "dotnet new asmstatic -n Shared").

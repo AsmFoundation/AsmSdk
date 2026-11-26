@@ -92,7 +92,7 @@ commands you name.
   and is not checked.
 - **The link lines stay the same,** and GNU `ld` accepts the Linux ones for its own architecture.
 - **GNU `ld` resolves archives in command-line order,** unlike `ld.lld`. List
-  `AsmLinkLibrary` items so that each library comes after the code that uses it.
+  `NativeLibrary` items so that each library comes after the code that uses it.
 - **NASM 2.16** (Ubuntu 24.04's `nasm` package) does not know the two warning names the SDK
   turns off. Every source then prints `nasm: warning: unknown warning name: reloc-rel-dword`.
   This is harmless: NASM still exits 0, even with `TreatWarningsAsErrors`.

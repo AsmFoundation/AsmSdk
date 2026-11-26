@@ -1,7 +1,7 @@
 <Project Sdk="AsmFoundation.Sdk">
   <!--
     Crc32C: CRC-32C (Castagnoli) in assembly, shipped the way a .NET team ships a hot routine
-    in native code: a freestanding shared library for all seven native runtime identifiers
+    in native code: a freestanding shared library for all eight native runtime identifiers
     AsmSdk builds, with no dependency at all (no DT_NEEDED, no DLL imports), so it loads into
     any process on Windows, Linux (glibc or musl) and macOS, x64 and ARM64:
       bin/<Configuration>/freestanding/<rid>/crc32c.dll, libcrc32c.so or libcrc32c.dylib
@@ -34,7 +34,7 @@
         loads nothing at run time); Crc32C.Net wraps it for C#.
   -->
   <PropertyGroup>
-    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;osx-x64;osx-arm64;browser-wasm;wasi-wasm</RuntimeIdentifiers>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64;browser-wasm;wasi-wasm</RuntimeIdentifiers>
     <AssemblyName>crc32c</AssemblyName>
     <ExportsFile>crc32c.map</ExportsFile>
     <PackageId>Samples.Crc32C</PackageId>

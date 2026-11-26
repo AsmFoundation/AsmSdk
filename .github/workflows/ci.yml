@@ -23,13 +23,13 @@
 #      class library, -o, single file both ways) and runs it; InteropTests runs the interop
 #      tour (tests/projects/Interop: every way C# calls an asm library) natively, so the ARM64
 #      code runs on real Windows on Arm, Linux ARM64 and Apple silicon machines.
-#      ProgramTests (unreleased features on main) runs asm programs with dotnet run on each
+#      ProgramTests runs asm programs with dotnet run on each
 #      machine's own RID, finding the shared library they link through their run path
 #      ($ORIGIN, @loader_path) or folder, publishes them, and starts one from a .NET app;
 #      Docker runs Linux builds where the runner has Linux containers (WSL nowhere here).
 #      ToolTests installs an asm program packed with PackAsTool through dotnet tool install,
 #      runs the command, and does the same in the glibc and musl .NET SDK containers on x64.
-#      ScenarioTests (unreleased, on main) takes each small repository of tests/scenarios
+#      ScenarioTests takes each small repository of tests/scenarios
 #      through the dotnet commands its scenario.json lists, on the machine's own RID: C# apps
 #      with asm libraries, unit tests of asm code, NumSharp, OptunaSharp and KvAsm.Client
 #      (from nuget.org, pinned) beside asm, programs, tools. KvAsmClient starts the KvAsm image,
@@ -37,7 +37,7 @@
 #      PlugAndPlay and PlugAndPlayVSTest install the dotnet new templates the suite packs
 #      (AsmFoundation.Templates) into a CLI home of their own and take what they create through
 #      build, run, test (Microsoft.Testing.Platform and VSTest), sln add, publish and pack.
-#      WebAssemblyTests (unreleased, on main) builds browser-wasm and wasi-wasm on every machine
+#      WebAssemblyTests builds browser-wasm and wasi-wasm on every machine
 #      and reads the modules itself; Node (on every hosted runner) runs the modules, and
 #      wasmtime, installed below on every runner, runs the WASI program directly and through
 #      dotnet run. The Linux x64 and Windows x64 runners also install the .NET 10 SDK into a

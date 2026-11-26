@@ -1,10 +1,5 @@
 # WebAssembly
 
-> [!NOTE]
-> **Not released yet:** everything on this page is on the main branch only. AsmFoundation.Sdk
-> 0.3.0 on nuget.org builds the eight native RIDs and stops a `browser-wasm` or `wasi-wasm` build
-> with **ASM0011**. See the [changelog](changelog.md).
-
 WebAssembly is AsmSdk's third assembly target, after x86-64 (NASM) and ARM64 (GNU syntax). The
 code is LLVM's WebAssembly assembly, the language clang emits for `wasm32` and the bundled
 `llvm-mc` reads, in `.s` files qualified for WebAssembly. Two runtime identifiers build it,
@@ -31,7 +26,7 @@ wasm RIDs and `Crc32C.Browser` calls it from a .NET WebAssembly app
 ## A first library
 
 ```xml
-<Project Sdk="AsmFoundation.Sdk/0.3.0">
+<Project Sdk="AsmFoundation.Sdk/0.4.0">
   <PropertyGroup>
     <RuntimeIdentifiers>browser-wasm;wasi-wasm</RuntimeIdentifiers>
   </PropertyGroup>

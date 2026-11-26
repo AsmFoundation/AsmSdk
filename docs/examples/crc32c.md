@@ -1,4 +1,4 @@
-# Crc32C: an assembly library for .NET, on seven platforms
+# Crc32C: an assembly library for .NET, on eight platforms and WebAssembly
 
 [`samples/Crc32C`](https://github.com/AsmFoundation/AsmSdk/tree/main/samples/Crc32C) computes
 CRC-32C, the Castagnoli checksum that iSCSI, ext4, Btrfs, SCTP and gRPC use. It is about 380
@@ -6,7 +6,7 @@ lines of NASM for x64 and 300 lines of GNU-syntax assembly for ARM64, half of th
 [`samples/Crc32C.Net`](https://github.com/AsmFoundation/AsmSdk/tree/main/samples/Crc32C.Net)
 lets C# call it. It is built the way you would ship a hot routine in native code:
 
-- **a freestanding shared library for all seven RIDs.** It needs nothing to load, so it loads
+- **a freestanding shared library for all eight native RIDs.** It needs nothing to load, so it loads
   into any process of its platform:
   - `crc32c.dll`, 4.5 KB, with no imports on x64 and one on ARM64 (kernel32's
     `IsProcessorFeaturePresent`);
@@ -21,7 +21,7 @@ lets C# call it. It is built the way you would ship a hot routine in native code
 
 | File | What it holds |
 |---|---|
-| `Crc32C.asmproj` | the project: the seven RIDs, `AssemblyName`, `ExportsFile`, a Linux `LinkerArg`, the package metadata |
+| `Crc32C.asmproj` | the project: the eight native RIDs and the two WebAssembly ones, `AssemblyName`, `ExportsFile`, a Linux `LinkerArg`, the package metadata |
 | `crc32c.asm` | the x64 code (NASM, through `asmsdk.inc`): the dispatcher, the three paths, the table and constants |
 | `crc32c.s` | the ARM64 code (GNU syntax, through `asmsdk-gnu.inc`): the same exports and the same algorithm |
 | `crc32c.map` | the exports file (a linker version script) |
@@ -51,7 +51,7 @@ each one. They check nothing: calling a hardware path on a CPU without the instr
 ```xml
 <Project Sdk="AsmFoundation.Sdk">
   <PropertyGroup>
-    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64;browser-wasm;wasi-wasm</RuntimeIdentifiers>
     <AssemblyName>crc32c</AssemblyName>
     <ExportsFile>crc32c.map</ExportsFile>
     <PackageId>Samples.Crc32C</PackageId>
@@ -63,7 +63,7 @@ each one. They check nothing: calling a hardware path on a CPU without the instr
 </Project>
 ```
 
-- **Seven RIDs from two sources.** `crc32c.asm` has no qualifier, so it builds every x64 RID.
+- **Eight RIDs from two sources.** `crc32c.asm` has no qualifier, so it builds every x64 RID.
   `crc32c.s` builds every ARM64 RID. See
   [Sources per platform](../guide/platforms.md#sources-per-platform).
 - **No `TargetFramework`:** the default, `freestanding`. Nothing here calls a C library.
@@ -280,14 +280,10 @@ public static unsafe partial class Crc32C
 - **`Crc32C.Append(crc, data, path)`** runs one path, for tests and benchmarks, after checking
   that the CPU has it: `Sse42.X64` and `Pclmulqdq` on x64, `Crc32.Arm64` and `Aes` on ARM64. The
   native path functions check nothing, and an illegal instruction would end the process.
-- **The library loads at the first call.** On a platform none of the seven builds serves
+- **The library loads at the first call.** On a platform none of the eight builds serves
   (32-bit x86, for one), that call throws `DllNotFoundException`.
 
 ## Generated bindings
-
-> [!NOTE]
-> **Not released yet:** the generated C# bindings are on the main branch only (see
-> [Generated bindings](../guide/interop.md#generated-bindings)).
 
 Each export has its C prototype above its `FUNCTION`, in all three sources:
 
@@ -320,14 +316,10 @@ FUNCTION crc32c_append, 3
 
 ## In WebAssembly
 
-> [!NOTE]
-> **Not released yet:** WebAssembly is on the main branch only (see
-> [WebAssembly](../guide/webassembly.md)).
-
 The project lists two more RIDs, `browser-wasm` and `wasi-wasm`, and a third source,
 `crc32c.wasm.s`, that builds them: the same five exports, the same checksums, as a WebAssembly
 module (`crc32c.wasm`) and the archive a .NET WebAssembly app links (`crc32c.a`). `dotnet pack`
-puts both under `native/<rid>/freestanding/` in the package, next to the seven native libraries.
+puts both under `native/<rid>/freestanding/` in the package, next to the eight native libraries.
 
 WebAssembly has no CRC instruction and no carry-less multiply, not in SIMD128 and not in
 relaxed SIMD, so there is one real path, a table one. It is the fast table method, not the x64
@@ -430,7 +422,7 @@ at 1 MiB:
 - **[`ExampleTests`](https://github.com/AsmFoundation/AsmSdk/blob/main/tests/AsmSdk.Tests/ExampleTests.cs):**
   the exact exported names and their version, no `DT_NEEDED` and no text relocation, the
   constants NASM computed (`0x170076FA`, `0xDD7E3B0C`, `0x0D3B6092`, `0x9E4ADDF8` and the
-  table's first entries), the packages with their seven RIDs, and the library's tests and
+  table's first entries), the packages with their eight native RIDs, and the library's tests and
   benchmark check on the machine running them. On main, the package also carries the two wasm
   RIDs' module and archive, and `Crc32C.Browser` runs `verify` in Node wherever the
   `wasm-tools` workload is (CI: Linux x64 and Windows x64).

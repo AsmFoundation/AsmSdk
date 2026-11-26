@@ -8,7 +8,7 @@ the managed package by version and never mentions assembly.
 ```text
 Crc32C.App (net10.0)
   └─ PackageReference Samples.Crc32C.Net 1.0.0        lib/net10.0/Samples.Crc32C.Net.dll
-       └─ dependency Samples.Crc32C 1.0.0             runtimes/<rid>/native/: seven RIDs
+       └─ dependency Samples.Crc32C 1.0.0             runtimes/<rid>/native/: eight RIDs
 ```
 
 ## The native package
@@ -22,14 +22,25 @@ Samples.Crc32C.1.0.0.nupkg
   runtimes/linux-x64/native/libcrc32c.so
   runtimes/linux-arm64/native/libcrc32c.so
   runtimes/linux-musl-x64/native/libcrc32c.so
+  runtimes/linux-musl-arm64/native/libcrc32c.so
   runtimes/osx-x64/native/libcrc32c.dylib
   runtimes/osx-arm64/native/libcrc32c.dylib
   native/win-x64/freestanding/crc32c.dll.lib            the DLLs' import libraries, for asm projects
   native/win-arm64/freestanding/crc32c.dll.lib
+  native/browser-wasm/freestanding/crc32c.a             the archive a .NET WebAssembly app links
+  native/browser-wasm/freestanding/crc32c.wasm          the module, for JavaScript and WASI hosts
+  native/wasi-wasm/freestanding/crc32c.a
+  native/wasi-wasm/freestanding/crc32c.wasm
   include/crc32c.inc                                    for asm projects that reference the package
+  include/crc32c.h                                      the C header, from the PROTO lines
   lib/netstandard1.0/_._                                says which frameworks may use it
   build/netstandard1.0/Samples.Crc32C.props             for asm consumers: include path, link input per RID
   buildTransitive/netstandard1.0/Samples.Crc32C.props
+  build/netstandard1.0/Samples.Crc32C.targets           for .NET consumers: BinariesCopyPath, the bindings
+  buildTransitive/netstandard1.0/Samples.Crc32C.targets
+  contentFiles/cs/net7.0/AsmBindings/crc32c.cs.pp       the C# bindings' baseline, from the PROTO lines
+  build/bindings/crc32c.api.json                        the API file and the bindings generator, for [AsmLibrary]
+  build/bindings/AsmFoundation.Sdk.Bindings.dll
 ```
 
 - **`runtimes/<rid>/native/`** is where NuGet puts RID-specific native files. A portable .NET
@@ -52,7 +63,7 @@ The project sets only what a package needs:
 
 ```xml
 <PropertyGroup>
-  <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
+  <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64;browser-wasm;wasi-wasm</RuntimeIdentifiers>
   <AssemblyName>crc32c</AssemblyName>
   <ExportsFile>crc32c.map</ExportsFile>
   <PackageId>Samples.Crc32C</PackageId>
@@ -128,7 +139,7 @@ $ printf 123456789 > check.txt && dotnet crc32c-app.dll check.txt
 e3069283  check.txt
 ```
 
-The build output holds `runtimes/<rid>/native/` for the seven RIDs next to the program, and
+The build output holds `runtimes/<rid>/native/` for the eight native RIDs next to the program, and
 the same output runs on Windows, Linux and macOS: nothing else to install. Given file names, the program reads each in 1 MiB chunks and continues the
 checksum with `Crc32C.Append`, so a file never has to fit in memory.
 
@@ -138,7 +149,7 @@ checksum with `Crc32C.Append`, so a file never has to fit in memory.
 - **The symbol version** (`CRC32C_1.0`, from [`crc32c.map`](crc32c.md#the-exports-file)) is what
   the dynamic linker checks. A later release that adds functions puts them in a new node
   (`CRC32C_1.1`), and programs built against 1.0 keep loading.
-- **Seven RIDs.** A program on a platform none of them serves (32-bit x86, FreeBSD) gets
+- **Eight RIDs.** A program on a platform none of them serves (32-bit x86, FreeBSD) gets
   `DllNotFoundException` at the first call. A package that should run there too falls back to
   a managed implementation: catch `DllNotFoundException` once, or check
   `RuntimeInformation.RuntimeIdentifier` up front.

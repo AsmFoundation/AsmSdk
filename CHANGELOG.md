@@ -8,7 +8,34 @@ packages. The format follows
 The toolchain packages carry their own version (`toolchain/versions.json`).
 Each SDK release names the one it was tested with.
 
-## [Unreleased]
+## [0.4.0] — 2026-11-26
+
+WebAssembly is AsmSdk's third assembly target: `browser-wasm` and `wasi-wasm` build from LLVM's
+WebAssembly assembly on every build machine, and a .NET WebAssembly app links the library into
+its runtime. An asm library's `PROTO` and `STRUCT` lines give every C# project that references
+it, as a project or as its package, C# bindings with nothing declared by hand, and C a header.
+Programs run with `dotnet run`, publish with the libraries they link, and pack as .NET tools.
+The new `AsmFoundation.Templates` package's `dotnet new` templates create libraries, programs, a
+C# app with its asm library and tests, and their WebAssembly twins; a project that lists no
+`RuntimeIdentifiers` builds for the build machine; `ImplicitUsings` writes every source's
+platform lines. `linux-musl-arm64` is the eighth native RID. Toolchain 0.2.0, unchanged, comes
+with it.
+
+Migration from 0.3.0, without a compatibility layer. Each old name stops the build with an error
+that shows the new line:
+
+| 0.3.0 | 0.4.0 |
+|---|---|
+| `<AsmSource Include="…" />`, `<AsmSource Remove="…" />` | `<Compile Include="…" />`, `<Compile Remove="…" />` (`ASM0110`) |
+| `<AsmInclude Include="../common/**/*.inc" />` | `<None Include="../common/**/*.inc" />`; any other file a source reads is a `CustomAdditionalCompileInputs` item (`ASM0111`) |
+| `EnableDefaultAsmItems` | `EnableDefaultCompileItems` (`ASM0112`) |
+| `<AsmLinkLibrary Include="…" />` | `<NativeLibrary Include="…" />` (`ASM0109`). A package packed with 0.3.0 adds `AsmLinkLibrary` items too: pack it again |
+| a project that lists no `RuntimeIdentifiers` stops with `ASM0010` | it builds for the build machine's RID; `ASM0013` warns when a pack or a portable publish would ship that RID alone |
+| `default rel`, `%include "asmsdk.inc"` and Linux's `.note.GNU-stack` written in every source | `ImplicitUsings` (on) writes them. Sources that write them still build. A source that relied on NASM's implicit `default abs` writes `default abs`; `<ImplicitUsings>disable</ImplicitUsings>` gives raw NASM |
+| `<AsmFlags>-w-label-orphan</AsmFlags>` | `<NoWarn>label-orphan</NoWarn>` (`AsmFlags` still passes anything to NASM) |
+| a file named `x.wasm.s`, `x.browser.s` or `x.wasi.s` is an ARM64 source | a WebAssembly source: rename an ARM64 file named so |
+| a shared library's `ProjectReference` to a static library becomes a dependency of its package | private (`PrivateAssets="all"`): the code is linked in. `PrivateAssets="none"` keeps the dependency |
+| `FUNCTION` after `[section .foo]` stays in `.foo` | it goes back to the last `section` line's section: `asmsdk.inc`'s macros start with NASM's `__SECT__` |
 
 ### Added
 
@@ -508,8 +535,8 @@ Each SDK release names the one it was tested with.
   each at the `PROTO` line. The RID's `<AssemblyName>.api.json` goes into `obj/` and beside its
   binary; the RID outer build's `AsmMergeApi` checks that every RID declares the same functions
   the same way (**ASM0133**, naming each RID's prototype and source) and writes the library's
-  file in `bin/<Configuration>/<tfm>/`. No `PROTO` line, no file. The WebAssembly RIDs (also
-  unreleased) take part like the others: their objects carry the records in an `asmapi` custom
+  file in `bin/<Configuration>/<tfm>/`. No `PROTO` line, no file. The WebAssembly RIDs take
+  part like the others: their objects carry the records in an `asmapi` custom
   section (see the WebAssembly entry). The design (the owner's choices
   of 2026-11-23, approved as a spec): catalog `asmsdk/plans/csharp-bindings.md`.
 - **A NativeAOT publish links a referenced static library by itself.** A `PublishAot` project
@@ -587,6 +614,12 @@ Each SDK release names the one it was tested with.
 - **The test suite's tool-run pattern sees NASM again.** It matched `nasm -f`, but `-Xvc` comes
   first. Since then, the incremental-build and design-time tests had checked only the linker and
   the archiver.
+- **The Crc32C sample builds all eight native RIDs** (`linux-musl-arm64` joined; its ARM64
+  source already served every OS) besides the two WebAssembly ones, so its package carries
+  `runtimes/linux-musl-arm64/native/libcrc32c.so`. The documentation now describes 0.4.0
+  throughout: the getting-started guide builds the library with `PROTO` lines and calls it
+  through the generated binding, and the templates' project comments describe the bindings in
+  place of a hand-written `[LibraryImport]`.
 
 ### Fixed
 

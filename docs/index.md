@@ -51,7 +51,7 @@ title: AsmSdk
       <li>
         <h3>Name the SDK in <code>global.json</code></h3>
 <pre><code class="lang-json">{ "msbuild-sdks": {
-    "AsmFoundation.Sdk": "0.3.0" } }</code></pre>
+    "AsmFoundation.Sdk": "0.4.0" } }</code></pre>
       </li>
       <li>
         <h3>Add <code>Hello/Hello.asmproj</code></h3>
