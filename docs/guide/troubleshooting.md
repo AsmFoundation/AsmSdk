@@ -143,7 +143,7 @@ See [Platforms and runtime identifiers](platforms.md) for how a project chooses 
 | a `%define` written by an MSBuild target came out as `Þfine …` | `%de` in an MSBuild string is an escape for byte `0xDE` | write `%25define` |
 | `warning label-orphan: label 'x' alone on a line without a colon might be in error` | a missing `:` or a typo | add the colon; or `<NoWarn>label-orphan</NoWarn>` |
 | `warning number-overflow: dword exceeds bounds` | the constant is too large for its size | fix the size or the constant |
-| `warning ASM0008: a.asm: NASM's messages could not be read` | the messages file NASM writes beside the object (`-Z`) was locked or unreadable | check the `obj/` folder; NASM's exit code still decides whether the source assembled |
+| `warning ASM0008: a.asm: NASM's messages could not be read` (not released yet) | the messages file NASM writes beside the object (`-Z`) was locked or unreadable | check the `obj/` folder; NASM's exit code still decides whether the source assembled |
 | `nasm: warning: unknown warning name: reloc-rel-dword` (System toolchain) | NASM 2.x does not know NASM 3's warning names | harmless; or install NASM 3 |
 | `panic: intra-segment OUT_REL4ADR` | `call f wrt ..plt` (or `call f PLT`) to a function in the same section of the same file | a plain `call f`: the PLT is for other libraries |
 
@@ -210,7 +210,7 @@ the SDK.
 | `ASM0091: This machine (win-x64) cannot run any build of X (osx-arm64): …` | no build of the program runs here, natively, emulated, through WSL or in Docker; the message lists what it tried | build a RID this machine runs (`dotnet run -r <rid>` with the RID in `RuntimeIdentifiers`), install WSL with a distribution, or start Docker |
 | `ASM0092: X has no built program to run` | `dotnet run --no-build` before any build | build first |
 | `ASM0093: AsmRunIn 'x' is not a way to run a program` | a typo | `Auto`, `Host`, `Wasi`, `Wsl` or `Docker` |
-| `warning ASM0094: X: the launcher that passes a launch profile's arguments to a program run through … could not be written` | `dotnet run` could not write its launcher into `obj/…/asm-run/` (not released yet) | make the `obj/` folder writable; meanwhile give the arguments after `--` |
+| `warning ASM0094: X: the launcher that passes a launch profile's arguments to a program run through … could not be written` (not released yet) | `dotnet run` could not write its launcher into `obj/…/asm-run/` | make the `obj/` folder writable; meanwhile give the arguments after `--` |
 | `exec format error` from `dotnet run` in Docker | a build for another CPU on a Linux machine without QEMU in `binfmt_misc` | install it (`docker run --privileged --rm tonistiigi/binfmt --install all`), or run the build of the machine's CPU |
 | `error while loading shared libraries: libcalc.so` | a program run from somewhere other than its build or publish folder, without its library next to it; or a program built by AsmSdk 0.3.0, which set no run path | copy the whole folder; rebuild with AsmSdk 0.4.0 or later |
 | `ASM0047: calc.dll would be copied to lib/, but a Windows program finds the DLLs it links only in its own folder` | `BinariesCopyPath` other than `AppFolder` for a Windows RID | set the value for the other RIDs only (a condition on `$(RuntimeIdentifier)`) |
