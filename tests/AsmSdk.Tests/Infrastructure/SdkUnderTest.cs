@@ -198,6 +198,34 @@ public sealed class SdkUnderTest : IAsyncLifetime
         return Command.Run("dotnet", ["run", "--project", project, .. options, "--", .. programArguments], Repo.Root, environment);
     }
 
+    /// <summary>
+    /// Runs <c>dotnet run</c> of a project as the other overload does, with variables of the
+    /// caller's added to the test environment: what a user's shell has set when they type
+    /// dotnet run, which the CLI and whatever it starts inherit. Unlike <c>-e</c>, no build
+    /// ever hears of them, so they show what reaches a program without the CLI's help.
+    /// </summary>
+    /// <param name="project">The project file.</param>
+    /// <param name="options">dotnet run options (for example -c Release).</param>
+    /// <param name="variables">The variables to set; a null value removes one from the test environment.</param>
+    /// <param name="programArguments">The arguments the program must receive, each as one argument.</param>
+    /// <returns>The command's result: the program's exit status and output when it ran, dotnet's otherwise.</returns>
+    /// <exception cref="System.ComponentModel.Win32Exception">dotnet could not be started (none on PATH).</exception>
+    /// <remarks>
+    /// MSBUILDDISABLENODEREUSE is set after the caller's variables, so a caller cannot turn
+    /// node reuse back on: a reused node would keep an old task assembly loaded after a repack.
+    /// </remarks>
+    public CommandResult DotnetRun(string project, string[] options, IReadOnlyDictionary<string, string?> variables, params string[] programArguments)
+    {
+        var environment = new Dictionary<string, string?>(_environment, StringComparer.OrdinalIgnoreCase);
+        foreach (KeyValuePair<string, string?> variable in variables)
+        {
+            environment[variable.Key] = variable.Value;
+        }
+
+        environment["MSBUILDDISABLENODEREUSE"] = "1";
+        return Command.Run("dotnet", ["run", "--project", project, .. options, "--", .. programArguments], Repo.Root, environment);
+    }
+
     /// <summary>Runs a step once and remembers its result for every later caller.</summary>
     /// <param name="name">The step's name (its cache key).</param>
     /// <param name="step">The step.</param>

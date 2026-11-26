@@ -3,9 +3,11 @@
     A WASI command that prints its arguments, then its environment, one string per line
     (echo.wasi.s) (WebAssemblyTests). dotnet run starts it in wasmtime, which passes a program
     only the variables it is told to: the SDK names those of dotnet run -e and of every profile of
-    Properties/launchSettings.json, which holds a comment and trailing commas on purpose (the
-    .NET CLI reads launch settings that way, so the SDK must too). The profile's arguments reach
-    it through the launcher the SDK puts between dotnet run and wasmtime.
+    Properties/launchSettings.json, which holds comments and trailing commas on purpose (the
+    .NET CLI reads launch settings that way, so the SDK must too), outside the profile the tests
+    run and inside the Lenient one (the .NET 10.0.4xx CLI reads the profile it runs strictly).
+    The profile's arguments reach it through the launcher the SDK puts between dotnet run and
+    wasmtime.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>

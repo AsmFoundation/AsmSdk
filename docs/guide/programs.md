@@ -86,6 +86,12 @@ Only the .NET 11 SDK's `dotnet run` tells a build its `-e` variables. A profile'
 reach wasmtime and Docker under any SDK, because the SDK reads their names from the launch
 settings file. `PATH` is never passed on.
 
+Comments and trailing commas are fine in a launch settings file, as Visual Studio writes them,
+but with the .NET 10.0.4xx SDKs not inside the profile `dotnet run` runs: their CLI reads that
+profile a second time, strictly, and a comment or a trailing comma there drops the whole profile
+with "The launch profile … could not be applied", for a .NET project too (measured with
+10.0.404; 10.0.101 and 11.0.100 accept both).
+
 **The launcher.** The .NET CLI applies a profile's `commandLineArgs` only to a run command that
 has no arguments of its own, and `wasmtime run …`, `wsl.exe --exec …` and `docker run …` always
 have some. So when the project has launch settings, `dotnet run` starts a launcher in

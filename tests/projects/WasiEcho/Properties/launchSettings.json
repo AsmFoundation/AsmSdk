@@ -1,12 +1,22 @@
 {
   // Visual Studio writes launch settings with comments and trailing commas allowed, and the .NET
-  // CLI reads them that way: both are here on purpose (AsmSelectRunTarget.StripJsonComments).
-  // commandLineArgs reach the program through the launcher dotnet run starts for wasmtime.
+  // CLI reads the file that way, so the SDK must too (AsmSelectRunTarget.StripJsonComments).
+  // Not inside the profile dotnet run runs: the .NET 10.0.4xx SDKs read that profile's own text a
+  // second time, strictly, and drop the whole profile for a comment or a comma before its closing
+  // brace ("The launch profile could not be applied"; measured with 10.0.404, while 10.0.101 and
+  // 11.0.100 take both). So the WasiEcho profile, which the tests run, is strict JSON, and the
+  // Lenient profile, which no test runs, keeps both inside: its variable's name must still reach
+  // wasmtime. commandLineArgs reach the program through the launcher dotnet run starts for wasmtime.
   "profiles": {
     "WasiEcho": {
       "commandName": "Project",
       "commandLineArgs": "profile-arg \"two words\"",
-      "environmentVariables": { "ASM_PROBE": "from-profile", "OTHER": "o", },
+      "environmentVariables": { "ASM_PROBE": "from-profile", "OTHER": "o" }
+    },
+    "Lenient": {
+      "commandName": "Project",
+      // A comment and trailing commas inside a profile, as Visual Studio allows them.
+      "environmentVariables": { "ASM_LENIENT": "from-lenient-profile", },
     },
   },
 }

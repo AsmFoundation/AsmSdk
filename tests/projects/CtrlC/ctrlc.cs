@@ -34,6 +34,14 @@ if (args.Length != 2 || !OperatingSystem.IsWindows() || args[0] is not ("ctrl-c"
 
 string mode = args[0];
 string launcher = Path.GetFullPath(args[1]);
+// Console.Out made now, while the standard output is still the test's pipe: Console.Out keeps the
+// handle it was made with. The probe leaves its console and joins another (FreeConsole,
+// AttachConsole), and when the .NET 10 SDK's dotnet run started it, AttachConsole replaced the
+// standard output with a handle of the joined console, dead once the probe left that console
+// again (measured with 10.0.404, runtime 10.0.15: a pipe, then a console handle, then an invalid
+// one; with 11.0.100 the pipe stayed). A Console.Out first made after that wrote nowhere, so the
+// probe ended with 0 and the test read no "exited" line (the win-x64 runner, and here).
+Console.WriteLine($"ctrlc probe: {mode}, launcher {launcher}");
 string ping = Path.Combine(Environment.SystemDirectory, "PING.EXE");
 // The launch file as AsmSelectRunTarget writes it: UTF-16 with a byte-order mark, line 1 the
 // command line, line 2 the WSL names (none here).
@@ -125,7 +133,10 @@ using (program)
 {
     if (mode == "kill")
     {
+        // TerminateProcess only starts the termination: wait until the launcher is gone, so the
+        // probe's caller can delete its file once the probe returns.
         Native.TerminateProcess(started.Process, 1);
+        Native.WaitForSingleObject(started.Process, 10000);
     }
     else if (mode == "group-ctrl-c")
     {

@@ -362,8 +362,10 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
     /// a program only the variables it is told to: the SDK names every profile's variables
     /// (--env NAME), and wasmtime takes their values from its own environment, where the CLI put
     /// the running profile's. Without a profile the names pass nothing. WasiEcho prints its
-    /// arguments and its environment; its launch settings hold a comment and trailing commas, which
-    /// the CLI accepts and so the SDK must. Any SDK: the names come from the file.
+    /// arguments and its environment; its launch settings hold comments and trailing commas,
+    /// which the CLI accepts and so the SDK must: outside the profile the test runs (the .NET
+    /// 10.0.4xx CLI drops a profile with either inside it) and inside the Lenient profile, whose
+    /// variable's name the SDK must still read. Any SDK: the names come from the file.
     /// </summary>
     [Fact]
     public void Dotnet_run_passes_a_launch_profiles_variables_to_a_wasi_program()
@@ -378,6 +380,14 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
         Assert.True(none.ExitCode == 0, $"exit {none.ExitCode}: {none.Tail()}");
         Assert.Contains("x y", none.StdOut, StringComparison.Ordinal);
         Assert.DoesNotContain("ASM_PROBE=", none.StdOut, StringComparison.Ordinal);
+
+        // ASM_LENIENT is named only in the Lenient profile, between a comment and trailing
+        // commas. Set in dotnet run's own environment, as a user's shell sets it, it reaches the
+        // program only if the SDK read that profile and named it to wasmtime, which passes
+        // nothing else (the WasiEcho profile, not the Lenient one, is the one that runs).
+        CommandResult lenient = sdk.DotnetRun(Repo.TestProject("WasiEcho"), ["-c", "Release"], new Dictionary<string, string?> { ["ASM_LENIENT"] = "from-environment" });
+        Assert.True(lenient.ExitCode == 0, $"exit {lenient.ExitCode}: {lenient.Tail()}");
+        Assert.Contains("ASM_LENIENT=from-environment", Lines(lenient));
     }
 
     /// <summary>
@@ -498,22 +508,51 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
         // A copy, so that the probe's launch file never replaces the one dotnet run wrote.
         string folder = Path.Combine(Path.GetTempPath(), "asmsdk-ctrlc-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(folder);
+        CommandResult probe;
         try
         {
             string launcher = Path.Combine(folder, "ctrlc-run.exe");
             File.Copy(Repo.TestProjectPath("WasiEcho", "obj", "Release", "freestanding", "asm-run", "WasiEcho-run.exe"), launcher);
             // The test environment (no MSBuild variables of the test host's own dotnet test);
             // started in the copy's folder, which no global.json pins.
-            CommandResult probe = Command.Run("dotnet", ["run", Repo.TestProjectPath("CtrlC", "ctrlc.cs"), "--", mode, launcher], folder, sdk.TestEnvironment);
-            Assert.True(probe.ExitCode == 0, $"probe exit {probe.ExitCode} (1: the program ran on; 2: the probe could not run): {probe.Tail()}");
-            if (mode != "kill")
-            {
-                Assert.Contains("exited 0xC000013A", probe.StdOut, StringComparison.Ordinal);
-            }
+            probe = Command.Run("dotnet", ["run", Repo.TestProjectPath("CtrlC", "ctrlc.cs"), "--", mode, launcher], folder, sdk.TestEnvironment);
         }
         finally
         {
-            Directory.Delete(folder, recursive: true);
+            DeleteBestEffort(folder);
+        }
+
+        // Checked after the cleanup, which can therefore never hide the probe's verdict.
+        Assert.True(probe.ExitCode == 0, $"probe exit {probe.ExitCode} (1: the program ran on; 2: the probe could not run): {probe.Tail()}");
+        if (mode != "kill")
+        {
+            Assert.Contains("exited 0xC000013A", probe.StdOut, StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>
+    /// Deletes a temporary folder, retrying for up to ten seconds and then giving up quietly: a
+    /// program that has just ended can keep its file open a moment longer (TerminateProcess
+    /// returns before the process is gone, and Windows on Arm's x64 emulation reads an x64 program
+    /// it ran for its translation cache). On the win-arm64 runner Directory.Delete threw "Access
+    /// to the path 'ctrlc-run.exe' is denied" from a finally block, which replaced the test's own
+    /// result. A folder left in the temporary directory harms nothing.
+    /// </summary>
+    /// <param name="folder">The folder to delete; nothing happens when it does not exist.</param>
+    private static void DeleteBestEffort(string folder)
+    {
+        for (int attempt = 0; attempt < 40 && Directory.Exists(folder); attempt++)
+        {
+            try
+            {
+                Directory.Delete(folder, recursive: true);
+                return;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Still in use: the file is let go within a moment once its process is gone.
+                Thread.Sleep(250);
+            }
         }
     }
 

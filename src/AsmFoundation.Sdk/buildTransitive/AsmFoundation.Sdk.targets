@@ -180,11 +180,21 @@
     own (linux-arm64 for linux-musl-arm64), an instance the graph cannot predict; and a build with
     a global RuntimeIdentifier (dotnet build -r) fails -isolate in .NET's own common targets, C#
     projects alone included (GetTargetFrameworks removes the RID; measured with SDK 11.0.100).
+    Not in a design-time build (_AsmConsumerGraphBuild): dotnet watch loads a static graph with
+    DesignTimeBuild=true to find the files it watches, builds nothing under -isolate, and the
+    .NET 10 SDK's stops at two nodes of one project and framework, which an app's RID request
+    and a twin, or two different requests for one reference, would be (the asm side's
+    AsmFoundation.References.targets has the measurement).
   -->
-  <PropertyGroup Condition="'$(UsingAsmFoundationSdk)' != 'true' and '$(IsGraphBuild)' == 'true'">
+  <!-- _AsmConsumerGraphBuild: the additions below apply (true) or not (empty), for a project that
+       consumes asm projects (an asm project's own targets have their own rules). -->
+  <PropertyGroup Condition="'$(UsingAsmFoundationSdk)' != 'true'">
+    <_AsmConsumerGraphBuild Condition="'$(IsGraphBuild)' == 'true' and '$(DesignTimeBuild)' != 'true'">true</_AsmConsumerGraphBuild>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(_AsmConsumerGraphBuild)' == 'true'">
     <_AsmConsumerReferenceTargets>GetAsmConsumerInfo;GetAsmApiFile;GetAsmNativeRuntimeAssets;GetAsmLinkInputs;GetAsmNativeLibraries;GetAsmNativeAssets</_AsmConsumerReferenceTargets>
   </PropertyGroup>
-  <ItemGroup Condition="'$(UsingAsmFoundationSdk)' != 'true' and '$(IsGraphBuild)' == 'true'">
+  <ItemGroup Condition="'$(_AsmConsumerGraphBuild)' == 'true'">
     <!-- The graph runs a node's targets in the order these items come in. These targets come
          after the common targets' Build, Clean and Rebuild lists (NuGet's targets, this file
          among them, are imported right after Microsoft.Common.CurrentVersion.targets), so a
@@ -240,7 +250,7 @@
     imports these targets), or this project would build and deliver each asm reference twice.
     Not in an asm project: its own targets drop its graph-only references.
   -->
-  <Target Name="_AsmDropGraphOnlyConsumerReferences" Condition="'$(UsingAsmFoundationSdk)' != 'true' and '$(IsGraphBuild)' == 'true'">
+  <Target Name="_AsmDropGraphOnlyConsumerReferences" Condition="'$(_AsmConsumerGraphBuild)' == 'true'">
     <ItemGroup>
       <ProjectReference Remove="@(ProjectReference)" Condition="'%(ProjectReference._AsmGraphOnly)' == 'true'" />
     </ItemGroup>

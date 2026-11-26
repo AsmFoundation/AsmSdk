@@ -422,10 +422,10 @@
     when it evaluates the projects, never what targets do later: a reference's global properties
     come from the item's AdditionalProperties, GlobalPropertiesToRemove and UndefineProperties
     metadata, as the MSBuild task would apply them (ProjectInterpretation.cs).
-    What an asm project adds, in graph builds only (IsGraphBuild: the graph sets it as a global
-    property on every node), so that every other build stays exactly as it was (the owner's
-    choice of 2026-11-26: support -graph -isolate), but for InnerBuildProperty, which only the
-    graph reads:
+    What an asm project adds, in graph builds only (_AsmGraphBuild: IsGraphBuild, which the graph
+    sets as a global property on every node, in a build that is not a design-time build), so
+    that every other build stays exactly as it was (the owner's choice of 2026-11-26: support
+    -graph -isolate), but for InnerBuildProperty, which only the graph reads:
       - its framework builds as graph inner builds (InnerBuildProperty, as Microsoft.NET.Sdk
         declares it for C#), so a freestanding;libc project's frameworks are graph nodes; 0.4.0
         declared none, and -graph alone failed for a project referencing such a project (the
@@ -456,7 +456,22 @@
     included, at that same GetTargetFrameworks call (measured with SDK 11.0.100); asm references
     pass through the twins.
   -->
-  <PropertyGroup Condition="'$(IsGraphBuild)' == 'true'">
+  <!-- Not in a design-time build: dotnet watch loads a static graph too (IsGraphBuild on every
+       node), with DesignTimeBuild=true, to find the files it watches, and builds nothing under
+       -isolate. The .NET 10 SDK's dotnet watch keys that graph's nodes by project and framework,
+       and it stopped with "An item with the same key has already been added. Key:
+       ProjectInstanceId" at the RID builds the RID outer build references, the same project and
+       framework (measured with SDK 10.0.404); the .NET 11 SDK's runs its design-time targets on
+       every one of them instead (its source). A design-time graph keeps the nodes 0.4.0 gave
+       it, but for the framework builds (InnerBuildProperty), as a multi-targeted C# project
+       has them. -->
+  <!-- _AsmGraphBuild: these additions apply (true) or not (empty). Set at evaluation, before any
+       of the conditions below reads it; a property of its own so that the reason above is in
+       one place. -->
+  <PropertyGroup>
+    <_AsmGraphBuild Condition="'$(IsGraphBuild)' == 'true' and '$(DesignTimeBuild)' != 'true'">true</_AsmGraphBuild>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(_AsmGraphBuild)' == 'true'">
     <!-- Publish's main reference target, as Microsoft.Managed.After.targets computes it for C#: a
          build, or GetTargetPath when the publish builds nothing (NoBuild). -->
     <_AsmMainReferenceTargetForPublish Condition="'$(NoBuild)' == 'true'">GetTargetPath</_AsmMainReferenceTargetForPublish>
@@ -481,7 +496,7 @@
   <!-- The asm targets called on references: GetAsmLinkInputs (_AsmResolveProjectReferences,
        _AsmComputeProgramBundle) and GetAsmConsumerInfo (the reference classification). Skipped
        on a reference that does not have them (the graph asks every reference). -->
-  <ItemGroup Condition="'$(IsGraphBuild)' == 'true'">
+  <ItemGroup Condition="'$(_AsmGraphBuild)' == 'true'">
     <ProjectReferenceTargets Include="Build" Targets="GetAsmLinkInputs;GetAsmConsumerInfo" SkipNonexistentTargets="true" />
     <ProjectReferenceTargets Include="Rebuild" Targets="GetAsmLinkInputs;GetAsmConsumerInfo" SkipNonexistentTargets="true" />
     <!-- The common targets declare GetTargetFrameworks for Build and Clean but not for Rebuild,
@@ -502,7 +517,7 @@
 
   <!-- Every .asmproj reference of a graph build, before the graph-only references below are
        added (they keep their properties: they are this project's own RID builds). -->
-  <ItemGroup Condition="'$(IsGraphBuild)' == 'true'">
+  <ItemGroup Condition="'$(_AsmGraphBuild)' == 'true'">
     <ProjectReference Update="@(ProjectReference->WithMetadataValue('Extension', '.asmproj'))">
       <GlobalPropertiesToRemove>%(ProjectReference.GlobalPropertiesToRemove);$(_AsmGraphReferencePropertiesToRemove)</GlobalPropertiesToRemove>
     </ProjectReference>
@@ -516,7 +531,7 @@
        underscore, MSB4066). In a dotnet publish (_IsPublishing) the outer build publishes each
        RID (_AsmPublishEachRuntimeIdentifier), so the edge asks for Publish: Targets replaces the
        main reference target of the edge's list (the graph's default-targets marker). -->
-  <ItemGroup Condition="'$(IsGraphBuild)' == 'true' and '$(_AsmRid)' == '' and '$(TargetFramework)' != ''">
+  <ItemGroup Condition="'$(_AsmGraphBuild)' == 'true' and '$(_AsmRid)' == '' and '$(TargetFramework)' != ''">
     <ProjectReference Include="@(_AsmInnerBuild->'$(MSBuildProjectFullPath)')">
       <_AsmGraphOnly>true</_AsmGraphOnly>
       <Targets Condition="'$(_IsPublishing)' == 'true'">Publish</Targets>
@@ -534,7 +549,7 @@
        default-targets marker): a RID build never builds its reference without a RID, and built
        there in a publish, a reference that lists no RIDs warned ASM0013 as if it were
        published itself (measured with dotnet publish -graph). -->
-  <ItemGroup Condition="'$(IsGraphBuild)' == 'true' and '$(_AsmRid)' != ''">
+  <ItemGroup Condition="'$(_AsmGraphBuild)' == 'true' and '$(_AsmRid)' != ''">
     <_AsmGraphRidlessTwin Include="@(ProjectReference->WithMetadataValue('Extension', '.asmproj'))" />
     <ProjectReference Update="@(ProjectReference->WithMetadataValue('Extension', '.asmproj'))">
       <AdditionalProperties Condition="'%(ProjectReference.AdditionalProperties)' == ''">RuntimeIdentifier=$(RuntimeIdentifier)</AdditionalProperties>
@@ -556,7 +571,7 @@
        for its RID; _AsmSkipAsmReferencesInRidOuterBuild), so their edges ask for
        GetTargetFrameworks rather than a build without a RID, for the same reasons as the twins.
        A Targets the project wrote itself is kept. -->
-  <ItemGroup Condition="'$(IsGraphBuild)' == 'true' and '$(_AsmRid)' == ''">
+  <ItemGroup Condition="'$(_AsmGraphBuild)' == 'true' and '$(_AsmRid)' == ''">
     <ProjectReference Update="@(ProjectReference->WithMetadataValue('Extension', '.asmproj'))">
       <Targets Condition="'%(ProjectReference.Targets)' == '' and '%(ProjectReference._AsmGraphOnly)' != 'true'">GetTargetFrameworks</Targets>
     </ProjectReference>
@@ -570,7 +585,7 @@
     twin like any reference, and a target that reads ProjectReference itself, such as pack's
     dependency list, would take this project for a dependency of itself.
   -->
-  <Target Name="_AsmDropGraphOnlyReferences" Condition="'$(IsGraphBuild)' == 'true'">
+  <Target Name="_AsmDropGraphOnlyReferences" Condition="'$(_AsmGraphBuild)' == 'true'">
     <ItemGroup>
       <ProjectReference Remove="@(ProjectReference)" Condition="'%(ProjectReference._AsmGraphOnly)' == 'true'" />
     </ItemGroup>

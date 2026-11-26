@@ -48,7 +48,9 @@ Each SDK release names the one it was tested with.
   `docker run -e NAME`, and `NAME/u` entries added to `WSLENV` (after the user's own). A launch
   profile's variables, read from `Properties/launchSettings.json` (comments and trailing commas
   allowed, as the CLI allows them), reach wasmtime and Docker with any SDK, and WSL through the
-  launcher below. `PATH` is never passed.
+  launcher below. `PATH` is never passed. (The .NET 10.0.4xx SDKs' `dotnet run` drops the profile
+  it runs when that profile holds a comment or a trailing comma, a .NET project's too: measured
+  with 10.0.404; the Programs guide and troubleshooting say so.)
 - **A launch profile's `commandLineArgs` reach a program `dotnet run` starts through wasmtime,
   WSL or Docker** (the owner's choice, "Build the launcher"). The CLI applies a profile's
   arguments only to a run command without arguments of its own, and those three always have
@@ -80,7 +82,10 @@ Each SDK release names the one it was tested with.
   may call only the project instances the graph predicted from `ProjectReference` items, with the
   targets `ProjectReferenceTargets` declared. 0.4.0 stopped with `MSB4252` at a C# app's first
   call into an asm library and at a program's first call into its static library. In graph builds
-  only (`IsGraphBuild`), so every other build is unchanged: the asm targets that projects call on
+  only (`IsGraphBuild`), so every other build is unchanged, and not in the design-time graph
+  `dotnet watch` loads to find the files it watches (`DesignTimeBuild`), on which the .NET 10
+  SDK's `dotnet watch` stopped ("An item with the same key has already been added": two nodes of
+  one project and framework, a RID outer build and its RID builds): the asm targets that projects call on
   their references are declared (with the main reference target first in a C# app's Publish list,
   so a library is built before it is asked for its API file; and a Publish list for asm projects,
   which C# gets from Microsoft.Managed.After.targets); each RID outer build references its own RID
