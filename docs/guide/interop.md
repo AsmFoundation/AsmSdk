@@ -546,6 +546,10 @@ Both templates in [Writing NASM for AsmSdk](writing-nasm.md) were called this wa
 3.12, and returned the expected values: on Windows 11, on Debian (`python:3.12-slim`, glibc)
 and on Alpine (`python:3.12-alpine`, musl).
 
+**Example:** [Crc32C from C++, Python, Rust, Go and Zig](../examples/callers.md#python-a-package-with-the-library-in-its-wheel)
+packs an assembly library into a Python package. The wheel is tagged `py3-none-<platform>` and
+reads any bytes-like object in place.
+
 ## C and other languages
 
 **The SDK writes the header.** A library or program with
@@ -621,5 +625,13 @@ int32_t hello_add(int32_t a, int32_t b);
   Windows. For GNU `ld` on Linux, its objects must carry `.note.GNU-stack`, or recent
   versions warn that the stack is executable.
 
-**Rust, Go and Zig** bind the same functions through their C FFI (`extern "C"`, cgo,
-`@cImport`).
+**C++, Rust, Go and Zig** bind the same functions through their C FFI:
+
+- **C++** includes the header as it is (its `extern "C"` block).
+- **Rust** declares the functions in an `extern "C"` block.
+- **Go** includes the header through cgo.
+- **Zig** translates the header with translate-c.
+
+**Example:** [Crc32C from C++, Python, Rust, Go and Zig](../examples/callers.md) does all four,
+with Windows' import library and the run paths of Linux and macOS. The end-to-end tests build and
+run each one.

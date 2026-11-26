@@ -1,0 +1,17 @@
+# What building the callers by hand leaves here; the tests (CallerTests) build in
+# artifacts/test-run/callers/ instead. Rust's Cargo.lock is kept: a program's lock file belongs in
+# the repository, and the tests build with --locked.
+rust/target/
+zig/.zig-cache/
+zig/zig-out/
+go/crc32c-caller
+go/crc32c-caller.exe
+cpp/crc32c-cpp
+cpp/crc32c-cpp.exe
+python/build/
+python/dist/
+python/src/*.egg-info/
+# The library is copied next to the package's code only to build a wheel (python/README.md).
+python/src/crc32c_asm/libcrc32c.so
+python/src/crc32c_asm/libcrc32c.dylib
+python/src/crc32c_asm/crc32c.dll

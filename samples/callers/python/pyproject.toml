@@ -1,0 +1,21 @@
+# crc32c_asm: a Python package around samples/Crc32C's assembly library (ctypes, no extension
+# module). The wheel carries the library built for one platform, so setup.py tags it for that
+# platform; README.md has the steps.
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crc32c-asm"
+version = "1.0.0"
+description = "Sample: CRC-32C in assembly (AsmFoundation.Sdk's Crc32C) for Python, through ctypes"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "Apache-2.0"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# The native library sits next to __init__.py when the wheel is built (README.md, step 2).
+[tool.setuptools.package-data]
+crc32c_asm = ["libcrc32c.so", "libcrc32c.dylib", "crc32c.dll"]

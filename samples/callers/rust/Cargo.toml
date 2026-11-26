@@ -1,0 +1,9 @@
+# Crc32C from Rust: samples/Crc32C's assembly library, linked by build.rs, declared in src/main.rs.
+# No dependencies. README.md has the steps.
+[package]
+name = "crc32c-caller"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.85"
+license = "Apache-2.0"
+publish = false

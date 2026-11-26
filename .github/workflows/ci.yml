@@ -52,7 +52,13 @@
 #      WasmWebSdkPackageApp are Microsoft.NET.Sdk.WebAssembly apps, which it builds). Elsewhere
 #      the app tests are skipped with the reason, by .NET's own verdict. Every runner checks
 #      ASM0054, which an app that links asm code gets when .NET's native build is missing.
-#   The only prerequisite is the .NET SDK: no Python since 0.2.0.
+#      CallerTests builds and runs samples/callers, Crc32C called from C++, Python, Rust, Go and
+#      Zig, against the machine's own build of the library, with each language's own tools.
+#      The Linux x64 runner requires all five (ASMSDK_TEST_CALLERS=required): its image has
+#      g++, Python, Rust and Go, and Zig 0.17.1 is installed below. Elsewhere each caller runs
+#      when its tools are on PATH and is skipped with the reason otherwise.
+#   The only prerequisite of the SDK and its tests is the .NET SDK (no Python since 0.2.0); the
+#   language tools above serve the callers alone.
 #   3. The staged toolchain is kept as an artifact: release.yml packs all five from it.
 #
 # Also called by release.yml, so a release is tested exactly like a push.
@@ -86,7 +92,9 @@ jobs:
           # WebAssembly apps of both runtimes (its own .NET 10 SDK, the workloads and the WASI
           # SDK, see below), with the WASI SDK's archive for the runner and its SHA-256.
           # wasm-apps: the ASMSDK_TEST_WASM_APPS of the tests: the app tests a runner must run
-          # rather than skip.
+          # rather than skip. callers: the ASMSDK_TEST_CALLERS of the tests, with zig and
+          # zig-sha256, the Zig release the runner installs for them and its SHA-256 as
+          # ziglang.org/download/index.json lists it.
           - rid: win-x64
             os: windows-2025
             run: none
@@ -110,6 +118,9 @@ jobs:
             wasi-sdk: wasi-sdk-25.0-x86_64-linux
             wasi-sdk-sha256: 52640dde13599bf127a95499e61d6d640256119456d1af8897ab6725bcf3d89c
             wasm-apps: required
+            callers: required
+            zig: zig-x86_64-linux-0.17.1
+            zig-sha256: 3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a
           - rid: linux-arm64
             os: ubuntu-24.04-arm
             run: none
@@ -181,6 +192,26 @@ jobs:
           echo "WASI_SDK_PATH=$RUNNER_TEMP/${{ matrix.wasi-sdk }}" >> "$GITHUB_ENV"
           dotnet workload list
 
+      # Zig for samples/callers/zig (CallerTests), on the runner that requires every caller. The
+      # sample is written for Zig 0.17 (its I/O and build APIs differ between releases), so the
+      # release is pinned, and the archive is checked before anything is extracted. The other
+      # languages' tools come with the runner's image; this step prints their versions too.
+      - name: Zig
+        if: matrix.zig
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          archive="${{ matrix.zig }}.tar.xz"
+          version="${{ matrix.zig }}"
+          version="${version##*-}"   # zig-x86_64-linux-0.17.1 -> 0.17.1, the download folder
+          curl -sSfL -o "$archive" "https://ziglang.org/download/$version/$archive"
+          echo "${{ matrix.zig-sha256 }}  $archive" | sha256sum -c -
+          tar -xJf "$archive"
+          echo "$RUNNER_TEMP/${{ matrix.zig }}" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/${{ matrix.zig }}/zig" version
+          g++ --version | head -1; python3 --version; cargo --version; go version
+
       # The staged tools are a pure function of the pins and the program that stages them.
       - name: Cache the staged toolchain
         id: cache
@@ -203,12 +234,14 @@ jobs:
       # ASMSDK_TEST_WASM_APPS (matrix.wasm-apps): "required" on Linux x64 and Windows x64, which
       # install both WebAssembly workloads: their .NET app tests fail rather than skip if the
       # apps cannot be linked there, so the runners that prove the .NET path can never pass
-      # without proving it. "auto" elsewhere.
+      # without proving it. "auto" elsewhere. ASMSDK_TEST_CALLERS (matrix.callers) works the
+      # same way for samples/callers: "required" where every language's tools are installed.
       - name: Pack the SDK, build the samples, check every output
         env:
           ASMSDK_TEST_RUN: ${{ matrix.run }}
           ASMSDK_TEST_DOTNET_RUN: ${{ matrix.run }}
           ASMSDK_TEST_WASM_APPS: ${{ matrix.wasm-apps || 'auto' }}
+          ASMSDK_TEST_CALLERS: ${{ matrix.callers || 'auto' }}
         run: dotnet test --project tests/AsmSdk.Tests/AsmSdk.Tests.csproj -c Release
 
       - name: Keep the staged toolchain for the release

@@ -12,6 +12,22 @@ Each SDK release names the one it was tested with.
 
 ### Added
 
+- **Samples: Crc32C from C++, Python, Rust, Go and Zig** (`samples/callers`, the Examples
+  page "Crc32C from C++, Python, Rust, Go and Zig"). Each is one small program that calls the
+  Crc32C library and prints the same four checks (0xe3069283, a continued checksum, 1 MiB against
+  the portable path and equal to 0xd047105b, the CPU's path).
+  - C++ includes `crc32c.h`, the header the SDK writes from the `PROTO` lines. Go reads it through
+    cgo, and Zig through translate-c in `build.zig` (Zig 0.17, which removed `@cImport`).
+  - Rust declares the functions in an `extern "C"` block. Its `build.rs` links
+    `crc32c.dll.lib` by that verbatim name on Windows.
+  - The Python package `crc32c_asm` uses `ctypes`. Its wheel carries the library and is tagged
+    `py3-none-<platform>`.
+  - The new `CallerTests` builds and runs each caller against the machine's own build. CI's Linux
+    x64 runner requires all five (`ASMSDK_TEST_CALLERS=required`; the workflow installs Zig
+    0.17.1, checked against its SHA-256). Other machines run the callers whose tools they have.
+  - Checked by hand on Windows 11 x64: C++ with MSVC 2022, Rust, and the Python wheel
+    (`py3-none-win_amd64`).
+
 - **Documentation: link previews.** A link to the documentation now shows a card on X, Slack,
   Discord, LinkedIn, WhatsApp and the rest: each Wasm Demo page its own frame (Life zoomed in,
   the ray-marched scene, the swarm pushed outward), every other page AsmSdk's card, with the

@@ -199,6 +199,7 @@ builds and checks it on every CI run:
 | `Crc32C.Browser` | a .NET WebAssembly app that links the library's archive and hashes a file in the browser |
 | `WasmDemos` | the docs site's [Wasm Demos](https://asmfoundation.github.io/AsmSdk/demos/): hand-written WebAssembly, each kernel checked against a reference |
 | `consumers/Crc32C.App` | a .NET program using the library through two NuGet packages, by version |
+| `callers/` | the library from C++, Python (a package whose wheel carries it), Rust, Go and Zig, through the header the SDK writes from its `PROTO` lines |
 | `WordCount` | `wc` on glibc: libc calls through the PLT, `AsmLibcSymbol`, SSE2 counting |
 | `HexDump` | `xxd` with no libc: raw system calls, a static executable of about 4 KB, and the same program as a WASI command |
 | `Hello.Library` | shared library built for both target frameworks (`TargetFrameworks=freestanding;libc`), with `%ifdef LIBC` |
@@ -209,8 +210,9 @@ builds and checks it on every CI run:
 | `consumers/Hello.Consumer` | consumes the `Hello.Static` package by version |
 | `Hello.Net` | C# program P/Invoking both shared libraries |
 
-Crc32C (with its C#, browser and NuGet projects), WordCount and HexDump are walked through in
-the documentation's [Examples](https://asmfoundation.github.io/AsmSdk/examples/index.html).
+Crc32C (with its C#, browser and NuGet projects, and its callers in five other languages),
+WordCount and HexDump are walked through in the documentation's
+[Examples](https://asmfoundation.github.io/AsmSdk/examples/index.html).
 WordCount, HexDump's native build and the `Hello.*` samples are Linux x64 code (system calls,
 glibc).
 

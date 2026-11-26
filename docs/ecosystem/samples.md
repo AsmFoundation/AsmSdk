@@ -28,11 +28,13 @@ command (`linux-x64;wasi-wasm`).
 | [`Crc32C`](../examples/crc32c.md) | CRC-32C as a freestanding shared library for the eight native RIDs: x64 in NASM through `asmsdk.inc`, ARM64 in GNU syntax, `ExportsFile`, `PROTO` lines, run-time CPU dispatch on each OS, constants computed by the assemblers, a 3-way kernel (SSE4.2 + PCLMULQDQ, or CRC32 + PMULL); and `browser-wasm` and `wasi-wasm` (`crc32c.wasm.s`, slicing-by-8) |
 | [`Crc32C.Net`](../examples/crc32c.md#calling-it-from-c), [`Crc32C.Tests`](../examples/testing-and-benchmarks.md), [`Crc32C.Bench`](../examples/testing-and-benchmarks.md) | its C# API (`[LibraryImport]`, `SuppressGCTransition`), its xunit tests, its BenchmarkDotNet benchmark (which also times the binding the SDK writes from the `PROTO` lines) |
 | [`consumers/Crc32C.App`](../examples/nuget-for-dotnet.md) | a .NET program that uses the library through two NuGet packages, by version |
+| [`callers/`](../examples/callers.md) (`cpp`, `python`, `rust`, `go`, `zig`) | the library called from C++, Python, Rust, Go and Zig. C++, Go and Zig read `crc32c.h`, the header the SDK writes from the `PROTO` lines. The Python package's wheel carries the library and is tagged for its platform |
 | [`WordCount`](../examples/wordcount.md) | `wc` on glibc: PLT calls, a libc data object through the GOT, `AsmLibcSymbol`, SSE2 counting |
 | [`HexDump`](../examples/hexdump.md) | `xxd` with no libc: `_start`, raw system calls, a static executable of about 4 KB; and `wasi-wasm` (`main.wasi.s`, a WASI command of about 2.5 KB) |
 
 `Samples.slnx` holds them all except the two under `consumers/`, which sit outside the solution
-because the packages they use must be packed first.
+because the packages they use must be packed first, and `callers/`, which build with their own
+languages' tools.
 
 **The [WebAssembly](../guide/webassembly.md) samples** run in a browser, Node or wasmtime:
 

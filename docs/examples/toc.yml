@@ -6,6 +6,8 @@
   href: nuget-for-dotnet.md
 - name: Testing and measuring from C#
   href: testing-and-benchmarks.md
+- name: Crc32C from C++, Python, Rust, Go and Zig
+  href: callers.md
 - name: "WordCount: a tool on libc"
   href: wordcount.md
 - name: "HexDump: a tool without libc"
