@@ -8,6 +8,17 @@ packages. The format follows
 The toolchain packages carry their own version (`toolchain/versions.json`).
 Each SDK release names the one it was tested with.
 
+## [Unreleased]
+
+### Added
+
+- **Documentation: link previews.** A link to the documentation now shows a card on X, Slack,
+  Discord, LinkedIn, WhatsApp and the rest: each Wasm Demo page its own frame (Life zoomed in,
+  the ray-marched scene, the swarm pushed outward), every other page AsmSdk's card, with the
+  AsmFoundation's line under the title and a teal accent for Discord. `docs/og.cs` writes the
+  Open Graph and Twitter tags into DocFX's output after each build (the template writes none);
+  `docs/cards/card.html` is the demo cards' source.
+
 ## [0.4.0] — 2026-11-26
 
 WebAssembly is AsmSdk's third assembly target: `browser-wasm` and `wasi-wasm` build from LLVM's

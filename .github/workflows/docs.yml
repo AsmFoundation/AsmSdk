@@ -54,6 +54,11 @@ jobs:
       - name: Write the files for AI tools
         run: dotnet run docs/llms.cs -- docs docs/_site https://asmfoundation.github.io/AsmSdk/
 
+      # Open Graph and Twitter tags on every page, so a shared link gets a card: each Wasm Demo its own frame,
+      # every other page AsmSdk's (docs/og.cs, docs/cards/card.html). DocFX's template writes none.
+      - name: Add the link-preview tags
+        run: dotnet run docs/og.cs -- docs/_site https://asmfoundation.github.io/AsmSdk/
+
       - name: Upload the site
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
