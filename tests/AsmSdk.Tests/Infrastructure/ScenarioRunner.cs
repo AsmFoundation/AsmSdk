@@ -133,15 +133,20 @@ internal static class ScenarioRunner
             ScenarioStep step = scenario.Steps[i];
             string label = $"step {i + 1}/{scenario.Steps.Count}";
             string commandLine = Scenario.Expand(step.Run, services.Ports);
+            // The step's own folder (Validate keeps it inside the scenario's): an earlier step
+            // made it, or the scenario's folder holds it; a missing one fails here, by name.
+            string workingFolder = step.Cwd is null ? folder : Path.GetFullPath(Path.Combine(folder, Scenario.Expand(step.Cwd, services.Ports)));
             log.WriteLine("");
-            log.WriteLine($"[{label}] {commandLine}");
+            log.WriteLine($"[{label}] {commandLine}{(step.Cwd is null ? "" : $"   (in {Repo.Relative(workingFolder)})")}");
             if (step.Description is not null)
             {
                 log.WriteLine($"  ({step.Description})");
             }
 
+            Assert.True(Directory.Exists(workingFolder),
+                $"{scenario.Name}, {label}: its \"cwd\" folder {Repo.Relative(workingFolder)} does not exist");
             var watch = Stopwatch.StartNew();
-            CommandResult result = Execute(Scenario.Split(commandLine), folder, environment);
+            CommandResult result = Execute(Scenario.Split(commandLine), workingFolder, environment);
             log.WriteLine($"  exit {result.ExitCode} (expected {step.ExitCode}) after {watch.Elapsed.TotalSeconds:F1} s");
             log.WriteLine(Indent(result.Tail(6000)));
 
@@ -174,6 +179,14 @@ internal static class ScenarioRunner
                 string path = Path.GetFullPath(Path.Combine(folder, file));
                 Assert.True(File.Exists(path) || Directory.Exists(path),
                     $"{where}{Environment.NewLine}{file} does not exist after the step; {Listing(path, folder)}");
+            }
+
+            // The opposite check, with the folder's listing too: what is there instead says why.
+            foreach (string file in step.Missing.Select(text => Scenario.Expand(text, services.Ports)))
+            {
+                string path = Path.GetFullPath(Path.Combine(folder, file));
+                Assert.False(File.Exists(path) || Directory.Exists(path),
+                    $"{where}{Environment.NewLine}{file} still exists after the step, and must not; {Listing(path, folder)}");
             }
         }
     }

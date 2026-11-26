@@ -1,0 +1,10 @@
+<Solution>
+  <!-- CliBuild: the dotnet build, clean, publish and restore switches across a C# app, an asm
+       library, an asm static library and two asm programs. The .asmproj entries carry the
+       generic project type dotnet sln add writes for them. -->
+  <Project Path="App/App.csproj" />
+  <Project Path="Lib/Lib.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+  <Project Path="Shared/Shared.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+  <Project Path="Prog/Prog.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+  <Project Path="ProgMusl/ProgMusl.asmproj" Type="13B669BE-BB05-4DDF-9536-439F39A36129" />
+</Solution>

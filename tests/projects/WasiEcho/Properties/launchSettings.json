@@ -1,0 +1,10 @@
+{
+  // Visual Studio writes launch settings with comments and trailing commas allowed, and the .NET
+  // CLI reads them that way: both are here on purpose (AsmSelectRunTarget.StripJsonComments).
+  "profiles": {
+    "WasiEcho": {
+      "commandName": "Project",
+      "environmentVariables": { "ASM_PROBE": "from-profile", "OTHER": "o", },
+    },
+  },
+}

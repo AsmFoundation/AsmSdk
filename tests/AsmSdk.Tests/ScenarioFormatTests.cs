@@ -81,4 +81,61 @@ public sealed class ScenarioFormatTests
         Assert.Contains("stdrr", error.Message);
         Assert.Contains("at $.steps[0].stdrr", error.Message);
     }
+
+    /// <summary>"cwd" and "missing" are read into the step, with their placeholders kept for the run.</summary>
+    [Fact]
+    public void Cwd_and_missing_are_step_fields()
+    {
+        Scenario scenario = Parse(OneStep("""{ "run": "dotnet clean", "cwd": "Lib", "missing": ["Lib/bin/Debug/freestanding/{rid}/{lib:Lib}"] }"""));
+        ScenarioStep step = Assert.Single(scenario.Steps);
+        Assert.Equal("Lib", step.Cwd);
+        Assert.Equal(["Lib/bin/Debug/freestanding/{rid}/{lib:Lib}"], step.Missing);
+    }
+
+    /// <summary>
+    /// A "cwd" outside the scenario's own copy is an error: a rooted path or a ".." would run the
+    /// command where a re-run of the scenario does not start fresh.
+    /// </summary>
+    /// <param name="cwd">The bad working folder.</param>
+    [Theory]
+    [InlineData("../elsewhere")]
+    [InlineData("Lib/../..")]
+    [InlineData("/tmp")]
+    [InlineData("C:/Windows")]
+    [InlineData(" ")]
+    public void A_cwd_outside_the_scenario_is_an_error(string cwd)
+    {
+        var error = Assert.Throws<InvalidDataException>(() => Parse(OneStep($$"""{ "run": "dotnet build", "cwd": "{{cwd}}" }""")));
+        Assert.Contains("\"cwd\"", error.Message);
+    }
+
+    /// <summary>
+    /// An empty path in "files" or "missing" is an error: it names the scenario's folder itself,
+    /// which always exists, so "files" would check nothing and "missing" would always fail.
+    /// </summary>
+    /// <param name="field">The field holding the empty path.</param>
+    [Theory]
+    [InlineData("files")]
+    [InlineData("missing")]
+    public void An_empty_path_is_an_error(string field)
+    {
+        var error = Assert.Throws<InvalidDataException>(() => Parse(OneStep($$"""{ "run": "dotnet build", "{{field}}": [""] }""")));
+        Assert.Contains("has an empty path", error.Message);
+    }
+
+    /// <summary>
+    /// {os}, {arch} and {otherarch} are this machine's RID's parts and the other CPU, so a step can
+    /// name what dotnet's os and arch switches build: {os}-{otherarch} is another CPU's RID of
+    /// this OS, linux-{arch} this CPU's Linux RID.
+    /// </summary>
+    [Fact]
+    public void The_os_and_arch_placeholders_are_the_rids_parts()
+    {
+        Parse(OneStep("""{ "run": "dotnet build -a {otherarch}", "files": ["bin/{os}-{otherarch}", "bin/linux-{arch}"] }"""));
+        var ports = new Dictionary<string, int>();
+        Assert.Equal(Repo.HostRid, Scenario.Expand("{os}-{arch}", ports));
+        string other = Scenario.Expand("{otherarch}", ports);
+        Assert.Contains(other, new[] { "x64", "arm64" });
+        Assert.NotEqual(Scenario.Expand("{arch}", ports), other);
+    }
 }

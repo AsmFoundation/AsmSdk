@@ -1,0 +1,14 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A libc program that prints one line, whose text an include file defines: message.inc for the
+    x64 source (NASM's %define) and message-gnu.inc for the ARM64 one (a GNU macro) (WatchTests).
+    Include files are None items, which dotnet watch does not watch by itself: the SDK lists them
+    as Watch items, so editing one makes dotnet watch build and run the program again. The test
+    edits a copy under artifacts/, never this folder.
+  -->
+  <PropertyGroup>
+    <TargetFramework>libc</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>watch-program</AssemblyName>
+  </PropertyGroup>
+</Project>

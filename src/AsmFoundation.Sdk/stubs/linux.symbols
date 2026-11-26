@@ -95,6 +95,14 @@ wait getuid geteuid getgid getegid getrlimit setrlimit getrusage
 # Dynamic loading (in libc.so.6 since glibc 2.34)
 dlopen dlsym dlclose dlerror dladdr dl_iterate_phdr
 
+# Working directory, paths and directories; more of stdio, strings and numbers (2026-11-26:
+# a program calling getcwd failed its linux-x64 link with "undefined symbol: getcwd"). All are
+# in glibc and musl under these names.
+getcwd chdir fchdir realpath readlink remove mkstemp gethostname
+opendir readdir closedir rewinddir
+fseek ftell rewind feof ferror clearerr ungetc
+strtok strpbrk strsep memmem toupper tolower abs labs llabs atof
+
 # Data objects
 data stdin 8
 data stdout 8

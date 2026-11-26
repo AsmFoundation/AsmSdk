@@ -93,5 +93,12 @@ getrlimit setrlimit getrusage
 # Dynamic loading
 dlopen dlsym dlclose dlerror dladdr
 
+# Working directory and more of stdio, strings and numbers (2026-11-26, as in linux.symbols).
+# Left out: opendir, readdir and realpath, which osx-x64 has in an old and a new version, as it
+# has stat (see the footguns above); a program names the one it means with a raw entry.
+getcwd chdir fchdir readlink remove mkstemp gethostname
+fseek ftell rewind feof ferror clearerr ungetc
+strtok strpbrk strsep memmem toupper tolower abs labs llabs atof
+
 # The lazy-binding helper ld64.lld references for x86_64 stubs (libdyld, through libSystem).
 raw dyld_stub_binder

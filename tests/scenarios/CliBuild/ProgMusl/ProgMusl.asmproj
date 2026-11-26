@@ -1,0 +1,18 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    Prog's sources, built for the one RID this project names itself: linux-musl-x64, which no
+    build machine of the suite has, so the static library it links must be built for that RID
+    because this project asks, never by accident. A RuntimeIdentifier in a project is an ordinary
+    property, not a global one like -r: the SDK hands it to the referenced .asmproj itself.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>libc</TargetFramework>
+    <RuntimeIdentifier>linux-musl-x64</RuntimeIdentifier>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../Prog/main.asm;../Prog/main.s" />
+    <ProjectReference Include="../Shared/Shared.asmproj" />
+  </ItemGroup>
+</Project>

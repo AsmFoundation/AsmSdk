@@ -1,0 +1,15 @@
+{
+  "profiles": {
+    "Echo": {
+      "commandName": "Project",
+      "commandLineArgs": "from-profile \"two words\"",
+      "environmentVariables": {
+        "ASM_PROBE": "profile-value"
+      }
+    },
+    "Other": {
+      "commandName": "Project",
+      "commandLineArgs": "other-profile"
+    }
+  }
+}

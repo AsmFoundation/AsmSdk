@@ -58,11 +58,36 @@ any build, `ASM0091` lists what it tried.
 | `RunArguments` | | the program's arguments when the command line gives none, as in .NET |
 | `RunCommand` | | your own command: when a project sets it, `dotnet run` starts that instead |
 
-Through Docker, the program's folder is mounted at `/app` and is the working directory. The
-environment variables of a `launchSettings.json` profile reach the `docker` command, not the
-container. Through WSL, the working directory is the current one, as WSL maps it. On a Linux
-machine, Docker runs another CPU's build only with QEMU registered in `binfmt_misc`; Docker
-Desktop has it.
+Through Docker, the program's folder is mounted at `/app` and is the working directory. Through
+WSL, the working directory is the current one, as WSL maps it. On a Linux machine, Docker runs
+another CPU's build only with QEMU registered in `binfmt_misc`; Docker Desktop has it.
+
+> [!NOTE]
+> **Not released yet:** passing variables to wasmtime, WSL and Docker is on the main branch only.
+> With AsmFoundation.Sdk 0.4.0, a program run through any of the three gets no `-e` or launch
+> profile variable.
+
+**Launch profiles and environment variables.** `dotnet run` reads `Properties/launchSettings.json`
+(or `<project>.run.json`) for an asm program as for a .NET one: `-lp <name>`, `--no-launch-profile`,
+a profile's `commandLineArgs` and `environmentVariables`, and `-e NAME=VALUE`, which wins over a
+profile's value. On this machine the program gets all of them. wasmtime, WSL and Docker pass a
+program none of their own environment, so the SDK names the variables to them, never their
+values:
+
+| Runs in | `-e` variables | a launch profile's variables |
+|---|---|---|
+| this machine | yes | yes |
+| wasmtime (`--env NAME`) | yes, with the .NET 11 SDK | yes |
+| Docker (`docker run -e NAME`) | yes, with the .NET 11 SDK | yes |
+| WSL (`WSLENV`) | yes, with the .NET 11 SDK | no |
+
+Only the .NET 11 SDK's `dotnet run` tells a build its `-e` variables. A profile's variables
+reach wasmtime and Docker under any SDK, because the SDK reads their names from the launch
+settings file. WSL never gets a profile's variables: it passes a name `WSLENV` lists but its
+environment lacks as an empty variable, and a profile that does not run sets none. A profile's
+`commandLineArgs` do not reach a program run through wasmtime, WSL or Docker: the .NET CLI
+applies a profile's arguments only to a command that has none of its own, and these three have
+theirs. Give them after `--` instead. `PATH` is never passed on.
 
 A library, static library or object files project stops with `ASM0090`: `dotnet run` starts
 programs.
@@ -250,6 +275,7 @@ alone.
 | `ASM0051` | a program to pack keeps libraries in a subfolder, which NuGet would flatten | keep them next to the program (`AppFolder`, the default) |
 | `ASM0052` | the tool settings file cannot be written | check the `obj/` folder |
 | `ASM0053` | `PackAsTool` on a project that is not a program, or that has several target frameworks | `OutputType=Exe` and one `TargetFramework` |
+| `ASM0056` (not released yet) | `dotnet pack -r <rid>` of a tool with `-p:PackageId=<id>` on the command line: that RID's package must be `<id>.<rid>`, and a global property cannot be renamed | set `<PackageId>` in the project, or pack without `-r` (the top-level pack names every RID package itself) |
 | `ASM0090` | `dotnet run` of a library, static library or object files project | run a program (`OutputType=Exe`) |
 | `ASM0091` | no build this machine can run, with what was tried | build a RID it runs, install wasmtime for a `wasi-wasm` build, install WSL, or start Docker |
 | `ASM0092` | nothing built yet (`dotnet run --no-build`) | build first |

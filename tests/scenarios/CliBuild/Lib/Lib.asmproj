@@ -1,0 +1,10 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    CliBuild's library: add_ints, from the asmlib template (add.asm for x64, add.s for ARM64),
+    with the PROTO line that the C# bindings and the C header (Lib.h) come from. It names no
+    RID, so a plain build makes the build machine's; the scenario's switches decide the rest:
+    dotnet's arch and os switches build another RID, the use-current-runtime switch the
+    machine's as -r would, -o and an artifacts path move the outputs, and dotnet clean must take
+    all of them away again, the RID outer build's Lib.h and Lib.api.json included.
+  -->
+</Project>

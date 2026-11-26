@@ -1,0 +1,100 @@
+{
+  "$schema": "../scenario.schema.json",
+  "description": "The dotnet CLI's solution, reference, format and template commands, and C# file-based apps, with asm projects among .NET ones: a classic .sln made, filled (a solution folder too), listed, built, trimmed and migrated to .slnx; dotnet reference add between two asm projects, list and remove; dotnet format of a solution it can only partly read; dotnet run of a file-based app whose #:project is an .asmproj; and the templates' list, details and dry run.",
+  "steps": [
+    {
+      "run": "dotnet new sln -n Classic --format sln",
+      "description": "A classic .sln, the format dotnet new sln makes only when asked since .NET 10.",
+      "files": ["Classic.sln"]
+    },
+    {
+      "run": "dotnet sln Classic.sln add Lib/Lib.asmproj Prog/Prog.asmproj",
+      "description": "dotnet sln add writes an .asmproj with the SDK's generic project type.",
+      "stdout": ["added to the solution"]
+    },
+    {
+      "run": "dotnet sln Classic.sln add Shared/Shared.asmproj --solution-folder natives",
+      "stdout": ["added to the solution"]
+    },
+    {
+      "run": "dotnet sln Classic.sln add App/App.csproj",
+      "stdout": ["added to the solution"]
+    },
+    {
+      "run": "dotnet sln Classic.sln list",
+      "stdout": ["Lib.asmproj", "Prog.asmproj", "Shared.asmproj", "App.csproj"]
+    },
+    {
+      "run": "dotnet reference add --project Prog Shared/Shared.asmproj",
+      "description": "dotnet reference add takes an .asmproj into an .asmproj (into a .csproj it still refuses one: PlugAndPlay).",
+      "stdout": ["added to the project"]
+    },
+    {
+      "run": "dotnet build Classic.sln",
+      "description": "The .sln builds every project for this machine, the program linking the static library the reference brings.",
+      "files": [
+        "Lib/bin/Debug/freestanding/{rid}/{lib:Lib}",
+        "App/bin/Debug/net10.0/runtimes/{rid}/native/{lib:Lib}",
+        "Prog/bin/Debug/libc/{rid}/{exe:Prog}"
+      ]
+    },
+    {
+      "run": "Prog/bin/Debug/libc/{rid}/Prog",
+      "description": "mul_ints(6, 7) through the reference dotnet reference add wrote.",
+      "exitCode": 42
+    },
+    {
+      "run": "dotnet reference list --project App",
+      "stdout": ["Lib.asmproj"]
+    },
+    {
+      "run": "dotnet sln Classic.sln remove Prog/Prog.asmproj",
+      "stdout": ["removed from the solution"]
+    },
+    {
+      "run": "dotnet sln Classic.sln migrate",
+      "description": "The .sln becomes a .slnx that keeps the asm projects' type and the solution folder.",
+      "files": ["Classic.slnx"]
+    },
+    {
+      "run": "dotnet build Classic.slnx",
+      "description": "The migrated solution builds."
+    },
+    {
+      "run": "dotnet format Classic.slnx --verify-no-changes",
+      "description": "dotnet format checks the C# projects and skips the asm ones (Roslyn reads no .asmproj), and the solution as a whole passes."
+    },
+    {
+      "run": "dotnet run app.cs",
+      "description": "A file-based app's #:project directive takes an .asmproj: the library is built for this machine and the app gets its binding.",
+      "stdout": ["file-based app: add_ints(20, 22) = 42"]
+    },
+    {
+      "run": "dotnet build app.cs",
+      "description": "And builds the same way without running."
+    },
+    {
+      "run": "dotnet reference remove --project App ../Lib/Lib.asmproj",
+      "stdout": ["removed"]
+    },
+    {
+      "run": "dotnet new install AsmFoundation.Templates@{version}",
+      "description": "The templates under test, into this scenario's own CLI home.",
+      "stdout": ["asmlib"]
+    },
+    {
+      "run": "dotnet new list asm",
+      "stdout": ["asmlib", "asmexe", "asmstatic", "asmnet"]
+    },
+    {
+      "run": "dotnet new details AsmFoundation.Templates",
+      "stdout": ["asmexe", "asmwasm"]
+    },
+    {
+      "run": "dotnet new asmlib -n DryLib --dry-run",
+      "description": "A dry run says what it would create and creates nothing.",
+      "stdout": ["DryLib.asmproj"],
+      "missing": ["DryLib"]
+    }
+  ]
+}

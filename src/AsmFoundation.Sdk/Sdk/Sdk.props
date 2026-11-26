@@ -19,8 +19,15 @@
   would outrank that hiding: measured, NETSDK1054 "only supports .NET Core" instead of the
   asm pack (or ASM0053 for a library). Its value here is left alone; only the hiding needs it
   local.
+
+  IncludeSymbols too, as dotnet pack's include-symbols switch sets it: with SymbolPackageFormat
+  snupkg, NuGet wrote an asm package an EMPTY .snupkg (its nuspec alone, measured with the .NET
+  11 SDK), because a .snupkg holds portable PDBs and an asm package has none (native code; a
+  Windows build's PDB is not a portable one, which is all nuget.org's symbol server takes).
+  AsmFoundation.Pack.targets turns it off for that format alone, which only a local property
+  allows. Its value here is left alone.
 -->
-<Project TreatAsLocalProperty="PublishAot;PublishTrimmed;PublishSingleFile;PublishReadyToRun;SelfContained;PackAsTool">
+<Project TreatAsLocalProperty="PublishAot;PublishTrimmed;PublishSingleFile;PublishReadyToRun;SelfContained;PackAsTool;IncludeSymbols">
   <!--
     AsmFoundation.Sdk - Sdk.props.
 
@@ -51,6 +58,17 @@
       build with MSB4025. Set only when empty, so a project may still name another type.
     -->
     <DefaultProjectTypeGuid Condition="'$(DefaultProjectTypeGuid)' == ''">{13B669BE-BB05-4DDF-9536-439F39A36129}</DefaultProjectTypeGuid>
+
+    <!--
+      The PackageId given on the command line (dotnet pack -p:PackageId=...), if any. Captured
+      here, before Directory.Build.props and the project body can set one, so a value can only
+      be a global property (or an environment variable). A .NET tool's RID packages need to
+      know: each RID inner build names its package <PackageId>.<rid> itself, which a global
+      PackageId outranks, so every RID package came out with the top-level id and they all wrote
+      the same .nupkg in parallel (measured: "being used by another process", 3 runs of 3).
+      AsmFoundation.Pack.targets then passes each RID package its id explicitly.
+    -->
+    <_AsmCommandLinePackageId>$(PackageId)</_AsmCommandLinePackageId>
 
     <!-- The .NET publish switches, made local by TreatAsLocalProperty above: an asm project
          builds native code either way, and these would only make Microsoft.NET.Sdk check (and

@@ -1,0 +1,16 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    CliBuild's program: main returns mul_ints(6, 7) from the static library Shared, so it exits
+    with 42 (main.asm for x64, main.s for ARM64, from the PlugAndPlay scenario's UsesShared).
+    It names no RID. Properties/PublishProfiles/MuslArm.pubxml names linux-musl-arm64, a RID no
+    build machine of the suite has: dotnet publish -p:PublishProfile=MuslArm must publish that
+    RID alone, into the profile's folder, with Shared built and linked for it.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>libc</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Shared/Shared.asmproj" />
+  </ItemGroup>
+</Project>

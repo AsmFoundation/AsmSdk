@@ -1,0 +1,15 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    CliRun's program: prints each argument, then ASM_PROBE ("(unset)" without it), then its
+    current directory, and exits with the number of arguments (echo.asm for x64, echo.s for
+    ARM64). Properties/launchSettings.json holds two launch profiles, as Visual Studio writes
+    them: "Echo" (the default: two arguments and ASM_PROBE) and "Other" (one argument, no
+    variable). dotnet run must hand each, and its own -e and double-dash arguments, to the
+    program. (No double dash written out here: an XML comment may not hold one.)
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>libc</TargetFramework>
+    <AssemblyName>echo</AssemblyName>
+  </PropertyGroup>
+</Project>

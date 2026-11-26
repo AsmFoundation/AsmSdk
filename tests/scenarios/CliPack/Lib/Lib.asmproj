@@ -1,0 +1,16 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    CliPack's library: add_ints from the asmlib template, with its PROTO line, packed as
+    Scenario.CliPackLib for the eight native RIDs (so no pack of it warns ASM0013, which these
+    scenarios' warnings-as-errors would make a failure). VersionPrefix rather than Version, so
+    that dotnet pack's version-suffix switch can add a suffix, and its version switch can replace
+    the whole version, as for a .NET library.
+  -->
+  <PropertyGroup>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+    <PackageId>Scenario.CliPackLib</PackageId>
+    <VersionPrefix>1.0.0</VersionPrefix>
+    <Authors>AsmFoundation tests</Authors>
+    <Description>Scenario package: an assembly library with C# bindings, for eight runtime identifiers.</Description>
+  </PropertyGroup>
+</Project>

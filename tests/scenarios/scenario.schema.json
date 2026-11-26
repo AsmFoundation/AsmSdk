@@ -76,7 +76,12 @@
           "run": {
             "type": "string",
             "minLength": 1,
-            "description": "The command line, run in the scenario's folder without a shell: whitespace separates arguments, and double or single quotes group them. dotnet gets the test environment (the isolated NuGet cache, the scenario's own CLI home for dotnet new install and global tools, English messages). A path with a slash is a file of the scenario's folder (on Windows .exe, .cmd or .bat is tried when it has no extension); any other name is looked up on PATH. Placeholders: {rid}, {version} (the AsmFoundation.Sdk version under test, also the templates'), {exe:name}, {lib:name}, {port:service}."
+            "description": "The command line, run in the scenario's folder (or the step's cwd) without a shell: whitespace separates arguments, and double or single quotes group them. dotnet gets the test environment (the isolated NuGet cache, the scenario's own CLI home for dotnet new install and global tools, English messages). A path with a slash is a file of the working folder (on Windows .exe, .cmd or .bat is tried when it has no extension); any other name is looked up on PATH. Placeholders: {rid}, {os} and {arch} (its parts: win, linux, linux-musl or osx; x64 or arm64), {otherarch} (the other CPU), {version} (the AsmFoundation.Sdk version under test, also the templates'), {exe:name}, {lib:name}, {port:service}."
+          },
+          "cwd": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The folder the command runs in, relative to the scenario's folder with forward slashes (no rooted path, no ..); the scenario's folder when absent. For commands that act on the current folder: dotnet run or build without a project, dotnet tool run, a local tool's command. Placeholders are allowed."
           },
           "description": {
             "type": "string",
@@ -104,8 +109,13 @@
           },
           "files": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": { "type": "string", "minLength": 1 },
             "description": "Files or folders, relative to the scenario's folder with forward slashes, that must exist after the command. Placeholders are allowed."
+          },
+          "missing": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "description": "Files or folders, relative to the scenario's folder with forward slashes, that must NOT exist after the command: what dotnet clean deletes, a package that must not be written. Placeholders are allowed."
           }
         }
       }

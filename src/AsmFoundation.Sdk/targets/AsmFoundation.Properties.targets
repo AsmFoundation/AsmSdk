@@ -30,6 +30,37 @@
     DebugSymbols after this file sees the hidden values, not yours.
   -->
 
+  <!--
+    The publish profile (dotnet publish -p:PublishProfile=<name>, the project's
+    Properties/PublishProfiles/<name>.pubxml), imported here, before anything below reads the
+    properties it may set. Microsoft.NET.Sdk imports it in Microsoft.NET.Sdk.BeforeCommon.targets,
+    part of its Sdk.targets, which comes after this file: a profile's RuntimeIdentifier then
+    arrived after the RID decision below and was ignored (measured: a profile naming linux-x64
+    published win-x64, with ASM0013, while its PublishDir was honored). This is .NET's own file,
+    imported through the Sdk attribute so that it is the one of the SDK building the project; it
+    sets PublishProfileImported when it imports a profile, and BeforeCommon.targets imports it
+    only when that property is not true, so a profile is never imported twice.
+    Imported early only when the profile file exists, found as that file finds it (an explicit
+    WebPublishProfileFile or PublishProfileFullPath, else
+    <AppDesignerFolder>/PublishProfiles/<name>.pubxml beside the project): a PublishProfile on
+    the command line is a global property that every referenced project sees too, and in a
+    project without that profile the file resets PublishProfileImported to false, so
+    BeforeCommon.targets imported it a second time (measured: MSB4011 in a referenced
+    .asmproj). Where no profile exists, nothing happens here, and BeforeCommon.targets does
+    what it always did.
+  -->
+  <PropertyGroup Condition="'$(PublishProfileImported)' != 'true'">
+    <_AsmPublishProfileName Condition="'$(PublishProfileName)' != ''">$(PublishProfileName)</_AsmPublishProfileName>
+    <_AsmPublishProfileName Condition="'$(_AsmPublishProfileName)' == '' and '$(PublishProfile)' != ''">$([System.IO.Path]::GetFileNameWithoutExtension('$(PublishProfile)'))</_AsmPublishProfileName>
+    <_AsmPublishProfileFile>$(WebPublishProfileFile)</_AsmPublishProfileFile>
+    <_AsmPublishProfileFile Condition="'$(_AsmPublishProfileFile)' == ''">$(PublishProfileFullPath)</_AsmPublishProfileFile>
+    <_AsmPublishProfileFile Condition="'$(_AsmPublishProfileFile)' == '' and '$(_AsmPublishProfileName)' != ''">$(MSBuildProjectDirectory)/$([MSBuild]::ValueOrDefault('$(AppDesignerFolder)', 'Properties'))/PublishProfiles/$(_AsmPublishProfileName).pubxml</_AsmPublishProfileFile>
+    <!-- Visual Studio's publish names the one project it publishes; the file skips the others. -->
+    <_AsmPublishProfileFile Condition="'$(ProjectToOverrideProjectExtensionsPath)' != '' and '$(ProjectToOverrideProjectExtensionsPath)' != '$(MSBuildProjectFullPath)'"></_AsmPublishProfileFile>
+  </PropertyGroup>
+  <Import Project="../targets/Microsoft.NET.Sdk.ImportPublishProfile.targets" Sdk="Microsoft.NET.Sdk"
+          Condition="'$(PublishProfileImported)' != 'true' and '$(_AsmPublishProfileFile)' != '' and Exists('$(_AsmPublishProfileFile)')" />
+
   <!-- ===================================================================================== -->
   <!-- Target framework: freestanding or libc                                                 -->
   <!-- ===================================================================================== -->
@@ -217,6 +248,20 @@
     .asmproj as in a .csproj. Without RuntimeIdentifier, the build is the "RID outer build":
     it builds each RID in turn (see _AsmBuildEachRuntimeIdentifier) and links nothing itself.
   -->
+  <!--
+    The .NET CLI's use-current-runtime switch (ucr, on dotnet build, run, test, publish, pack
+    and restore) is UseCurrentRuntimeIdentifier=true: the build machine's RID, as
+    -r <that RID> would give. Microsoft.NET.Sdk turns it into RuntimeIdentifier in
+    Microsoft.NET.RuntimeIdentifierInference.targets, part of its Sdk.targets, after the RID
+    decision below; it came too late, and the project was built as a RID outer build for its
+    default RIDs (measured: a publish and a pack of a project that names no RID warned ASM0013,
+    and -o got a win-x64/ folder, which -r win-x64 does not get). The same value .NET gives it,
+    set here first. Only when nothing named a RID: -r, a RID-specific referencing project and
+    the project's own RuntimeIdentifier keep theirs, as in .NET.
+  -->
+  <PropertyGroup Condition="'$(UseCurrentRuntimeIdentifier)' == 'true' and '$(RuntimeIdentifier)' == '' and '$(NETCoreSdkPortableRuntimeIdentifier)' != ''">
+    <RuntimeIdentifier>$(NETCoreSdkPortableRuntimeIdentifier)</RuntimeIdentifier>
+  </PropertyGroup>
   <PropertyGroup>
     <!-- The project's own list, captured before RuntimeIdentifiers is widened for restore
          below. A lone RuntimeIdentifier in the project counts as a list of one. -->

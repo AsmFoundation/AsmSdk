@@ -258,6 +258,103 @@ public sealed class ProgramTests(SdkUnderTest sdk)
         AssertRan(run, rid, "x y", "z");
     }
 
+    /// <summary>EchoProgram: prints its arguments, then ASM_PROBE ("(unset)" without it), and exits with their number.</summary>
+    private static string EchoProgram => Repo.TestProject("EchoProgram");
+
+    /// <summary>This machine's glibc Linux RID: the build WSL runs, and the one Docker runs without emulation.</summary>
+    private static string LinuxRidOfThisCpu =>
+        System.Runtime.InteropServices.RuntimeInformation.OSArchitecture == System.Runtime.InteropServices.Architecture.Arm64 ? "linux-arm64" : "linux-x64";
+
+    /// <summary>Skips the calling test unless this is Windows with WSL and a Linux distribution.</summary>
+    /// <exception cref="Exception">Xunit's skip exception.</exception>
+    private static void RequireWsl()
+    {
+        if (!OperatingSystem.IsWindows() || LinuxRunner.ExecutableMode != "wsl" || Command.Run("wsl", ["--exec", "true"]).ExitCode != 0)
+        {
+            Assert.Skip("No WSL with a Linux distribution here");
+        }
+    }
+
+    /// <summary>Skips the calling test unless Docker runs Linux containers here.</summary>
+    /// <exception cref="Exception">Xunit's skip exception.</exception>
+    private static void RequireLinuxDocker()
+    {
+        if (!Command.OnPath("docker") || Command.Run("docker", ["info", "--format", "{{.OSType}}"], Repo.Root).StdOut.Trim() != "linux")
+        {
+            Assert.Skip("No Docker running Linux containers here");
+        }
+    }
+
+    /// <summary>
+    /// dotnet run -e reaches a Linux program run through WSL: WSL passes a Windows variable only
+    /// when WSLENV names it, and the SDK sets WSLENV on wsl.exe (as a RuntimeEnvironmentVariable
+    /// item, which the .NET 11 SDK's CLI applies after ComputeRunArguments), keeping the entries
+    /// WSLENV already has. Skipped on the .NET 10 SDK, whose dotnet run passes -e to no build.
+    /// </summary>
+    [Fact]
+    public void Dotnet_run_passes_e_variables_through_WSL()
+    {
+        RequireWsl();
+        if (sdk.SdkMajorVersion() < 11)
+        {
+            Assert.Skip($"The .NET {sdk.SdkMajorVersion()} SDK's dotnet run passes -e to no build, so the SDK cannot list the variables in WSLENV (it can from the .NET 11 SDK on)");
+        }
+
+        CommandResult run = sdk.DotnetRun(EchoProgram, ["-c", "Release", "-r", LinuxRidOfThisCpu, "-p:AsmRunIn=Wsl", "--no-launch-profile", "-e", "ASM_PROBE=through-wsl"], "x");
+        Assert.True(run.ExitCode == 1, $"exit {run.ExitCode}, want 1 (one argument): {run.Tail()}");
+        Assert.Contains("through-wsl", run.StdOut, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A launch profile's variable never reaches a program run through WSL, not even as an empty
+    /// one: WSL passes a name WSLENV lists but its environment lacks as an EMPTY variable
+    /// (measured), and a profile that does not run sets none, so the SDK lists only -e's names.
+    /// EchoProgram's profile sets ASM_PROBE: through WSL the program must print "(unset)", which
+    /// it prints for a variable that is absent, never for an empty one.
+    /// </summary>
+    [Fact]
+    public void A_launch_profiles_variable_does_not_reach_WSL_as_an_empty_one()
+    {
+        RequireWsl();
+        CommandResult run = sdk.DotnetRun(EchoProgram, ["-c", "Release", "-r", LinuxRidOfThisCpu, "-p:AsmRunIn=Wsl"], "y");
+        Assert.True(run.ExitCode == 1, $"exit {run.ExitCode}, want 1 (one argument): {run.Tail()}");
+        Assert.Contains("(unset)", run.StdOut, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A launch profile's variables reach a Linux program in a Docker container: the SDK names
+    /// every profile's variables to docker run (-e NAME, no value), which takes their values from
+    /// its own environment, where the CLI put the running profile's (an unset name passes
+    /// nothing). Any SDK: the names come from Properties/launchSettings.json.
+    /// </summary>
+    [Fact]
+    public void Dotnet_run_passes_a_launch_profiles_variables_into_docker()
+    {
+        RequireLinuxDocker();
+        CommandResult run = sdk.DotnetRun(EchoProgram, ["-c", "Release", "-r", LinuxRidOfThisCpu, "-p:AsmRunIn=Docker"], "z");
+        Assert.True(run.ExitCode == 1, $"exit {run.ExitCode}, want 1 (one argument): {run.Tail()}");
+        Assert.Contains("profile-value", run.StdOut, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// dotnet run -e reaches a Linux program in a Docker container (docker run -e NAME, its value
+    /// from docker's environment). Skipped on the .NET 10 SDK, whose dotnet run passes -e to no
+    /// build: there the SDK cannot know the names.
+    /// </summary>
+    [Fact]
+    public void Dotnet_run_passes_e_variables_into_docker()
+    {
+        RequireLinuxDocker();
+        if (sdk.SdkMajorVersion() < 11)
+        {
+            Assert.Skip($"The .NET {sdk.SdkMajorVersion()} SDK's dotnet run passes -e to no build, so the SDK cannot name the variables to docker (it can from the .NET 11 SDK on)");
+        }
+
+        CommandResult run = sdk.DotnetRun(EchoProgram, ["-c", "Release", "-r", LinuxRidOfThisCpu, "-p:AsmRunIn=Docker", "--no-launch-profile", "-e", "ASM_PROBE=from-e"], "w");
+        Assert.True(run.ExitCode == 1, $"exit {run.ExitCode}, want 1 (one argument): {run.Tail()}");
+        Assert.Contains("from-e", run.StdOut, StringComparison.Ordinal);
+    }
+
     /// <summary>The Linux builds Docker runs, with Docker's platform for each CPU.</summary>
     public static readonly TheoryData<string, string> DockerRids = new()
     {

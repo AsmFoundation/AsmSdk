@@ -211,6 +211,28 @@ public sealed class SdkUnderTest : IAsyncLifetime
     public CommandResult BuildTestProject(string name) =>
         Once($"build {name}", () => Dotnet("build", Repo.TestProject(name), "-c", "Release"));
 
+    /// <summary>
+    /// The major version of the .NET SDK the tests run (dotnet --version at the repository root,
+    /// once): what the CLI does differs between the SDK lines CI runs. The hosted Windows images
+    /// bring the .NET 11 SDK, which outranks setup-dotnet's 10.0.x where both share a folder; the
+    /// other runners have 10.0.x alone. The .NET 11 SDK's dotnet run passes -e to the build, for
+    /// one; the .NET 10 SDK's passes it to none.
+    /// </summary>
+    /// <returns>The major version, such as 10 or 11.</returns>
+    /// <exception cref="InvalidOperationException">dotnet --version failed or printed no version.</exception>
+    public int SdkMajorVersion()
+    {
+        CommandResult version = Once("dotnet --version", () => DotnetCommand("--version"));
+        string text = version.StdOut.Trim();
+        int dot = text.IndexOf('.');
+        if (version.ExitCode != 0 || dot <= 0 || !int.TryParse(text[..dot], out int major))
+        {
+            throw new InvalidOperationException($"dotnet --version did not say which SDK runs: {version.Tail()}");
+        }
+
+        return major;
+    }
+
     /// <summary>GNU readelf-style output of the bundled llvm-readobj.</summary>
     /// <param name="path">The ELF file or archive to inspect.</param>
     /// <param name="options">readelf options, such as -h, -d, -l, -S, --dyn-syms, -s.</param>

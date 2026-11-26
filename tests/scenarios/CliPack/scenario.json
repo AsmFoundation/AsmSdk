@@ -1,0 +1,111 @@
+{
+  "$schema": "../scenario.schema.json",
+  "description": "The dotnet CLI's pack switches on an asm library and an asm .NET tool, and the package and tool commands that use what they make: the version, version-suffix, symbol, source and no-build forms of pack (the scenarios' Directory.Build.props sets PackageOutputPath, so an artifacts path would not move a package here; CliBuild moves builds with one); dotnet package add, list and remove with dotnet nuget why from a C# app under central package management; a tool packed with its PackageId on the command line, and a local tool manifest, dotnet tool run, the tool's own dotnet command and dotnet tool exec.",
+  "steps": [
+    {
+      "run": "dotnet pack Lib",
+      "description": "The library's package, into the local feed the scenarios' nuget.config maps Scenario.* to.",
+      "files": ["../../packages/Scenario.CliPackLib.1.0.0.nupkg"]
+    },
+    {
+      "run": "dotnet pack Lib -o pk/version --version 2.3.4",
+      "description": "The version switch replaces the whole version.",
+      "files": ["pk/version/Scenario.CliPackLib.2.3.4.nupkg"]
+    },
+    {
+      "run": "dotnet pack Lib -o pk/suffix --version-suffix beta.1",
+      "description": "The version-suffix switch adds a suffix to the project's VersionPrefix.",
+      "files": ["pk/suffix/Scenario.CliPackLib.1.0.0-beta.1.nupkg"]
+    },
+    {
+      "run": "dotnet pack Lib -o pk/snupkg --include-symbols -p:SymbolPackageFormat=snupkg",
+      "description": "A .snupkg holds portable PDBs, which an asm package has none of: the package is made, the symbol package is not, and the pack says why (0.4.0 wrote an empty .snupkg, which nuget.org refuses).",
+      "stdout": ["no .snupkg"],
+      "files": ["pk/snupkg/Scenario.CliPackLib.1.0.0.nupkg"],
+      "missing": ["pk/snupkg/Scenario.CliPackLib.1.0.0.snupkg"]
+    },
+    {
+      "run": "dotnet pack Lib -o pk/source --include-source",
+      "description": "The include-source switch makes NuGet's legacy symbols package, with the sources under src/.",
+      "files": ["pk/source/Scenario.CliPackLib.1.0.0.nupkg", "pk/source/Scenario.CliPackLib.1.0.0.symbols.nupkg"]
+    },
+    {
+      "run": "dotnet pack Lib -o pk/nobuild --no-build",
+      "description": "Packs the Release build the first step made, without building again.",
+      "files": ["pk/nobuild/Scenario.CliPackLib.1.0.0.nupkg"]
+    },
+    {
+      "run": "dotnet package add Scenario.CliPackLib --project NetConsumer --version 1.0.0",
+      "description": "Adds the package to the C# app; under central package management the version goes to Directory.Packages.props."
+    },
+    {
+      "run": "dotnet run --project NetConsumer",
+      "description": "The package brings the library of this machine's RID and the C# bindings.",
+      "stdout": ["package: add_ints(40, 2) = 42"]
+    },
+    {
+      "run": "dotnet package list --project NetConsumer",
+      "stdout": ["Scenario.CliPackLib"]
+    },
+    {
+      "run": "dotnet nuget why NetConsumer/NetConsumer.csproj Scenario.CliPackLib",
+      "description": "NuGet explains the dependency from the restore of the asm package.",
+      "stdout": ["Scenario.CliPackLib"]
+    },
+    {
+      "run": "dotnet package remove Scenario.CliPackLib --project NetConsumer",
+      "description": "And removes it again."
+    },
+    {
+      "run": "dotnet pack Tool",
+      "description": "The tool's top-level package and the package of each RID.",
+      "files": ["../../packages/Scenario.CliPackTool.1.0.0.nupkg", "../../packages/Scenario.CliPackTool.{rid}.1.0.0.nupkg"]
+    },
+    {
+      "run": "dotnet pack Tool -p:PackageId=Scenario.CliPackToolCli",
+      "description": "With the PackageId on the command line, a global property, each RID package still gets <id>.<rid> (0.4.0 gave every RID package the top-level id, and the packs wrote the same file at once: being used by another process).",
+      "files": ["../../packages/Scenario.CliPackToolCli.1.0.0.nupkg", "../../packages/Scenario.CliPackToolCli.{rid}.1.0.0.nupkg"]
+    },
+    {
+      "run": "dotnet pack Tool -r {rid} -p:PackageId=Scenario.CliPackToolCli",
+      "description": "One RID's package alone cannot take its RID suffix from a PackageId on the command line: ASM0056 says what to do instead.",
+      "exitCode": 1,
+      "stdout": ["ASM0056"]
+    },
+    {
+      "run": "dotnet new tool-manifest",
+      "description": "A local tool manifest in the scenario's folder.",
+      "files": ["dotnet-tools.json"]
+    },
+    {
+      "run": "dotnet tool install --local Scenario.CliPackTool --version 1.0.0",
+      "stdout": ["was successfully installed"]
+    },
+    {
+      "run": "dotnet tool run asm-echo -- a \"b c\"",
+      "description": "dotnet tool run starts this machine's program with the arguments as given: it prints each and returns their number.",
+      "exitCode": 2,
+      "stdout": ["a", "b c", "(unset)"]
+    },
+    {
+      "run": "dotnet asm-echo x",
+      "description": "A local tool's own dotnet command.",
+      "exitCode": 1,
+      "stdout": ["x"]
+    },
+    {
+      "run": "dotnet tool list --local",
+      "stdout": ["scenario.clipacktool"]
+    },
+    {
+      "run": "dotnet tool uninstall --local Scenario.CliPackTool",
+      "stdout": ["successfully uninstalled"]
+    },
+    {
+      "run": "dotnet tool exec Scenario.CliPackToolCli --version 1.0.0 --yes -- z",
+      "description": "dotnet tool exec (what dnx runs) installs nothing and runs the package the command-line PackageId made: its RID packages are named and found.",
+      "exitCode": 1,
+      "stdout": ["z"]
+    }
+  ]
+}

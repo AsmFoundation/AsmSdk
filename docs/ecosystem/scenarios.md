@@ -112,6 +112,8 @@ tests/scenarios/
 | `steps[].stderr` | Texts that must each appear in the command's standard error, where the .NET CLI says why it refused a command. |
 | `steps[].absent` | Texts that must appear in neither standard output nor standard error, such as a warning that must not fire. |
 | `steps[].files` | Files or folders, relative to the scenario's folder, that must exist after the command. |
+| `steps[].missing` | Files or folders, relative to the scenario's folder, that must NOT exist after the command: what `dotnet clean` deletes, a package that must not be written. |
+| `steps[].cwd` | The folder the command runs in, relative to the scenario's folder (no rooted path, no `..`); the scenario's folder when left out. For the commands that act on the current folder: `dotnet run` without a project, `dotnet tool run`, a local tool's command. A program path in `run` is relative to it. |
 | `steps[].description` | Why the step is there, for the log. |
 | `rids` | The build machines the scenario runs on (`win-x64`, `linux-arm64`, ...); every machine when left out. |
 | `services` | Containers the steps need: `name`, `image` (with a pinned tag), `port`, and optionally `platform` (`linux/amd64` by default), `environment` and `ready`. |
@@ -133,17 +135,19 @@ OS. How the first word is run:
   installed, and leaves nothing behind. The first-run steps that a fresh home would take outside
   it are off (adding the tools folder to the user's `PATH`, creating a developer certificate),
   and the CLI's messages are English (`DOTNET_CLI_UI_LANGUAGE=en`), because steps compare them.
-- **A path with a slash** is a file of the scenario's folder, such as `out/App` or
-  `tools/asm-hello`. On Windows a path without an extension gets `.exe`, `.cmd` or `.bat`, as a
-  shell would find it, and a `.cmd` runs through `cmd.exe`.
+- **A path with a slash** is a file of the step's working folder (the scenario's folder, or its
+  `cwd`), such as `out/App` or `tools/asm-hello`. On Windows a path without an extension gets
+  `.exe`, `.cmd` or `.bat`, as a shell would find it, and a `.cmd` runs through `cmd.exe`.
 - **Any other name** is looked up on `PATH`. A step that needs a shell can run `sh -c '...'`, but
   it then runs only where `sh` exists.
 
-**Placeholders**, in `run`, `stdout`, `stderr`, `absent` and `files`:
+**Placeholders**, in `run`, `cwd`, `stdout`, `stderr`, `absent`, `files` and `missing`:
 
 | Placeholder | Expands to |
 |---|---|
 | `{rid}` | This machine's RID: `win-x64`, `linux-arm64`, `osx-arm64`, ... |
+| `{os}`, `{arch}` | The two parts of that RID: `win`, `linux`, `linux-musl` or `osx`; `x64` or `arm64` |
+| `{otherarch}` | The other of `x64` and `arm64`: what `dotnet build -a {otherarch}` builds is `{os}-{otherarch}` |
 | `{version}` | The AsmFoundation.Sdk version under test, which the templates package has too: `dotnet new install AsmFoundation.Templates@{version}` |
 | `{exe:name}` | `name.exe` on Windows, `name` elsewhere |
 | `{lib:name}` | This RID's shared library file: `name.dll`, `libname.so` or `libname.dylib` |

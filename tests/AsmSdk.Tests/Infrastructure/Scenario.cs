@@ -19,11 +19,14 @@ namespace AsmSdk.Tests.Infrastructure;
 /// against tests/scenarios/scenario.schema.json; docs/ecosystem/scenarios.md describes it.
 /// </para>
 /// <para>
-/// The placeholders, in "run", "stdout", "stderr", "absent" and "files": <c>{rid}</c> (this
-/// machine's RID), <c>{version}</c> (the AsmFoundation.Sdk version under test, which the
-/// templates package carries too), <c>{exe:name}</c> (name.exe on Windows, name elsewhere),
-/// <c>{lib:name}</c> (this RID's shared library file: name.dll, libname.dylib or libname.so) and
-/// <c>{port:service}</c> (the host port a service container's port was published on).
+/// The placeholders, in "run", "cwd", "stdout", "stderr", "absent", "files" and "missing":
+/// <c>{rid}</c> (this machine's RID), <c>{os}</c> and <c>{arch}</c> (its two parts: win, linux,
+/// linux-musl or osx; x64 or arm64), <c>{otherarch}</c> (the other of x64 and arm64, for what
+/// dotnet's arch switch builds for another CPU), <c>{version}</c> (the AsmFoundation.Sdk version
+/// under test, which the templates package carries too), <c>{exe:name}</c> (name.exe on Windows,
+/// name elsewhere), <c>{lib:name}</c> (this RID's shared library file: name.dll, libname.dylib
+/// or libname.so) and <c>{port:service}</c> (the host port a service container's port was
+/// published on).
 /// </para>
 /// </remarks>
 internal sealed partial record Scenario
@@ -187,6 +190,10 @@ internal sealed partial record Scenario
             return (kind, argument.Length != 0) switch
             {
                 ("rid", false) => Repo.HostRid,
+                // A RID is <os>-<arch> with the CPU after the last dash (linux-musl-x64 included).
+                ("os", false) => Repo.HostRid[..Repo.HostRid.LastIndexOf('-')],
+                ("arch", false) => Repo.HostRid[(Repo.HostRid.LastIndexOf('-') + 1)..],
+                ("otherarch", false) => Repo.HostRid.EndsWith("-arm64", StringComparison.Ordinal) ? "x64" : "arm64",
                 ("version", false) => Repo.SdkVersion(),
                 ("exe", true) => OperatingSystem.IsWindows() ? argument + ".exe" : argument,
                 ("lib", true) => CrossPlatformTests.LibraryFile(Repo.HostRid, argument),
@@ -328,7 +335,32 @@ internal sealed partial record Scenario
                 throw new InvalidDataException($"{where} has an empty text in \"stdout\", \"stderr\" or \"absent\"");
             }
 
-            foreach (string text in step.Stdout.Prepend(step.Run).Concat(step.Stderr).Concat(step.Absent).Concat(step.Files))
+            // A path a step names must not be empty either: "" is the scenario's folder itself,
+            // which always exists (a "files" check of nothing) and never goes (a "missing"
+            // check that always fails).
+            if (step.Files.Concat(step.Missing).Any(string.IsNullOrWhiteSpace))
+            {
+                throw new InvalidDataException($"{where} has an empty path in \"files\" or \"missing\"");
+            }
+
+            // The working folder stays inside the scenario's own copy: a rooted path or a ".."
+            // would run the command somewhere a re-run does not reset. Rooted by any OS's rules,
+            // so a file is judged the same on every machine (Linux would take "C:/x" for a
+            // relative folder, and Windows "/x" for a rooted one).
+            if (step.Cwd is not null)
+            {
+                string[] segments = step.Cwd.Split('/', '\\');
+                bool rooted = Path.IsPathRooted(step.Cwd) || step.Cwd.StartsWith('/') || step.Cwd.StartsWith('\\')
+                    || (step.Cwd.Length >= 2 && step.Cwd[1] == ':');
+                if (step.Cwd.Trim().Length == 0 || rooted || segments.Contains(".."))
+                {
+                    throw new InvalidDataException($"{where}: \"cwd\" \"{step.Cwd}\" must be a folder inside the scenario's folder (relative, without \"..\")");
+                }
+            }
+
+            IEnumerable<string> texts = step.Stdout.Prepend(step.Run).Concat(step.Stderr).Concat(step.Absent)
+                .Concat(step.Files).Concat(step.Missing).Concat(step.Cwd is null ? [] : [step.Cwd]);
+            foreach (string text in texts)
             {
                 foreach (Match match in Placeholder().Matches(text))
                 {
@@ -336,7 +368,7 @@ internal sealed partial record Scenario
                     bool hasArgument = match.Groups[2].Value.Length != 0;
                     bool known = kind switch
                     {
-                        "rid" or "version" => !hasArgument,
+                        "rid" or "os" or "arch" or "otherarch" or "version" => !hasArgument,
                         "exe" or "lib" => hasArgument,
                         "port" => hasArgument && serviceNames.Contains(match.Groups[2].Value),
                         _ => false,
@@ -344,7 +376,7 @@ internal sealed partial record Scenario
                     if (!known)
                     {
                         throw new InvalidDataException(
-                            $"{where}: unknown placeholder {match.Value} (known: {{rid}}, {{version}}, {{exe:name}}, {{lib:name}}, {{port:service}} of a declared service)");
+                            $"{where}: unknown placeholder {match.Value} (known: {{rid}}, {{os}}, {{arch}}, {{otherarch}}, {{version}}, {{exe:name}}, {{lib:name}}, {{port:service}} of a declared service)");
                     }
                 }
             }
@@ -399,6 +431,23 @@ internal sealed record ScenarioStep
     /// (placeholders allowed, forward slashes on every OS).
     /// </summary>
     public IReadOnlyList<string> Files { get; init; } = [];
+
+    /// <summary>
+    /// Files or folders, relative to the scenario's folder, that must NOT exist after the command
+    /// (placeholders allowed, forward slashes on every OS): what dotnet clean deletes, a package
+    /// that must not be written.
+    /// </summary>
+    public IReadOnlyList<string> Missing { get; init; } = [];
+
+    /// <summary>
+    /// The folder the command runs in, relative to the scenario's folder (placeholders allowed,
+    /// forward slashes on every OS); the scenario's folder when not given. For the commands that
+    /// act on the current folder: dotnet run or build without a project, dotnet tool run and a
+    /// local tool's command (the tool manifest is looked for from there up), dotnet sln without a
+    /// solution. A program path in "run" is relative to it, as in a shell. It must stay inside the
+    /// scenario's folder: no rooted path, no "..".
+    /// </summary>
+    public string? Cwd { get; init; }
 }
 
 /// <summary>

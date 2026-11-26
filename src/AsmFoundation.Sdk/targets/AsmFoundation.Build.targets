@@ -71,9 +71,16 @@
     include files are the None items ending in .inc (WithMetadataValue compares the extension
     without regard to case), plus CustomAdditionalCompileInputs, .NET's item for more inputs
     of the compile step, which AsmPrepare also reads.
+
+    Watch: the files dotnet watch restarts the program for, beyond the Compile items it always
+    watches (the .NET 11 SDK's dotnet watch reads Compile, AdditionalFiles and Watch items from
+    each project of the graph). The same include files and extra inputs: they are None items,
+    which it does not watch, so editing an .inc changed nothing until a .asm file was saved too
+    (measured: no restart in 30 s; a .asm edit restarted it in about 13 s).
   -->
   <ItemGroup>
     <UpToDateCheckInput Include="@(Compile);@(None->WithMetadataValue('Extension', '.inc'));@(CustomAdditionalCompileInputs)" Visible="false" />
+    <Watch Include="@(None->WithMetadataValue('Extension', '.inc'));@(CustomAdditionalCompileInputs)" Visible="false" />
     <UpToDateCheckInput Include="$(ExportsFile)" Condition="'$(ExportsFile)' != ''" Visible="false" />
     <UpToDateCheckBuilt Include="$(TargetPath)" Condition="'$(_AsmRid)' != '' and '$(_AsmOutputKind)' != 'Objects'" Visible="false" />
   </ItemGroup>
@@ -1427,8 +1434,16 @@
       (most of which no inner build here asks for), and ASM0010 for a reference that lists none
       because it is built for the RIDs its referencing projects ask for. Each inner build
       resolves the references itself, for its own RID.
+      IncrementalClean, which CoreBuild would have run, is kept: the outer build writes files of
+      its own (the merged <AssemblyName>.api.json and the C header beside it, in
+      bin/<Configuration>/<tfm>/), and only IncrementalClean records a build's FileWrites in
+      obj/<Configuration>/<tfm>/<project>.FileListAbsolute.txt, the list dotnet clean deletes
+      from. Without it that list stayed empty and dotnet clean left both files behind (measured
+      with -o, with an artifacts path and with TargetFrameworks too). It also deletes the outer build's
+      own stale files: a header from a build that wrote one, when the next one writes none. It
+      touches only files in that list, never an inner build's RID folder below OutDir.
     -->
-    <BuildDependsOn Condition="'$(_AsmRid)' == ''">BeforeBuild;_AsmBuildEachRuntimeIdentifier;_AsmMergeApi;AfterBuild</BuildDependsOn>
+    <BuildDependsOn Condition="'$(_AsmRid)' == ''">BeforeBuild;_AsmBuildEachRuntimeIdentifier;_AsmMergeApi;IncrementalClean;AfterBuild</BuildDependsOn>
   </PropertyGroup>
 
   <!-- ===================================================================================== -->
@@ -1772,9 +1787,28 @@
   -->
   <Target Name="ComputeRunArguments" DependsOnTargets="_AsmComputeRunArguments" />
 
+  <!--
+    RuntimeEnvironmentVariableSupport: the .NET 11 SDK's dotnet run then passes -e NAME=VALUE to
+    this project as RuntimeEnvironmentVariable items, and after ComputeRunArguments sets what those
+    items say on the process it starts. A program needs both when it runs through wasmtime, WSL or
+    Docker, which pass none of their own environment on (AsmSelectRunTarget names the variables to
+    them, and sets WSLENV for WSL). Programs only: nothing else runs. The CLI also writes the -e
+    values into a props file of its own for the build, which nothing here reads as an input, so
+    -e never makes the program build again.
+  -->
+  <ItemGroup Condition="'$(_AsmOutputKind)' == 'Executable'">
+    <ProjectCapability Include="RuntimeEnvironmentVariableSupport" />
+  </ItemGroup>
+
   <Target Name="_AsmComputeRunArguments"
           Condition="'$(RunCommand)' == ''"
           DependsOnTargets="_AsmCheckRunnable;_AsmGetRunCandidates">
+    <!-- The launch settings file, found as the CLI finds it (LaunchSettings.TryFindLaunchSettingsFile):
+         Properties/launchSettings.json, else <project>.run.json beside the project. -->
+    <PropertyGroup>
+      <_AsmLaunchSettingsFile Condition="Exists('$(MSBuildProjectDirectory)/Properties/launchSettings.json')">$(MSBuildProjectDirectory)/Properties/launchSettings.json</_AsmLaunchSettingsFile>
+      <_AsmLaunchSettingsFile Condition="'$(_AsmLaunchSettingsFile)' == '' and Exists('$(MSBuildProjectDirectory)/$(MSBuildProjectName).run.json')">$(MSBuildProjectDirectory)/$(MSBuildProjectName).run.json</_AsmLaunchSettingsFile>
+    </PropertyGroup>
     <AsmSelectRunTarget Programs="@(_AsmRunCandidate)"
                         RunIn="$(AsmRunIn)"
                         WslDistribution="$(AsmRunWslDistribution)"
@@ -1782,10 +1816,13 @@
                         HostIsMusl="$(_AsmSdkRidIsMusl)"
                         Arguments="$([MSBuild]::ValueOrDefault('$(RunArguments)', '$(StartArguments)'))"
                         ProjectName="$(MSBuildProjectName)"
-                        ProjectFile="$(MSBuildProjectFullPath)">
+                        ProjectFile="$(MSBuildProjectFullPath)"
+                        EnvironmentVariables="@(RuntimeEnvironmentVariable)"
+                        LaunchSettingsFile="$(_AsmLaunchSettingsFile)">
       <Output TaskParameter="RunCommand" PropertyName="RunCommand" />
       <Output TaskParameter="RunArguments" PropertyName="RunArguments" />
       <Output TaskParameter="SelectedRuntimeIdentifier" PropertyName="AsmRunRuntimeIdentifier" />
+      <Output TaskParameter="EnvironmentVariablesToSet" ItemName="RuntimeEnvironmentVariable" />
     </AsmSelectRunTarget>
   </Target>
 

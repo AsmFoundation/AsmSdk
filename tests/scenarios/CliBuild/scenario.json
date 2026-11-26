@@ -1,0 +1,129 @@
+{
+  "$schema": "../scenario.schema.json",
+  "description": "The dotnet CLI's build, clean, publish and restore switches across asm projects, as a .NET developer uses them: a RID in a project or a publish profile reaches the static library the program links, an artifacts path and -o move every output and dotnet clean takes all of them away again, the arch, os and use-current-runtime switches build the RID they name, and restore's lock file holds. Every path is this machine's RID or one named outright, so the same steps run on every build machine.",
+  "steps": [
+    {
+      "run": "dotnet build ProgMusl",
+      "description": "ProgMusl names linux-musl-x64 in its own project, an ordinary property that no referenced project inherits: the SDK hands the RID to Shared itself, so the static library is built for that RID and linked (0.4.0 built Shared for this machine only, and the link failed with undefined symbol: mul_ints).",
+      "files": [
+        "ProgMusl/bin/Debug/libc/linux-musl-x64/ProgMusl",
+        "Shared/bin/Debug/freestanding/linux-musl-x64/libShared.a"
+      ],
+      "missing": ["Shared/bin/Debug/freestanding/{rid}"]
+    },
+    {
+      "run": "dotnet publish Prog -p:PublishProfile=MuslArm",
+      "description": "The publish profile's RuntimeIdentifier decides the build, as -r would (0.4.0 imported the profile after choosing the RIDs: it published this machine's RID into a RID folder and warned ASM0013), and its PublishDir where the program goes. Shared gets the profile's RID too.",
+      "absent": ["ASM0013"],
+      "files": [
+        "out/profile/Prog",
+        "Shared/bin/Release/freestanding/linux-musl-arm64/libShared.a"
+      ],
+      "missing": ["out/profile/{rid}", "out/profile/linux-musl-arm64"]
+    },
+    {
+      "run": "dotnet build App --artifacts-path art",
+      "description": "An artifacts path moves every project's output into art/, in .NET's layout: the library's RID build under a debug_<rid> pivot, and the app's copy of it where the app loads it.",
+      "files": [
+        "art/bin/Lib/debug_{rid}/{lib:Lib}",
+        "art/bin/Lib/debug/Lib.h",
+        "art/bin/App/debug/runtimes/{rid}/native/{lib:Lib}"
+      ],
+      "missing": ["Lib/bin", "App/bin"]
+    },
+    {
+      "run": "art/bin/App/debug/App",
+      "description": "The app runs from the artifacts path and finds the library there.",
+      "stdout": ["add_ints(40, 2) = 42"]
+    },
+    {
+      "run": "dotnet build CliBuild.slnx",
+      "description": "The solution builds every project for this machine.",
+      "files": [
+        "Lib/bin/Debug/freestanding/{rid}/{lib:Lib}",
+        "Lib/bin/Debug/freestanding/Lib.h",
+        "Lib/bin/Debug/freestanding/Lib.api.json",
+        "Prog/bin/Debug/libc/{rid}/{exe:Prog}",
+        "App/bin/Debug/net10.0/runtimes/{rid}/native/{lib:Lib}"
+      ]
+    },
+    {
+      "run": "Prog/bin/Debug/libc/{rid}/Prog",
+      "description": "The program runs the static library's mul_ints(6, 7).",
+      "exitCode": 42
+    },
+    {
+      "run": "dotnet clean CliBuild.slnx",
+      "description": "dotnet clean takes away what the build wrote, the RID outer build's own Lib.h and Lib.api.json included (0.4.0 left both behind: that build never recorded them for clean).",
+      "missing": [
+        "Lib/bin/Debug/freestanding/Lib.h",
+        "Lib/bin/Debug/freestanding/Lib.api.json",
+        "Lib/bin/Debug/freestanding/{rid}/{lib:Lib}",
+        "Prog/bin/Debug/libc/{rid}/{exe:Prog}",
+        "App/bin/Debug/net10.0/runtimes/{rid}/native/{lib:Lib}"
+      ]
+    },
+    {
+      "run": "dotnet build Lib --no-incremental",
+      "description": "A rebuild (Clean, then Build) of the library alone.",
+      "files": ["Lib/bin/Debug/freestanding/{rid}/{lib:Lib}"]
+    },
+    {
+      "run": "dotnet build App --no-dependencies",
+      "description": "The app builds without building its references, and still gets the library the earlier step built.",
+      "files": ["App/bin/Debug/net10.0/runtimes/{rid}/native/{lib:Lib}"]
+    },
+    {
+      "run": "dotnet run --project App --no-build",
+      "stdout": ["add_ints(40, 2) = 42"]
+    },
+    {
+      "run": "dotnet build Lib -a {otherarch}",
+      "description": "The arch switch builds this OS's RID for the other CPU, which any build machine can build.",
+      "files": ["Lib/bin/Debug/freestanding/{os}-{otherarch}/{lib:Lib}"]
+    },
+    {
+      "run": "dotnet build Lib --os linux",
+      "description": "The os switch builds Linux for this CPU.",
+      "files": ["Lib/bin/Debug/freestanding/linux-{arch}/libLib.so"]
+    },
+    {
+      "run": "dotnet publish Prog --ucr -o out/ucr",
+      "description": "The use-current-runtime switch publishes this machine's RID as -r would: the program directly in the folder, and no ASM0013 (0.4.0 published a RID folder and warned, which these scenarios' warnings-as-errors makes a failure).",
+      "absent": ["ASM0013"],
+      "files": ["out/ucr/{exe:Prog}"],
+      "missing": ["out/ucr/{rid}"]
+    },
+    {
+      "run": "out/ucr/Prog",
+      "exitCode": 42
+    },
+    {
+      "run": "dotnet build Lib -o out/lib",
+      "description": "-o moves the library's outputs, each RID's into a folder of its own.",
+      "files": ["out/lib/{rid}/{lib:Lib}", "out/lib/Lib.h"]
+    },
+    {
+      "run": "dotnet clean Lib -o out/lib",
+      "description": "dotnet clean with the same -o finds them again.",
+      "missing": ["out/lib/{rid}/{lib:Lib}", "out/lib/Lib.h", "out/lib/Lib.api.json"]
+    },
+    {
+      "run": "dotnet build CliBuild.slnx -graph",
+      "description": "A static graph build (MSBuild's -graph) of the whole solution."
+    },
+    {
+      "run": "dotnet restore Lib --use-lock-file",
+      "description": "Restore writes a lock file for an asm project too.",
+      "files": ["Lib/packages.lock.json"]
+    },
+    {
+      "run": "dotnet restore Lib --locked-mode",
+      "description": "A locked restore agrees with it."
+    },
+    {
+      "run": "dotnet build Lib -c Release -p:RestoreLockedMode=true",
+      "description": "And so does a build that restores in locked mode."
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "EchoProgram": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "ASM_PROBE": "profile-value"
+      }
+    }
+  }
+}

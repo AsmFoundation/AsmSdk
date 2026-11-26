@@ -1,0 +1,11 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    CliSolution's program: main returns mul_ints(6, 7), so it exits with 42 once it links Shared.
+    It has no ProjectReference here on purpose: the scenario adds it with dotnet reference add
+    before the first build, and the build links the static library through it.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>libc</TargetFramework>
+  </PropertyGroup>
+</Project>

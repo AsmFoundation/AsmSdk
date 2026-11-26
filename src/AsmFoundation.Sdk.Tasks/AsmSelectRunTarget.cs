@@ -41,15 +41,33 @@ namespace AsmFoundation.Sdk.Tasks;
 /// <para>
 /// A WASI program gets the folder dotnet run was started in as its current directory ("."),
 /// so that it can open files there as a native program would; wasmtime grants a WASI program
-/// no file access at all otherwise. It gets no environment variables (wasmtime passes none
-/// unless told to with --env, which RunArguments can add).
+/// no file access at all otherwise.
+/// </para>
+/// <para>
+/// Environment variables: the CLI sets dotnet run -e's and the launch profile's on the process it
+/// starts, which is wsl.exe, docker or wasmtime here, and none of the three passes its own
+/// environment on (measured: "-e ASM_PROBE=x" reached a program through WSL as unset). Each is
+/// told the names, never the values, which stay in that process's environment: wasmtime
+/// "--env NAME" and docker "-e NAME" inherit the variable, and pass nothing for a name the
+/// environment lacks (measured: wasmtime 39, Docker 28); WSL takes "NAME/u" entries from WSLENV,
+/// which this task sets on wsl.exe through the CLI (<see cref="EnvironmentVariablesToSet"/>).
+/// wasmtime and Docker get the names of -e (<see cref="EnvironmentVariables"/>) and of every
+/// profile in the launch settings file (<see cref="LaunchSettingsFile"/>), whichever profile
+/// runs. WSL gets -e's alone: a name WSLENV lists that the environment lacks reaches the Linux
+/// program as an EMPTY variable (measured, WSL 2), and the names of a profile that does not run
+/// would be just that. PATH is never passed: the host's would replace the program's own.
+/// Footguns: a launch profile's variables never reach a program run through WSL; and the .NET 10
+/// SDK's CLI passes -e to no build and applies no item, so there only launch profiles' variables
+/// reach Docker and wasmtime, and nothing reaches WSL unless WSLENV already names it.
 /// </para>
 /// <para>
 /// Footguns: a program run through Docker sees its own folder as /app and works there, not in
-/// the folder dotnet run was started from, and the environment variables of a launch profile
-/// reach the docker command, not the container. Through WSL the working directory is the
-/// current one, as WSL maps it. A Linux machine needs binfmt_misc emulation (QEMU) for Docker to
-/// run another CPU's build; Docker Desktop has it.
+/// the folder dotnet run was started from. Through WSL the working directory is the current one,
+/// as WSL maps it. A Linux machine needs binfmt_misc emulation (QEMU) for Docker to run another
+/// CPU's build; Docker Desktop has it. A launch profile's commandLineArgs never reach a program
+/// run through wasmtime, WSL or Docker: the CLI applies them only to a command with no arguments
+/// of its own (RunCommand.cs and CommonRunHelpers.CombineRunArguments, .NET 10 and 11 SDKs), and
+/// these three have theirs; arguments after "--" do reach it.
 /// </para>
 /// <para>
 /// Errors: ASM0091 (no build this machine can run, with what was
@@ -89,6 +107,49 @@ public sealed class AsmSelectRunTarget : Task
     /// <summary>The project file, for messages.</summary>
     public string ProjectFile { get; set; } = "";
 
+    /// <summary>
+    /// The variables of dotnet run -e: the .NET 11 SDK's CLI passes them as RuntimeEnvironmentVariable
+    /// items (the item is the name, Value metadata the value) to a project that declares the
+    /// RuntimeEnvironmentVariableSupport capability, as an asm program does. Empty with the .NET 10
+    /// SDK's CLI, which passes -e to no build.
+    /// </summary>
+    public ITaskItem[] EnvironmentVariables { get; set; } = Array.Empty<ITaskItem>();
+
+    /// <summary>
+    /// The launch settings file dotnet run reads (Properties/launchSettings.json, else
+    /// &lt;project&gt;.run.json, as the CLI looks for them); empty when there is none. The names
+    /// of every profile's environmentVariables are passed on to wasmtime and Docker, whichever
+    /// profile runs: a name the running profile does not set has no value, and both then pass
+    /// nothing (WSL would pass an empty variable, so it gets none of these). A file this task cannot read (not JSON
+    /// even with comments and trailing commas removed) only stops that, with a low-importance
+    /// message: dotnet run itself reports a broken launch settings file.
+    /// </summary>
+    public string LaunchSettingsFile { get; set; } = "";
+
+    /// <summary>
+    /// Variables for the CLI to set on the started process, as RuntimeEnvironmentVariable items (the
+    /// item is the name, Value metadata the value): WSLENV, when the program runs through WSL and
+    /// variables must reach it. The .NET 11 SDK's CLI applies the RuntimeEnvironmentVariable items
+    /// after ComputeRunArguments (EnvironmentVariablesToMSBuild.ReadFromItems); the .NET 10 SDK's
+    /// ignores them.
+    /// </summary>
+    [Output]
+    public ITaskItem[] EnvironmentVariablesToSet { get; set; } = Array.Empty<ITaskItem>();
+
+    /// <summary>
+    /// The names to pass on to wasmtime or Docker: -e's and every launch profile's (set by
+    /// <see cref="Execute"/>). Both pass nothing for a name their environment lacks.
+    /// </summary>
+    private List<string> _forwarded = new();
+
+    /// <summary>
+    /// The names to pass on to WSL: -e's alone, the variables certain to be set on wsl.exe (set by
+    /// <see cref="Execute"/>). WSL gives a listed name the environment lacks to the program as an
+    /// empty variable, so a launch profile's names, which may belong to a profile that does not
+    /// run, are left out.
+    /// </summary>
+    private List<string> _forwardedToWsl = new();
+
     /// <summary>The program to start: the program itself, wasmtime, wsl.exe or docker.</summary>
     [Output]
     public string RunCommand { get; set; } = "";
@@ -121,6 +182,9 @@ public sealed class AsmSelectRunTarget : Task
                 "AsmRunIn '{0}' is not a way to run a program. Use Auto (the default: this machine, then a WASI runtime, then WSL, then Docker), Host, Wasi, Wsl or Docker.", RunIn);
             return false;
         }
+
+        _forwarded = ForwardedVariableNames(includeLaunchProfiles: true);
+        _forwardedToWsl = ForwardedVariableNames(includeLaunchProfiles: false);
 
         // Builds that exist: dotnet run builds first, so a missing file means --no-build before
         // any build (or a build that failed for that RID, which dotnet run already reported).
@@ -222,7 +286,9 @@ public sealed class AsmSelectRunTarget : Task
             return false;
         }
 
-        Select(program, "Wasi", wasmtime, "run --dir . " + Quote(program.ItemSpec) + Append(Arguments));
+        // wasmtime's options come before the module: "--env NAME" inherits NAME from wasmtime's
+        // own environment (wasmtime 39's help), where the CLI put it.
+        Select(program, "Wasi", wasmtime, "run --dir . " + ForwardArguments("--env") + Quote(program.ItemSpec) + Append(Arguments));
         return true;
     }
 
@@ -330,6 +396,7 @@ public sealed class AsmSelectRunTarget : Task
             }
 
             Select(program, "Wsl", wsl, distribution + "--exec " + Quote(linuxPath) + Append(Arguments));
+            SetWslEnvironment();
             return true;
         }
 
@@ -377,7 +444,9 @@ public sealed class AsmSelectRunTarget : Task
         string image = DockerImage.Trim().Length != 0 ? DockerImage.Trim() : musl ? "alpine:3" : "debian:stable-slim";
         string platform = program.GetMetadata("AsmArch") == "arm64" ? "linux/arm64" : "linux/amd64";
         string folder = Path.GetDirectoryName(program.ItemSpec)!;
-        string arguments = $"run --rm -i --platform {platform} -v {Quote(folder + ":/app")} -w /app {Quote(image)} {Quote("/app/" + Path.GetFileName(program.ItemSpec))}{Append(Arguments)}";
+        // docker run's options come before the image: "-e NAME" without a value passes NAME from
+        // docker's own environment, where the CLI put it, and skips a NAME that is not set.
+        string arguments = $"run --rm -i --platform {platform} -v {Quote(folder + ":/app")} -w /app {ForwardArguments("-e")}{Quote(image)} {Quote("/app/" + Path.GetFileName(program.ItemSpec))}{Append(Arguments)}";
         Select(program, "Docker", docker, arguments);
         return true;
     }
@@ -401,13 +470,239 @@ public sealed class AsmSelectRunTarget : Task
             "Docker" => " in a Docker container",
             _ => "",
         };
-        Log.LogMessage(MessageImportance.High, "{0}: running the {1} build{2}: {3}", ProjectName, SelectedRuntimeIdentifier, where, program.ItemSpec);
+        // The variables matter only where they must be passed on: on this machine the program
+        // gets the CLI's environment as it is.
+        List<string> passed = how switch
+        {
+            "Wasi" or "Docker" => _forwarded,
+            "Wsl" => _forwardedToWsl,
+            _ => new List<string>(),
+        };
+        string variables = passed.Count != 0 ? " (environment variables passed on: " + string.Join(", ", passed) + ")" : "";
+        Log.LogMessage(MessageImportance.High, "{0}: running the {1} build{2}: {3}{4}", ProjectName, SelectedRuntimeIdentifier, where, program.ItemSpec, variables);
     }
 
     /// <summary>The project's arguments with a leading space, or nothing.</summary>
     /// <param name="arguments">Arguments as the project wrote them.</param>
     /// <returns>" " + arguments, or "".</returns>
     private static string Append(string arguments) => arguments.Trim().Length == 0 ? "" : " " + arguments.Trim();
+
+    /// <summary>
+    /// The names of the variables a program run through wasmtime, WSL or Docker must be handed
+    /// explicitly: dotnet run -e's (<see cref="EnvironmentVariables"/>), then, when asked, every
+    /// launch profile's (<see cref="LaunchSettingsFile"/>), each once, in that order.
+    /// </summary>
+    /// <param name="includeLaunchProfiles">
+    /// Whether the launch profiles' names count: true for wasmtime and Docker, which pass nothing
+    /// for an unset name; false for WSL, which would pass it as an empty variable.
+    /// </param>
+    /// <returns>The names; empty when there are none.</returns>
+    /// <remarks>
+    /// Left out: PATH, whose host value would replace the Linux or WASI program's own search path
+    /// (WSL and Docker set one that fits the program's system); WSLENV, which is WSL's own list
+    /// and not a variable for the program; and names no environment can hold or that these
+    /// command lines would read as something else: empty, with '=' (docker would take the rest
+    /// for a value), whitespace, ':' (WSLENV's separator) or '/' (WSLENV's flag mark). Names are
+    /// compared without case on Windows, whose environment ignores it, and exactly elsewhere.
+    /// </remarks>
+    private List<string> ForwardedVariableNames(bool includeLaunchProfiles)
+    {
+        StringComparer comparer = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+        var seen = new HashSet<string>(comparer);
+        var names = new List<string>();
+        IEnumerable<string> candidates = EnvironmentVariables.Select(item => item.ItemSpec)
+            .Concat(!includeLaunchProfiles || LaunchSettingsFile.Trim().Length == 0 ? Enumerable.Empty<string>() : LaunchProfileVariableNames(LaunchSettingsFile.Trim()));
+        foreach (string candidate in candidates)
+        {
+            string name = candidate.Trim();
+            bool usable = name.Length != 0
+                && name.IndexOfAny(new[] { '=', ':', '/', ' ', '\t', '\r', '\n' }) < 0
+                && !name.Equals("PATH", StringComparison.OrdinalIgnoreCase)
+                && !name.Equals("WSLENV", StringComparison.OrdinalIgnoreCase);
+            if (usable && seen.Add(name))
+            {
+                names.Add(name);
+            }
+        }
+
+        return names;
+    }
+
+    /// <summary>The names of every profile's environmentVariables in a launch settings file.</summary>
+    /// <param name="file">The launch settings file (launchSettings.json or a .run.json).</param>
+    /// <returns>The names, in file order; empty when the file cannot be read or holds none.</returns>
+    /// <remarks>
+    /// The CLI reads launch settings with comments and trailing commas allowed, so they are taken
+    /// out first (<see cref="StripJsonComments"/>); <see cref="Json"/> is strict. A file that still
+    /// does not parse costs only the profiles' variables, said at low importance: dotnet run itself
+    /// reports a launch settings file it cannot read, and the program still runs.
+    /// </remarks>
+    private List<string> LaunchProfileVariableNames(string file)
+    {
+        var names = new List<string>();
+        JsonNode root;
+        try
+        {
+            root = Json.Parse(StripJsonComments(File.ReadAllText(file)));
+        }
+        catch (Exception ex) when (ex is FormatException or IOException or UnauthorizedAccessException)
+        {
+            Log.LogMessage(MessageImportance.Low, "{0}: the launch profiles' environment variables are not passed on: {1} could not be read ({2}).", ProjectName, file, ex.Message);
+            return names;
+        }
+
+        if (root is JsonObject settings && settings["profiles"] is JsonObject profiles)
+        {
+            foreach (KeyValuePair<string, JsonNode> profile in profiles.Members)
+            {
+                if (profile.Value is JsonObject body && body["environmentVariables"] is JsonObject variables)
+                {
+                    names.AddRange(variables.Members.Select(member => member.Key));
+                }
+            }
+        }
+
+        return names;
+    }
+
+    /// <summary>
+    /// JSON with comments and trailing commas, as launch settings files may hold them (the CLI
+    /// reads them that way), turned into strict JSON: "//" and "/* */" comments become whitespace
+    /// and a comma before a closing brace or bracket goes, outside strings only.
+    /// </summary>
+    /// <param name="text">The file's text.</param>
+    /// <returns>The same document as strict JSON (an unterminated block comment runs to the end).</returns>
+    internal static string StripJsonComments(string text)
+    {
+        // Pass 1: comments out. A string's characters are copied as they are, escapes included,
+        // so a "//" inside a URL stays.
+        var withoutComments = new StringBuilder(text.Length);
+        bool inString = false;
+        for (int i = 0; i < text.Length; i++)
+        {
+            char c = text[i];
+            if (inString)
+            {
+                withoutComments.Append(c);
+                if (c == '\\' && i + 1 < text.Length)
+                {
+                    withoutComments.Append(text[++i]);
+                }
+                else if (c == '"')
+                {
+                    inString = false;
+                }
+
+                continue;
+            }
+
+            if (c == '/' && i + 1 < text.Length && text[i + 1] == '/')
+            {
+                while (i < text.Length && text[i] != '\n')
+                {
+                    i++;
+                }
+
+                withoutComments.Append('\n');
+                continue;
+            }
+
+            if (c == '/' && i + 1 < text.Length && text[i + 1] == '*')
+            {
+                int end = text.IndexOf("*/", i + 2, StringComparison.Ordinal);
+                i = end < 0 ? text.Length : end + 1;
+                withoutComments.Append(' ');
+                continue;
+            }
+
+            inString = c == '"';
+            withoutComments.Append(c);
+        }
+
+        // Pass 2: a comma whose next character, past whitespace, closes an object or an array.
+        string source = withoutComments.ToString();
+        var strict = new StringBuilder(source.Length);
+        inString = false;
+        for (int i = 0; i < source.Length; i++)
+        {
+            char c = source[i];
+            if (inString)
+            {
+                strict.Append(c);
+                if (c == '\\' && i + 1 < source.Length)
+                {
+                    strict.Append(source[++i]);
+                }
+                else if (c == '"')
+                {
+                    inString = false;
+                }
+
+                continue;
+            }
+
+            if (c == ',')
+            {
+                int next = i + 1;
+                while (next < source.Length && char.IsWhiteSpace(source[next]))
+                {
+                    next++;
+                }
+
+                if (next < source.Length && (source[next] == '}' || source[next] == ']'))
+                {
+                    continue;
+                }
+            }
+
+            inString = c == '"';
+            strict.Append(c);
+        }
+
+        return strict.ToString();
+    }
+
+    /// <summary>One "option NAME" pair per passed-on variable, each followed by a space.</summary>
+    /// <param name="option">"--env" for wasmtime, "-e" for docker.</param>
+    /// <returns>The options, or "" when no variable is passed on.</returns>
+    private string ForwardArguments(string option) => string.Concat(_forwarded.Select(name => option + " " + Quote(name) + " "));
+
+    /// <summary>
+    /// For a program run through WSL: WSLENV for wsl.exe, listing the passed-on names
+    /// (<see cref="_forwardedToWsl"/>: dotnet run -e's) with the /u flag (from Windows into WSL),
+    /// after the entries WSLENV already has, so a user's own entries keep working. Set through
+    /// <see cref="EnvironmentVariablesToSet"/>, which the .NET 11 SDK's CLI applies to wsl.exe;
+    /// nothing when no variable is passed on.
+    /// </summary>
+    /// <remarks>
+    /// The current WSLENV is the one dotnet run -e gave (an item named WSLENV), else this
+    /// process's: ComputeRunArguments runs inside the CLI, whose environment wsl.exe inherits. A
+    /// name WSLENV already lists, with any flags, is not listed twice.
+    /// </remarks>
+    private void SetWslEnvironment()
+    {
+        if (_forwardedToWsl.Count == 0)
+        {
+            return;
+        }
+
+        string current = EnvironmentVariables.LastOrDefault(item => item.ItemSpec.Equals("WSLENV", StringComparison.OrdinalIgnoreCase))?.GetMetadata("Value")
+            ?? Environment.GetEnvironmentVariable("WSLENV")
+            ?? "";
+        var entries = current.Split(new[] { ':' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+        var listed = new HashSet<string>(entries.Select(entry => entry.Split('/')[0]), StringComparer.OrdinalIgnoreCase);
+        foreach (string name in _forwardedToWsl)
+        {
+            if (listed.Add(name))
+            {
+                entries.Add(name + "/u");
+            }
+        }
+
+        var wslEnv = new TaskItem("WSLENV");
+        wslEnv.SetMetadata("Value", string.Join(":", entries));
+        EnvironmentVariablesToSet = new ITaskItem[] { wslEnv };
+    }
 
     /// <summary>What a probe printed and returned.</summary>
     private readonly struct ProbeResult

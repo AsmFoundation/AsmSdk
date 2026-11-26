@@ -40,6 +40,66 @@ Each SDK release names the one it was tested with.
   instead of NuGet's default box. Not released yet: the SDK and the templates get it with their
   next version; the toolchain packages only with a new `packageVersion` in
   `toolchain/versions.json`, since a release that keeps 0.2.0 skips them as duplicates.
+- **Environment variables reach a program `dotnet run` starts through wasmtime, WSL or Docker.**
+  None of the three passes its own environment on, so `-e` and launch profile variables never
+  reached the program. An asm program now declares the `RuntimeEnvironmentVariableSupport`
+  capability, through which the .NET 11 SDK's `dotnet run` hands the build its `-e` variables,
+  and the SDK names them to the runtime, never their values: `wasmtime run --env NAME`,
+  `docker run -e NAME`, and `NAME/u` entries added to `WSLENV` (after the user's own). A launch
+  profile's variables, read from `Properties/launchSettings.json` (comments and trailing commas
+  allowed, as the CLI allows them), reach wasmtime and Docker with any SDK; WSL gets only `-e`'s,
+  because it passes a name `WSLENV` lists but its environment lacks as an empty variable.
+  `PATH` is never passed. A profile's `commandLineArgs` still do not reach those three: the CLI
+  applies them only to a command without arguments of its own.
+- **`docs/guide/dotnet-cli.md`:** every `dotnet` command with asm projects, the switches the
+  suite runs against them, and where the .NET CLI draws the line.
+- **Tests of the dotnet CLI.** Scenarios `CliBuild` (build, clean, publish and restore switches:
+  `--artifacts-path`, `-o`, `--no-incremental`, `--no-dependencies`, the arch, os and
+  use-current-runtime switches, a publish profile, a project's own RID, `-graph`, lock files),
+  `CliPack` (pack's version, version-suffix, symbol, source and no-build forms; `dotnet package
+  add`, `list`, `remove` and `dotnet nuget why`; a tool's local manifest, `dotnet tool run`, its
+  `dotnet` command and `dotnet tool exec`), `CliSolution` (a classic `.sln` made, filled,
+  listed, built, trimmed and migrated; `dotnet reference add` between asm projects, `list` and
+  `remove`; `dotnet format`; a file-based app's `#:project`; the templates' `list`, `details` and
+  dry run) and `CliRun` (`dotnet run`'s arguments, launch profiles, `-e`, a run from the
+  project's folder, `--no-build`, an artifacts path, `-f`). `WatchTests` runs `dotnet watch` and
+  edits an include file; ProgramTests and WebAssemblyTests check the environment through
+  wasmtime, WSL and Docker. The scenario format gained a step's `cwd`, `missing` files, and the
+  `{os}`, `{arch}` and `{otherarch}` placeholders.
+
+### Fixed
+
+- **`dotnet clean` left a library's `<name>.h` and `<name>.api.json`** in
+  `bin/<Configuration>/<tfm>/` (also with `-o`, an artifacts path and `TargetFrameworks`): the
+  RID outer build, which writes them, never recorded its files for clean. It runs
+  `IncrementalClean` now, which also deletes such a file when a later build writes none.
+- **The use-current-runtime switch (`--ucr`)** built the project's default RIDs: a publish or
+  pack warned `ASM0013`, and `-o` got a RID folder. It now builds this machine's RID, as
+  `-r <rid>` does (Microsoft.NET.Sdk sets `RuntimeIdentifier` from it only after AsmSdk had
+  chosen the RIDs).
+- **A publish profile's `RuntimeIdentifier` was ignored** (`dotnet publish -p:PublishProfile=X`,
+  `Properties/PublishProfiles/X.pubxml`): Microsoft.NET.Sdk imports the profile after AsmSdk
+  chose the RIDs. AsmSdk imports .NET's own profile file first now, when the profile exists.
+- **A project's own `RuntimeIdentifier` did not reach the asm projects it references.** A RID in
+  the project (or from a publish profile, or the use-current-runtime switch) is an ordinary
+  property, which no reference inherits: the referenced projects were built for their default
+  RIDs, and a program failed to link a static library of its RID ("undefined symbol"). Every RID
+  build now passes its RID to its asm references explicitly.
+- **`dotnet watch` ignored `.inc` edits:** it watches Compile items, and include files are None
+  items. They are `Watch` items now, with `CustomAdditionalCompileInputs`.
+- **A .NET tool packed with `-p:PackageId=<id>` on the command line failed:** the global property
+  outranked each RID package's `<id>.<rid>`, so all of them wrote `<id>.<version>.nupkg` at once
+  ("being used by another process"). The top-level pack now passes each RID package its id; a
+  pack of one RID (`-r`) with such a `PackageId` stops with `ASM0056`, which says what to do.
+- **`--include-symbols` with `SymbolPackageFormat=snupkg` wrote an empty `.snupkg`,** which
+  nuget.org refuses: that format holds portable PDBs, and an asm package has none. An asm
+  package makes no `.snupkg` now, and the pack says why; the legacy `.symbols.nupkg` is unchanged.
+- **The Linux and macOS C library lists lacked common calls:** `getcwd`, `chdir`, `fchdir`,
+  `readlink`, `remove`, `mkstemp`, `gethostname`, `fseek`, `ftell`, `rewind`, `feof`, `ferror`,
+  `clearerr`, `ungetc`, `strtok`, `strpbrk`, `strsep`, `memmem`, `toupper`, `tolower`, `abs`,
+  `labs`, `llabs` and `atof`, and on Linux `realpath`, `opendir`, `readdir`, `closedir` and
+  `rewinddir` too (osx-x64 has two versions of those three, as of `stat`). A program calling one
+  failed to link for Linux or macOS with "undefined symbol" unless it added an `AsmLibcSymbol`.
 
 ### Changed
 

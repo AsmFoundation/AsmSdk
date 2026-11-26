@@ -1,0 +1,70 @@
+{
+  "$schema": "../scenario.schema.json",
+  "description": "dotnet run of an asm program with the CLI's run switches: the arguments after --, the launch profiles of Properties/launchSettings.json (the default one, -lp, --no-launch-profile; -- arguments replace a profile's), -e alone and over a profile's variable, a run from the project's own folder, --no-build with -c, an artifacts path and -f (dotnet run has no use-current-runtime switch: it would hand --ucr to the program). The program prints what it got and exits with the number of arguments, so each step checks both.",
+  "steps": [
+    {
+      "run": "dotnet run --project Echo -- a \"b c\"",
+      "description": "The arguments after -- arrive as given, one with a space included; they replace the default profile's arguments, and the profile's variable still applies.",
+      "exitCode": 2,
+      "stdout": ["a", "b c", "profile-value"]
+    },
+    {
+      "run": "dotnet run --project Echo",
+      "description": "The default launch profile: its two arguments and its variable.",
+      "exitCode": 2,
+      "stdout": ["from-profile", "two words", "profile-value"]
+    },
+    {
+      "run": "dotnet run --project Echo -lp Other",
+      "exitCode": 1,
+      "stdout": ["other-profile", "(unset)"]
+    },
+    {
+      "run": "dotnet run --project Echo --no-launch-profile -- x",
+      "exitCode": 1,
+      "stdout": ["x", "(unset)"]
+    },
+    {
+      "run": "dotnet run --project Echo --no-launch-profile -e ASM_PROBE=from-e -- y",
+      "description": "-e sets a variable for the program.",
+      "exitCode": 1,
+      "stdout": ["from-e"]
+    },
+    {
+      "run": "dotnet run --project Echo -e ASM_PROBE=e-wins -- y",
+      "description": "-e wins over the profile's value of the same variable.",
+      "exitCode": 1,
+      "stdout": ["e-wins"],
+      "absent": ["profile-value"]
+    },
+    {
+      "run": "dotnet run --no-launch-profile -- here",
+      "cwd": "Echo",
+      "description": "dotnet run in the project's own folder, with no project named.",
+      "exitCode": 1,
+      "stdout": ["here"]
+    },
+    {
+      "run": "dotnet build Echo -c Release",
+      "files": ["Echo/bin/Release/libc/{rid}/{exe:echo}"]
+    },
+    {
+      "run": "dotnet run --project Echo -c Release --no-build --no-launch-profile -- nb",
+      "description": "--no-build runs the Release build of the step before.",
+      "exitCode": 1,
+      "stdout": ["nb"]
+    },
+    {
+      "run": "dotnet run --project Echo --artifacts-path art --no-launch-profile -- art",
+      "description": "With an artifacts path, dotnet run builds there and runs that build.",
+      "exitCode": 1,
+      "stdout": ["art"],
+      "files": ["art/bin/Echo/debug_{rid}/{exe:echo}"]
+    },
+    {
+      "run": "dotnet run --project Echo -f libc --no-launch-profile -- f",
+      "exitCode": 1,
+      "stdout": ["f"]
+    }
+  ]
+}

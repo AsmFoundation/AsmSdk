@@ -1,0 +1,11 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    CliSolution's static library: mul_ints from the asmstatic template, declared in
+    include/Shared.inc. Prog starts without a reference to it; dotnet reference add writes one,
+    which an asm project takes from another asm project (a .csproj cannot take one, see
+    PlugAndPlay).
+  -->
+  <PropertyGroup>
+    <OutputType>StaticLibrary</OutputType>
+  </PropertyGroup>
+</Project>

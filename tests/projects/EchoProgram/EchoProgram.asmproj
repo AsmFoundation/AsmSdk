@@ -1,0 +1,16 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A libc program that prints each argument, then ASM_PROBE ("(unset)" without it), then its
+    current directory, and exits with the number of arguments (echo.asm for x64, echo.s for
+    ARM64) (ProgramTests). Built for the Linux RIDs that WSL and Docker run, to show which
+    environment variables reach a program dotnet run starts through them: those of dotnet run
+    -e, and in Docker also those of a launch profile (Properties/launchSettings.json), while
+    a launch profile's variable that is not set never reaches WSL as an empty one.
+  -->
+  <PropertyGroup>
+    <TargetFramework>libc</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>echo-program</AssemblyName>
+    <RuntimeIdentifiers>linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

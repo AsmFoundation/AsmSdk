@@ -94,6 +94,27 @@
     <_AsmEmptyLibMarkerPath>$(AsmIntermediateDirectory)pack/_._</_AsmEmptyLibMarkerPath>
   </PropertyGroup>
 
+  <!--
+    Symbol packages. A .snupkg (SymbolPackageFormat=snupkg, the format nuget.org's symbol server
+    takes) holds portable PDBs, and an asm package has none: its code is native, and a Windows
+    build's PDB is not a portable one. NuGet still wrote one, empty but for its nuspec (measured:
+    dotnet pack with the include-symbols switch and snupkg, .NET 11 SDK), which nuget.org refuses;
+    a repository that sets IncludeSymbols and snupkg for its .NET packages got one beside every asm
+    package. So that format makes no symbol package here, and says so once. The legacy
+    .symbols.nupkg (the default format) is left as NuGet makes it: the package's files, and with
+    IncludeSource the sources under src/. IncludeSymbols is a local property (see Sdk.props), so
+    this also wins over the switch.
+  -->
+  <PropertyGroup Condition="'$(IncludeSymbols)' == 'true' and '$(SymbolPackageFormat)' == 'snupkg'">
+    <IncludeSymbols>false</IncludeSymbols>
+    <_AsmSkipsSymbolPackage>true</_AsmSkipsSymbolPackage>
+  </PropertyGroup>
+
+  <Target Name="_AsmSaySymbolPackageSkipped" BeforeTargets="GenerateNuspec" Condition="'$(_AsmSkipsSymbolPackage)' == 'true'">
+    <Message Importance="high"
+             Text="$(MSBuildProjectName): no .snupkg: a symbol package of that format holds portable PDBs, and an asm package has none (native code). The package itself is packed as usual." />
+  </Target>
+
   <ItemGroup Condition="'@(AsmPublicInclude)' == '' and '$(_AsmHasPublicIncludeFolder)' == 'true'">
     <!-- Public include files: everything under include/ by default. -->
     <AsmPublicInclude Include="include/**/*" />
@@ -155,6 +176,11 @@
     _AsmCheckToolPack: ASM0053 for PackAsTool on a project that is not a program (a tool is
     something to run), or that has several target frameworks (one tool, one command: a tool's
     packages cannot hold two builds of it).
+    ASM0056 for a RID package whose id could not take its RID: dotnet pack -r <rid> with a
+    PackageId on the command line. The pack would write the RID package under the top-level
+    id, which dotnet tool install then reads as the top-level package and fails on. Without
+    -r, the top-level pack passes each RID package its id itself (_AsmPackToolRidPackages), so
+    only a pack of one RID can get here.
   -->
   <Target Name="_AsmCheckToolPack" Condition="'$(_AsmPackAsTool)' == 'true'">
     <Error Code="ASM0053"
@@ -163,6 +189,9 @@
     <Error Code="ASM0053"
            Condition="$(TargetFrameworks.Contains(';'))"
            Text="PackAsTool packs one program per RID, and $(MSBuildProjectName) builds several target frameworks ($(TargetFrameworks)). Give the tool one TargetFramework." />
+    <Error Code="ASM0056"
+           Condition="'$(_AsmToolRidPack)' == 'true' and !$(PackageId.ToLowerInvariant().EndsWith('.$(_AsmRid)'))"
+           Text="The $(_AsmRid) package of the .NET tool $(PackageId) must be named $(PackageId).$(_AsmRid), and a PackageId given on the command line cannot be renamed. Set &lt;PackageId&gt;$(PackageId)&lt;/PackageId&gt; in the project, or pack without -r: the top-level pack names every RID package itself." />
   </Target>
 
   <!--
@@ -170,11 +199,18 @@
     outer build): Pack of each RID's inner build (_AsmInnerBuild: the RIDs this build covers,
     with the dispatch's own global properties, so MSBuild reuses the builds it already ran).
     Each builds first unless NoBuild, as any pack does.
+    With a PackageId from the command line (_AsmCommandLinePackageId, see Sdk.props), each RID
+    package also gets PackageId=<id>.<rid> as a global property of its own: a global property
+    passed to the MSBuild task outranks the inherited one, which the RID inner build's own
+    <PackageId>$(PackageId).$(_AsmRid)</PackageId> cannot. Only then, because a global property
+    makes these builds new project instances (evaluated again, their builds found up to date),
+    which the usual pack has no reason to pay for.
   -->
   <Target Name="_AsmPackToolRidPackages" DependsOnTargets="_AsmCheckToolPack;_AsmCheckRuntimeIdentifiers">
     <ItemGroup>
       <_AsmToolRidProject Include="$(MSBuildProjectFullPath)" Condition="'@(_AsmInnerBuild)' != ''">
         <AdditionalProperties>%(_AsmInnerBuild.AdditionalProperties)</AdditionalProperties>
+        <AdditionalProperties Condition="'$(_AsmCommandLinePackageId)' != ''">%(_AsmInnerBuild.AdditionalProperties);PackageId=$(_AsmToolPackageId).%(_AsmInnerBuild.Identity)</AdditionalProperties>
       </_AsmToolRidProject>
     </ItemGroup>
     <MSBuild Condition="'@(_AsmToolRidProject)' != ''" Projects="@(_AsmToolRidProject)" Targets="Pack" BuildInParallel="$(BuildInParallel)" />

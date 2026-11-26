@@ -1,0 +1,14 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A WASI command that prints its arguments, then its environment, one string per line
+    (echo.wasi.s) (WebAssemblyTests). dotnet run starts it in wasmtime, which passes a program
+    only the variables it is told to: the SDK names those of dotnet run -e and of every profile of
+    Properties/launchSettings.json, which holds a comment and trailing commas on purpose (the
+    .NET CLI reads launch settings that way, so the SDK must too).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>wasiecho</AssemblyName>
+    <RuntimeIdentifiers>wasi-wasm</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

@@ -9,3 +9,6 @@ docs/_site/
 .vs/
 .idea/
 *.user
+
+# Reference clones for reading (dotnet/sdk source: refs/dotnet-sdk), never committed
+refs/

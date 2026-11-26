@@ -132,6 +132,36 @@
   </Target>
 
   <!--
+    _AsmPassRuntimeIdentifierToAsmReferences: a RID build hands its RID to every referenced
+    .asmproj, as AdditionalProperties metadata, which the MSBuild task applies to each project it
+    calls: .NET's own ResolveProjectReferences and _AsmResolveProjectReferences below both take
+    the referenced project from these items.
+    Why: a referenced .asmproj builds the RID its caller's global properties name. An inner build
+    of a RID outer build, and dotnet build -r, have RuntimeIdentifier as a global property, which
+    the reference inherits; a project that names its one RID itself (<RuntimeIdentifier> in the
+    project, a publish profile's, or the use-current-runtime switch's) has it as an ordinary
+    property, which no reference sees. Its references were then built for their own default
+    RIDs, and a program linked nothing of them (measured: a linux-x64 program referencing a
+    static library failed with "undefined symbol: mul_ints", the library built for win-x64 only;
+    a publish also warned ASM0013 for the library). When the RID is global, the value passed is
+    the same one, so MSBuild finds the same project instance and builds nothing twice.
+    After _GetProjectReferenceTargetFrameworkProperties, which sets the items' framework
+    metadata last before ResolveProjectReferences.
+  -->
+  <Target Name="_AsmPassRuntimeIdentifierToAsmReferences"
+          AfterTargets="_GetProjectReferenceTargetFrameworkProperties"
+          Condition="'$(_AsmRid)' != '' and '@(_MSBuildProjectReferenceExistent)' != ''">
+    <ItemGroup>
+      <_MSBuildProjectReferenceExistent Condition="'%(_MSBuildProjectReferenceExistent.Extension)' == '.asmproj' and '%(_MSBuildProjectReferenceExistent.AdditionalProperties)' == ''">
+        <AdditionalProperties>RuntimeIdentifier=$(RuntimeIdentifier)</AdditionalProperties>
+      </_MSBuildProjectReferenceExistent>
+      <_MSBuildProjectReferenceExistent Condition="'%(_MSBuildProjectReferenceExistent.Extension)' == '.asmproj' and '%(_MSBuildProjectReferenceExistent.AdditionalProperties)' != '' and !$([System.String]::Copy('%(_MSBuildProjectReferenceExistent.AdditionalProperties)').Contains('RuntimeIdentifier='))">
+        <AdditionalProperties>%(_MSBuildProjectReferenceExistent.AdditionalProperties);RuntimeIdentifier=$(RuntimeIdentifier)</AdditionalProperties>
+      </_MSBuildProjectReferenceExistent>
+    </ItemGroup>
+  </Target>
+
+  <!--
     _AsmResolveProjectReferences: collects GetAsmLinkInputs from every referenced .asmproj and
     adds them to this project's AsmIncludeDirectory and NativeLibrary items (NativeAOT's name for
     link inputs; AsmLinkLibrary until 0.3.0). ProjectReference

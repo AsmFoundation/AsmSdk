@@ -1,0 +1,7 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    CliSolution's library: add_ints from the asmlib template, with the PROTO line the C#
+    bindings come from. The C# app references it, and so does the file-based app app.cs, through
+    its #:project directive.
+  -->
+</Project>

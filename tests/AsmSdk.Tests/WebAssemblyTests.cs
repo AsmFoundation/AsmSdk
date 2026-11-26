@@ -358,6 +358,49 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
     }
 
     /// <summary>
+    /// A launch profile's variables reach a WASI program dotnet run starts in wasmtime, which passes
+    /// a program only the variables it is told to: the SDK names every profile's variables
+    /// (--env NAME), and wasmtime takes their values from its own environment, where the CLI put
+    /// the running profile's. Without a profile the names pass nothing. WasiEcho prints its
+    /// arguments and its environment; its launch settings hold a comment and trailing commas, which
+    /// the CLI accepts and so the SDK must. Any SDK: the names come from the file.
+    /// </summary>
+    [Fact]
+    public void Dotnet_run_passes_a_launch_profiles_variables_to_a_wasi_program()
+    {
+        RequireWasmtime();
+        CommandResult profile = sdk.DotnetRun(Repo.TestProject("WasiEcho"), ["-c", "Release"]);
+        Assert.True(profile.ExitCode == 0, $"exit {profile.ExitCode}: {profile.Tail()}");
+        Assert.Contains("ASM_PROBE=from-profile", profile.StdOut, StringComparison.Ordinal);
+        Assert.Contains("OTHER=o", profile.StdOut, StringComparison.Ordinal);
+
+        CommandResult none = sdk.DotnetRun(Repo.TestProject("WasiEcho"), ["-c", "Release", "--no-launch-profile"], "x y");
+        Assert.True(none.ExitCode == 0, $"exit {none.ExitCode}: {none.Tail()}");
+        Assert.Contains("x y", none.StdOut, StringComparison.Ordinal);
+        Assert.DoesNotContain("ASM_PROBE=", none.StdOut, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// dotnet run -e reaches a WASI program in wasmtime: the .NET 11 SDK's CLI passes -e to the
+    /// build as RuntimeEnvironmentVariable items, which the SDK names to wasmtime (--env NAME).
+    /// Skipped on the .NET 10 SDK, whose dotnet run passes -e to no build: there no SDK can know
+    /// the names.
+    /// </summary>
+    [Fact]
+    public void Dotnet_run_passes_e_variables_to_a_wasi_program()
+    {
+        RequireWasmtime();
+        if (sdk.SdkMajorVersion() < 11)
+        {
+            Assert.Skip($"The .NET {sdk.SdkMajorVersion()} SDK's dotnet run passes -e to no build, so the SDK cannot name the variables to wasmtime (it can from the .NET 11 SDK on)");
+        }
+
+        CommandResult run = sdk.DotnetRun(Repo.TestProject("WasiEcho"), ["-c", "Release", "--no-launch-profile", "-e", "ASM_PROBE=from-e"], "z");
+        Assert.True(run.ExitCode == 0, $"exit {run.ExitCode}: {run.Tail()}");
+        Assert.Contains("ASM_PROBE=from-e", run.StdOut, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// What cannot work stops the build with the fix: a NASM file for WebAssembly (ASM0021), a wasm
     /// RID no source builds (ASM0023, with the wasm qualifiers), an assembler constant the wasm
     /// writer refuses (ASM0019, instead of llvm-mc's crash alone), a libc module (ASM0016).
