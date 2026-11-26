@@ -164,6 +164,10 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
     /// the RID-less static library was built for every RID its referencing project asked for.
     /// </summary>
     /// <param name="rid">The runtime identifier.</param>
+    /// <remarks>
+    /// Objects only: NASM writes its messages beside each object (&lt;object&gt;.messages, -Z), which
+    /// the SDK reads to log its warnings with their names as codes.
+    /// </remarks>
     [Theory]
     [MemberData(nameof(AllRids))]
     public void File_name_qualifiers_pick_the_source_of_each_rid(string rid)
@@ -171,7 +175,8 @@ public sealed class CrossPlatformTests(SdkUnderTest sdk)
         BuildEverywhere();
         // The RID-less static library was built for each RID Everywhere asked for.
         string objects = Repo.TestProjectPath("EverywhereStatic", "obj", "Release", "freestanding", rid, "asm", "obj");
-        string[] built = Directory.GetFiles(objects).Select(Path.GetFileName).OfType<string>().ToArray();
+        string[] built = Directory.GetFiles(objects).Select(Path.GetFileName).OfType<string>()
+            .Where(name => !name.EndsWith(".messages", StringComparison.Ordinal)).ToArray();
         Assert.Equal([OsNameObject[rid]], built);
     }
 
