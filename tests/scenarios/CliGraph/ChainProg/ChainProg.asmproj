@@ -1,0 +1,17 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    CliGraph's second program: main returns square_ints(6) + 6 = 42, from Chain (main.asm for
+    x64, main.s for ARM64). It references Chain alone: Shared, whose mul_ints Chain calls,
+    reaches it only as a transitive reference, which the .NET SDK adds while the build runs and
+    which the program must link. Two RIDs, as Prog, so that a static graph build has two RID
+    builds whose transitive instances it must predict, -o included.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>libc</TargetFramework>
+    <RuntimeIdentifiers>linux-x64;win-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Chain/Chain.asmproj" />
+  </ItemGroup>
+</Project>

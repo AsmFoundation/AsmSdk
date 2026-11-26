@@ -195,16 +195,21 @@
     <_AsmConsumerReferenceTargets>GetAsmConsumerInfo;GetAsmApiFile;GetAsmNativeRuntimeAssets;GetAsmLinkInputs;GetAsmNativeLibraries;GetAsmNativeAssets</_AsmConsumerReferenceTargets>
   </PropertyGroup>
   <ItemGroup Condition="'$(_AsmConsumerGraphBuild)' == 'true'">
-    <!-- The graph runs a node's targets in the order these items come in. These targets come
-         after the common targets' Build, Clean and Rebuild lists (NuGet's targets, this file
-         among them, are imported right after Microsoft.Common.CurrentVersion.targets), so a
-         referenced asm project is built before it is asked for its API file or its runtime
-         assets. C#'s Publish list comes later (Microsoft.Managed.After.targets), so Publish starts
-         with its main reference target here: without it, GetAsmApiFile ran before the asm
-         project's Build, found no API file on a first publish, and the app got no bindings
-         (measured: CS0103). That target cannot be marked SkipNonexistentTargets, hence its own
-         item. -->
+    <!-- The graph runs a node's targets in the order these items come in, and the common targets'
+         lists may come after these: NuGet's targets, this file among them, are imported right
+         after Microsoft.Common.CurrentVersion.targets, which declares the Build, Clean and
+         Rebuild lists from SDK 10.0.404 on, but C#'s Publish list comes later
+         (Microsoft.Managed.After.targets), and so do its Build and Rebuild lists with the .NET
+         10.0.1xx SDKs' MSBuild (18.0.6, measured with SDK 10.0.101). So Build, Rebuild and
+         Publish start with the main reference target here (Rebuild with Clean first, as the
+         common list): without it, GetAsmApiFile ran before the asm project's Build, found no
+         API file, and the app got no bindings (measured: CS0103 for a first publish, and for
+         dotnet build -graph with SDK 10.0.101). Where the common list comes first, the main
+         target is named twice, and MSBuild runs a target once per instance and build. That
+         target cannot be marked SkipNonexistentTargets, hence its own item. -->
+    <ProjectReferenceTargets Include="Build" Targets="$(_MainReferenceTargetForBuild)" Condition="'$(_MainReferenceTargetForBuild)' != ''" />
     <ProjectReferenceTargets Include="Build" Targets="$(_AsmConsumerReferenceTargets)" SkipNonexistentTargets="true" />
+    <ProjectReferenceTargets Include="Rebuild" Targets="Clean;$(_MainReferenceTargetForBuild)" Condition="'$(_MainReferenceTargetForBuild)' != ''" />
     <ProjectReferenceTargets Include="Rebuild" Targets="$(_AsmConsumerReferenceTargets)" SkipNonexistentTargets="true" />
     <ProjectReferenceTargets Include="Publish" Targets="$(_MainReferenceTargetForPublish)" Condition="'$(_MainReferenceTargetForPublish)' != ''" />
     <ProjectReferenceTargets Include="Publish" Targets="$(_AsmConsumerReferenceTargets)" SkipNonexistentTargets="true" />

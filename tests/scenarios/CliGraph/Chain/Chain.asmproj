@@ -1,0 +1,15 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    CliGraph's second static library: square_ints(a) = mul_ints(a, a), calling Shared, which it
+    references (chain.asm for x64, chain.s for ARM64), declared for its users in
+    include/Chain.inc. A program that links Chain needs Shared too, and gets it as a transitive
+    reference (NuGet's, from this reference, which a static library keeps public): ChainProg
+    names Chain alone, so a static graph build must predict that transitive instance as well.
+  -->
+  <PropertyGroup>
+    <OutputType>StaticLibrary</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Shared/Shared.asmproj" />
+  </ItemGroup>
+</Project>

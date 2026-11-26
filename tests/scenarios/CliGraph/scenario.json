@@ -1,6 +1,6 @@
 {
   "$schema": "../scenario.schema.json",
-  "description": "MSBuild's static graph with asm projects (the owner's choice of 2026-11-26: support -graph -isolate). With -isolate, a project may call only the project instances the graph predicted from ProjectReference items, with the targets ProjectReferenceTargets declared (MSB4252 otherwise; 0.4.0 failed at the C# app's first call into the asm library and at the program's first call into its static library). Restore first: NuGet's restore fails -isolate for any project, C# alone included. A C# app with an asm library, an asm program with two RIDs and the static libraries it links (one of them for both target frameworks): build, rebuild, clean, -o, and publish of the program and of the app for this machine's RID, each with -isolate.",
+  "description": "MSBuild's static graph with asm projects (the owner's choice of 2026-11-26: support -graph -isolate). With -isolate, a project may call only the project instances the graph predicted from ProjectReference items, with the targets ProjectReferenceTargets declared (MSB4252 otherwise; 0.4.0 failed at the C# app's first call into the asm library and at the program's first call into its static library). Restore first: NuGet's restore fails -isolate for any project, C# alone included. A C# app with an asm library, an asm program with two RIDs and the static libraries it links (one of them for both target frameworks), and a second program that links a static library which links another (a transitive reference): build, rebuild, clean, -o, and publish of the program and of the app for this machine's RID, each with -isolate.",
   "steps": [
     {
       "run": "dotnet restore CliGraph.slnx",
@@ -17,7 +17,9 @@
         "Shared/bin/Debug/freestanding/linux-x64/libShared.a",
         "Shared/bin/Debug/freestanding/win-x64/Shared.lib",
         "Multi/bin/Debug/libc/linux-x64/libMulti.a",
-        "Multi/bin/Debug/libc/win-x64/Multi.lib"
+        "Multi/bin/Debug/libc/win-x64/Multi.lib",
+        "ChainProg/bin/Debug/libc/linux-x64/ChainProg",
+        "ChainProg/bin/Debug/libc/win-x64/ChainProg.exe"
       ]
     },
     {
@@ -53,6 +55,12 @@
       "description": "-o: one folder per RID, and nothing else. The references build into their own bin/ in a graph build (a RID build's folders would make each RID's view of a reference an instance of its own, and the graph's transitive edges built that instance's RID builds a second time, into folders such as linux-x64/win-x64/).",
       "files": ["out/prog/linux-x64/Prog", "out/prog/win-x64/Prog.exe"],
       "missing": ["out/prog/linux-x64/win-x64", "out/prog/win-x64/win-x64", "out/prog/linux-x64/libShared.a"]
+    },
+    {
+      "run": "dotnet build ChainProg -graph -isolate --no-restore -o out/chain",
+      "description": "A program whose static library links another: Shared reaches ChainProg only as a transitive reference, which the .NET SDK adds while the build runs, so the evaluation never prepared it; the SDK gives it the RID and the removals then (else, under -o, it was called with the RID build's OutputPath, an instance the graph never built: MSB4252, measured with SDK 11.0.100; SDK 10.0.101's assets file lists even direct references as transitive ones, which failed step 8 the same way). The link needs Shared's mul_ints.",
+      "files": ["out/chain/linux-x64/ChainProg", "out/chain/win-x64/ChainProg.exe"],
+      "missing": ["out/chain/linux-x64/libShared.a", "out/chain/linux-x64/libChain.a"]
     },
     {
       "run": "dotnet publish Prog -graph -isolate --no-restore",

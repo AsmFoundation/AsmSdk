@@ -18,20 +18,35 @@ public sealed class WatchTests(SdkUnderTest sdk)
     /// <summary>
     /// Editing the include file that holds WatchProgram's message makes dotnet watch build and run
     /// the program again, which then prints the new message. Run on a copy, which the test edits:
-    /// artifacts/watch-projects/WatchProgram, beside a copy of tests/projects' global.json,
-    /// nuget.config and Directory.Build.props, at the same depth, so the relative feed path of
-    /// nuget.config names the same local feed.
+    /// artifacts/watch-projects/WatchProgram (artifacts/watch-projects-restart/ for
+    /// --no-hot-reload), beside a copy of tests/projects' global.json, nuget.config and
+    /// Directory.Build.props, at the same depth, so the relative feed path of nuget.config names
+    /// the same local feed.
     /// </summary>
     /// <remarks>
     /// Both include files change, message.inc (NASM, the x64 build) and message-gnu.inc (the
     /// ARM64 build): this machine's build reads one of them. The polling file watcher
     /// (DOTNET_USE_POLLING_FILE_WATCHER) is asked for, so a CI machine's file system notifications
     /// cannot make the test flaky; it notices a change within a second or two.
+    /// Both ways dotnet watch runs a program: its default hot reload mode, which restarts a
+    /// program it cannot hot reload from SDK 10.0.300 on, and --no-hot-reload, its plain restart
+    /// mode. The 10.0.1xx and 10.0.2xx SDKs' hot reload mode refuses a project that is not .NET 6
+    /// or later and exits ("Hot Reload based watching is only supported in .NET 6.0 or newer
+    /// apps", measured with SDK 10.0.101; ProjectLauncher.cs there), so --no-hot-reload is the
+    /// way with those, and the hot reload case is skipped there. Each case in a folder of its own.
     /// </remarks>
-    [Fact]
-    public void Dotnet_watch_runs_the_program_again_when_an_include_file_changes()
+    /// <param name="hotReload">True for dotnet watch's default mode, false for --no-hot-reload.</param>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Dotnet_watch_runs_the_program_again_when_an_include_file_changes(bool hotReload)
     {
-        string root = Path.Combine(Repo.Artifacts, "watch-projects");
+        if (hotReload && sdk.SdkVersion() < new System.Version(10, 0, 300))
+        {
+            Assert.Skip($"SDK {sdk.SdkVersion()}'s dotnet watch refuses a project that is not .NET 6 or later in its hot reload mode; --no-hot-reload, the other case, is the way with it");
+        }
+
+        string root = Path.Combine(Repo.Artifacts, hotReload ? "watch-projects" : "watch-projects-restart");
         string project = Path.Combine(root, "WatchProgram");
         if (Directory.Exists(root))
         {
@@ -52,8 +67,24 @@ public sealed class WatchTests(SdkUnderTest sdk)
             ["DOTNET_USE_POLLING_FILE_WATCHER"] = "1",
             ["DOTNET_WATCH_SUPPRESS_EMOJIS"] = "1",
         };
-        using var watch = WatchedProcess.Start("dotnet", ["watch", "run", "--project", project, "--non-interactive", "--no-launch-profile"], root, environment);
+        string[] arguments = hotReload
+            ? ["watch", "run", "--project", project, "--non-interactive", "--no-launch-profile"]
+            : ["watch", "run", "--project", project, "--non-interactive", "--no-hot-reload", "--no-launch-profile"];
+        using var watch = WatchedProcess.Start("dotnet", arguments, root, environment);
         watch.WaitFor("watch-program: first", TimeSpan.FromMinutes(5));
+        // In its default mode dotnet watch loads a static graph of the project, a design-time one
+        // (DesignTimeBuild), which must hold no extra instance of it: the SDK's -graph additions
+        // (a RID outer build's edges to its own RID builds) stay out of design-time graphs. The
+        // .NET 11 SDK's dotnet watch ignores a second instance of one project and framework with
+        // this warning; the .NET 10 SDK's stopped ("An item with the same key has already been
+        // added"), before the line above. Not checked with --no-hot-reload: there the .NET 11
+        // SDK's watch loads the graph with the user's properties alone (MsBuildFileSetFactory),
+        // which no evaluation can tell from a dotnet build -graph, so it sees the RID builds and
+        // ignores them with that warning, and runs the program as it should (measured).
+        if (hotReload)
+        {
+            watch.AssertNotWritten("Ignoring project instance");
+        }
 
         foreach (string include in new[] { "message.inc", "message-gnu.inc" })
         {
@@ -180,6 +211,24 @@ public sealed class WatchTests(SdkUnderTest sdk)
             }
 
             Assert.Fail($"\"{text}\" did not appear within {timeout.TotalSeconds:F0} s:{Environment.NewLine}{Tail(Output)}");
+        }
+
+        /// <summary>Fails the test when the command's output so far holds a text.</summary>
+        /// <param name="text">The text that must not appear.</param>
+        /// <exception cref="Exception">
+        /// Xunit's assertion exception when the text is there; the message holds the output's tail.
+        /// </exception>
+        /// <remarks>
+        /// Checks only what has arrived: call it after a <see cref="WaitFor"/> for a line that the
+        /// command writes after the text would have come.
+        /// </remarks>
+        public void AssertNotWritten(string text)
+        {
+            string output = Output;
+            if (output.Contains(text, StringComparison.Ordinal))
+            {
+                Assert.Fail($"The command printed \"{text}\":{Environment.NewLine}{Tail(output)}");
+            }
         }
 
         /// <summary>What the command has written so far.</summary>

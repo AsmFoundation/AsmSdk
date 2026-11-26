@@ -99,7 +99,15 @@ Each SDK release names the one it was tested with.
   instance (the graph's transitive edges otherwise built a reference's RID builds a second time,
   into folders such as `publish/linux-x64/win-x64/`); and `GetTargetFrameworks` is declared for
   Rebuild, which .NET's common targets omit (a C# app and library alone failed a rebuild with
-  `-isolate`). The graph-only references are removed before any target runs. Restore first
+  `-isolate`). The graph-only references are removed before any target runs. The same on every
+  SDK band: the .NET 10.0.1xx SDKs' MSBuild (18.0) declares the common targets' graph lists in
+  a file only C# projects import, so asm projects declare them too, and every list starts with
+  the reference's own build before the asm targets ask it for anything (with SDK 10.0.101 a C#
+  app's `-graph` build otherwise asked an asm library for its API file before building it:
+  `CS0103`). The asm references the .NET SDK adds while the build runs (a static library's own
+  static library, which reaches a program as a transitive reference) get the same global
+  properties as the project's own, so the graph's instance is the one called (`-o` failed with
+  `MSB4252` for them). Restore first
   (NuGet fails `-isolate`); a build with `-r` fails it at .NET's own negotiation for C#
   references, asm references pass.
 - **`docs/guide/dotnet-cli.md`:** every `dotnet` command with asm projects, the switches the

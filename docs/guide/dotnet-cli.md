@@ -36,7 +36,7 @@ line are at the end.
 | `dotnet package` | `add` (central package management too), `list` (`--include-transitive`, `--outdated`, `--vulnerable`, `--format json`), `remove`; `dotnet nuget why` | CliPack |
 | `dotnet tool` | A program packed with `PackAsTool`: `install` (global, local, tool path), `run`, the tool's own `dotnet <command>`, `exec` and `dnx`, `list`, `update`, `uninstall`, `restore`. A `PackageId` on the command line names every RID package `<id>.<rid>` | CliPack, ToolTests |
 | `dotnet new` | The AsmSdk templates (`asmlib`, `asmexe`, `asmstatic`, `asmnet`, `asmwasm`, `asmwasmapp`), and `list`, `details`, `--dry-run` | CliSolution, PlugAndPlay |
-| `dotnet watch` | Builds and runs a program, and again when a `.asm`, `.s` or `.inc` file changes. Asm code is native, so it restarts the program: its notice that the project "does not support Hot Reload" is expected | WatchTests |
+| `dotnet watch` | Builds and runs a program, and again when a `.asm`, `.s` or `.inc` file changes. Asm code is native, so it restarts the program: its notice that the project "does not support Hot Reload" is expected. With SDKs before 10.0.300 (10.0.1xx, 10.0.2xx) pass `--no-hot-reload`: their `dotnet watch` refuses a project that is not .NET 6 or later in its default mode ("Hot Reload based watching is only supported in .NET 6.0 or newer apps") | WatchTests |
 | `dotnet format` | Formats a solution's C# projects and skips the `.asmproj` ones, which Roslyn cannot read; `--verify-no-changes` passes | CliSolution |
 | `dotnet run app.cs` | A C# file-based app takes an asm library with `#:project <path>.asmproj`, and gets its C# bindings | CliSolution |
 | `dotnet build-server shutdown` | Stops the build servers an asm build used | |
