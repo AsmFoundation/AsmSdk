@@ -1,0 +1,5683 @@
+{
+  "header": {
+    "started": "2026-11-26 05:39:56 UTC",
+    "cpu": "13th Gen Intel(R) Core(TM) i9-13900K",
+    "logicalCpus": 32,
+    "os": "Microsoft Windows 10.0.26200",
+    "runtime": ".NET 10.0.1",
+    "dispatcherPath": "HardwareThreeWay",
+    "pinnedCpus": [
+      2,
+      4,
+      6,
+      8
+    ],
+    "powerThrottling": "off for this process",
+    "priorityClass": "High",
+    "options": {
+      "cores": [
+        1,
+        4
+      ],
+      "cpus": [
+        2,
+        4,
+        6,
+        8
+      ],
+      "sizes": [
+        64,
+        256,
+        1024,
+        65536,
+        1048576
+      ],
+      "rounds": 12,
+      "seconds": 0.5,
+      "warmupSeconds": 0.1,
+      "jsonPath": "C:\\Users\\ELI\\AppData\\Local\\Temp\\claude\\87feb1de4284698d\\5893c2da-d4f5-408e-8d3f-e795f8b2b785\\scratchpad\\runs\\run3-cores.json"
+    }
+  },
+  "cells": [
+    {
+      "round": 1,
+      "implementation": "asm",
+      "size": 64,
+      "cores": 1,
+      "callsPerSecond": 115557791.23539749,
+      "gigabytesPerSecond": 7.395698639065439,
+      "nanosecondsPerCallPerCore": 8.653678729138615,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 57798656,
+          "seconds": 0.500171
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "implementation": "cSharp",
+      "size": 64,
+      "cores": 1,
+      "callsPerSecond": 155240384.93277344,
+      "gigabytesPerSecond": 9.9353846356975,
+      "nanosecondsPerCallPerCore": 6.441622780264608,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 79951872,
+          "seconds": 0.5150198
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "implementation": "cSharp",
+      "size": 64,
+      "cores": 4,
+      "callsPerSecond": 593059111.7772706,
+      "gigabytesPerSecond": 37.955783153745315,
+      "nanosecondsPerCallPerCore": 6.744690235030469,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 75439104,
+          "seconds": 0.5118994
+        },
+        {
+          "cpu": 4,
+          "calls": 76199936,
+          "seconds": 0.511899
+        },
+        {
+          "cpu": 6,
+          "calls": 75843584,
+          "seconds": 0.5118513
+        },
+        {
+          "cpu": 8,
+          "calls": 76097536,
+          "seconds": 0.5119044
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "implementation": "asm",
+      "size": 64,
+      "cores": 4,
+      "callsPerSecond": 468593047.5965466,
+      "gigabytesPerSecond": 29.98995504617898,
+      "nanosecondsPerCallPerCore": 8.536191521654747,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 58782720,
+          "seconds": 0.5002275
+        },
+        {
+          "cpu": 4,
+          "calls": 58592256,
+          "seconds": 0.5002185
+        },
+        {
+          "cpu": 6,
+          "calls": 58618880,
+          "seconds": 0.5002221
+        },
+        {
+          "cpu": 8,
+          "calls": 58407936,
+          "seconds": 0.5002305
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "implementation": "cSharp",
+      "size": 256,
+      "cores": 1,
+      "callsPerSecond": 36233633.48689435,
+      "gigabytesPerSecond": 9.275810172644952,
+      "nanosecondsPerCallPerCore": 27.598667419366002,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 18493440,
+          "seconds": 0.5103943
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "implementation": "asm",
+      "size": 256,
+      "cores": 1,
+      "callsPerSecond": 75192235.23547305,
+      "gigabytesPerSecond": 19.249212220281102,
+      "nanosecondsPerCallPerCore": 13.299245551995975,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 38676224,
+          "seconds": 0.5143646
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "implementation": "asm",
+      "size": 256,
+      "cores": 4,
+      "callsPerSecond": 301432504.8486533,
+      "gigabytesPerSecond": 77.16672124125525,
+      "nanosecondsPerCallPerCore": 13.269969016806485,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 37849600,
+          "seconds": 0.501493
+        },
+        {
+          "cpu": 4,
+          "calls": 37749760,
+          "seconds": 0.501488
+        },
+        {
+          "cpu": 6,
+          "calls": 37810688,
+          "seconds": 0.5014892
+        },
+        {
+          "cpu": 8,
+          "calls": 37755904,
+          "seconds": 0.5014973
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "implementation": "cSharp",
+      "size": 256,
+      "cores": 4,
+      "callsPerSecond": 143464281.15770492,
+      "gigabytesPerSecond": 36.72685597637246,
+      "nanosecondsPerCallPerCore": 27.88150449520567,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 18385152,
+          "seconds": 0.513155
+        },
+        {
+          "cpu": 4,
+          "calls": 18415872,
+          "seconds": 0.5131498
+        },
+        {
+          "cpu": 6,
+          "calls": 18472192,
+          "seconds": 0.5131487
+        },
+        {
+          "cpu": 8,
+          "calls": 18345984,
+          "seconds": 0.5131606
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "implementation": "asm",
+      "size": 1024,
+      "cores": 1,
+      "callsPerSecond": 19087546.278087065,
+      "gigabytesPerSecond": 19.545647388761154,
+      "nanosecondsPerCallPerCore": 52.39018077184822,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9686464,
+          "seconds": 0.5074756
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "implementation": "cSharp",
+      "size": 1024,
+      "cores": 1,
+      "callsPerSecond": 6594842.201564869,
+      "gigabytesPerSecond": 6.753118414402426,
+      "nanosecondsPerCallPerCore": 151.63365087988205,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 3298624,
+          "seconds": 0.5001824
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "implementation": "cSharp",
+      "size": 1024,
+      "cores": 4,
+      "callsPerSecond": 26390791.18037904,
+      "gigabytesPerSecond": 27.02417016870814,
+      "nanosecondsPerCallPerCore": 151.56802130941455,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 3306688,
+          "seconds": 0.5016398
+        },
+        {
+          "cpu": 4,
+          "calls": 3311424,
+          "seconds": 0.5016389
+        },
+        {
+          "cpu": 6,
+          "calls": 3311744,
+          "seconds": 0.5016341
+        },
+        {
+          "cpu": 8,
+          "calls": 3308800,
+          "seconds": 0.5016441
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "implementation": "asm",
+      "size": 1024,
+      "cores": 4,
+      "callsPerSecond": 75792839.19093382,
+      "gigabytesPerSecond": 77.61186733151624,
+      "nanosecondsPerCallPerCore": 52.77543423229449,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9482432,
+          "seconds": 0.5003206
+        },
+        {
+          "cpu": 4,
+          "calls": 9484480,
+          "seconds": 0.5003211
+        },
+        {
+          "cpu": 6,
+          "calls": 9480000,
+          "seconds": 0.5003188
+        },
+        {
+          "cpu": 8,
+          "calls": 9473856,
+          "seconds": 0.5003245
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "implementation": "cSharp",
+      "size": 65536,
+      "cores": 1,
+      "callsPerSecond": 87416.63191862803,
+      "gigabytesPerSecond": 5.728936389419206,
+      "nanosecondsPerCallPerCore": 11439.470705424252,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 44172,
+          "seconds": 0.5053043
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "implementation": "asm",
+      "size": 65536,
+      "cores": 1,
+      "callsPerSecond": 303174.2181737241,
+      "gigabytesPerSecond": 19.86882556223318,
+      "nanosecondsPerCallPerCore": 3298.4335080464616,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 151868,
+          "seconds": 0.5009265
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "implementation": "asm",
+      "size": 65536,
+      "cores": 4,
+      "callsPerSecond": 1214178.945493699,
+      "gigabytesPerSecond": 79.57243137187506,
+      "nanosecondsPerCallPerCore": 3294.407315203077,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 152365,
+          "seconds": 0.5015363
+        },
+        {
+          "cpu": 4,
+          "calls": 152232,
+          "seconds": 0.5015341
+        },
+        {
+          "cpu": 6,
+          "calls": 152194,
+          "seconds": 0.5015364
+        },
+        {
+          "cpu": 8,
+          "calls": 152166,
+          "seconds": 0.5015456
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "implementation": "cSharp",
+      "size": 65536,
+      "cores": 4,
+      "callsPerSecond": 351181.53510187974,
+      "gigabytesPerSecond": 23.01503308443679,
+      "nanosecondsPerCallPerCore": 11390.120493777036,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 45224,
+          "seconds": 0.5152095
+        },
+        {
+          "cpu": 4,
+          "calls": 45238,
+          "seconds": 0.5151997
+        },
+        {
+          "cpu": 6,
+          "calls": 45219,
+          "seconds": 0.5151985
+        },
+        {
+          "cpu": 8,
+          "calls": 45249,
+          "seconds": 0.5152068
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "implementation": "asm",
+      "size": 1048576,
+      "cores": 1,
+      "callsPerSecond": 19154.40326996445,
+      "gigabytesPerSecond": 20.084847563206242,
+      "nanosecondsPerCallPerCore": 52207.31681931723,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9608,
+          "seconds": 0.5016079
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "implementation": "cSharp",
+      "size": 1048576,
+      "cores": 1,
+      "callsPerSecond": 5477.625471236897,
+      "gigabytesPerSecond": 5.7437066061277005,
+      "nanosecondsPerCallPerCore": 182560.85693536673,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 2754,
+          "seconds": 0.5027726
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "implementation": "cSharp",
+      "size": 1048576,
+      "cores": 4,
+      "callsPerSecond": 21872.916362521435,
+      "gigabytesPerSecond": 22.935415147747275,
+      "nanosecondsPerCallPerCore": 182874.56202474565,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 2749,
+          "seconds": 0.5017516
+        },
+        {
+          "cpu": 4,
+          "calls": 2749,
+          "seconds": 0.5017428
+        },
+        {
+          "cpu": 6,
+          "calls": 2730,
+          "seconds": 0.5017034
+        },
+        {
+          "cpu": 8,
+          "calls": 2747,
+          "seconds": 0.5018502
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "implementation": "asm",
+      "size": 1048576,
+      "cores": 4,
+      "callsPerSecond": 75727.91428201518,
+      "gigabytesPerSecond": 79.40647344617834,
+      "nanosecondsPerCallPerCore": 52820.68095925324,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9555,
+          "seconds": 0.5046594
+        },
+        {
+          "cpu": 4,
+          "calls": 9576,
+          "seconds": 0.504624
+        },
+        {
+          "cpu": 6,
+          "calls": 9523,
+          "seconds": 0.504646
+        },
+        {
+          "cpu": 8,
+          "calls": 9561,
+          "seconds": 0.504613
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "implementation": "cSharp",
+      "size": 64,
+      "cores": 1,
+      "callsPerSecond": 152315995.28731492,
+      "gigabytesPerSecond": 9.748223698388156,
+      "nanosecondsPerCallPerCore": 6.5652986615994715,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 77465600,
+          "seconds": 0.5085848
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "implementation": "asm",
+      "size": 64,
+      "cores": 1,
+      "callsPerSecond": 115361771.08353089,
+      "gigabytesPerSecond": 7.383153349345977,
+      "nanosecondsPerCallPerCore": 8.668382867283844,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 59287552,
+          "seconds": 0.5139272
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "implementation": "asm",
+      "size": 64,
+      "cores": 4,
+      "callsPerSecond": 464991755.2440338,
+      "gigabytesPerSecond": 29.759472335618163,
+      "nanosecondsPerCallPerCore": 8.602303062127945,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 59125760,
+          "seconds": 0.5108505
+        },
+        {
+          "cpu": 4,
+          "calls": 59682816,
+          "seconds": 0.5108526
+        },
+        {
+          "cpu": 6,
+          "calls": 59282432,
+          "seconds": 0.5108519
+        },
+        {
+          "cpu": 8,
+          "calls": 59451392,
+          "seconds": 0.5108567
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "implementation": "cSharp",
+      "size": 64,
+      "cores": 4,
+      "callsPerSecond": 571338865.1241964,
+      "gigabytesPerSecond": 36.56568736794857,
+      "nanosecondsPerCallPerCore": 7.001099074767981,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 73638912,
+          "seconds": 0.5127967
+        },
+        {
+          "cpu": 4,
+          "calls": 73288704,
+          "seconds": 0.5127877
+        },
+        {
+          "cpu": 6,
+          "calls": 72873984,
+          "seconds": 0.5127854
+        },
+        {
+          "cpu": 8,
+          "calls": 73176064,
+          "seconds": 0.5127958
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "implementation": "asm",
+      "size": 256,
+      "cores": 1,
+      "callsPerSecond": 75052009.66109268,
+      "gigabytesPerSecond": 19.213314473239727,
+      "nanosecondsPerCallPerCore": 13.324093578781339,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 38547200,
+          "seconds": 0.5136065
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "implementation": "cSharp",
+      "size": 256,
+      "cores": 1,
+      "callsPerSecond": 36136246.42346245,
+      "gigabytesPerSecond": 9.250879084406387,
+      "nanosecondsPerCallPerCore": 27.67304573589366,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 18084352,
+          "seconds": 0.5004491
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "implementation": "cSharp",
+      "size": 256,
+      "cores": 4,
+      "callsPerSecond": 142683554.06667623,
+      "gigabytesPerSecond": 36.52698984106912,
+      "nanosecondsPerCallPerCore": 28.03406479579836,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 17819648,
+          "seconds": 0.5026157
+        },
+        {
+          "cpu": 4,
+          "calls": 17977088,
+          "seconds": 0.5026137
+        },
+        {
+          "cpu": 6,
+          "calls": 18011648,
+          "seconds": 0.5026133
+        },
+        {
+          "cpu": 8,
+          "calls": 17906688,
+          "seconds": 0.5026223
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "implementation": "asm",
+      "size": 256,
+      "cores": 4,
+      "callsPerSecond": 300006012.15813,
+      "gigabytesPerSecond": 76.80153911248128,
+      "nanosecondsPerCallPerCore": 13.333066131660196,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 38447360,
+          "seconds": 0.5120381
+        },
+        {
+          "cpu": 4,
+          "calls": 38428928,
+          "seconds": 0.5120297
+        },
+        {
+          "cpu": 6,
+          "calls": 38393600,
+          "seconds": 0.512036
+        },
+        {
+          "cpu": 8,
+          "calls": 38344192,
+          "seconds": 0.5120429
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "implementation": "cSharp",
+      "size": 1024,
+      "cores": 1,
+      "callsPerSecond": 6551086.334420371,
+      "gigabytesPerSecond": 6.70831240644646,
+      "nanosecondsPerCallPerCore": 152.64643891897026,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 3368640,
+          "seconds": 0.5142109
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "implementation": "asm",
+      "size": 1024,
+      "cores": 1,
+      "callsPerSecond": 18891693.63807905,
+      "gigabytesPerSecond": 19.34509428539295,
+      "nanosecondsPerCallPerCore": 52.93331657593417,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9675328,
+          "seconds": 0.5121472
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "implementation": "asm",
+      "size": 1024,
+      "cores": 4,
+      "callsPerSecond": 75750602.66414234,
+      "gigabytesPerSecond": 77.56861712808175,
+      "nanosecondsPerCallPerCore": 52.8048604145754,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9494336,
+          "seconds": 0.5008182
+        },
+        {
+          "cpu": 4,
+          "calls": 9482944,
+          "seconds": 0.5008156
+        },
+        {
+          "cpu": 6,
+          "calls": 9485632,
+          "seconds": 0.5008134
+        },
+        {
+          "cpu": 8,
+          "calls": 9474304,
+          "seconds": 0.5008222
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "implementation": "cSharp",
+      "size": 1024,
+      "cores": 4,
+      "callsPerSecond": 26387223.963396043,
+      "gigabytesPerSecond": 27.020517338517546,
+      "nanosecondsPerCallPerCore": 151.58851137765532,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 3305152,
+          "seconds": 0.5006187
+        },
+        {
+          "cpu": 4,
+          "calls": 3302912,
+          "seconds": 0.5006127
+        },
+        {
+          "cpu": 6,
+          "calls": 3302080,
+          "seconds": 0.5006081
+        },
+        {
+          "cpu": 8,
+          "calls": 3299648,
+          "seconds": 0.5006132
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "implementation": "asm",
+      "size": 65536,
+      "cores": 1,
+      "callsPerSecond": 306735.45081834006,
+      "gigabytesPerSecond": 20.102214504830734,
+      "nanosecondsPerCallPerCore": 3260.138328752344,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 155716,
+          "seconds": 0.5076557
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "implementation": "cSharp",
+      "size": 65536,
+      "cores": 1,
+      "callsPerSecond": 87910.52880011132,
+      "gigabytesPerSecond": 5.761304415444096,
+      "nanosecondsPerCallPerCore": 11375.2017380509,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 45108,
+          "seconds": 0.5131126
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "implementation": "cSharp",
+      "size": 65536,
+      "cores": 4,
+      "callsPerSecond": 351923.0706852636,
+      "gigabytesPerSecond": 23.063630360429435,
+      "nanosecondsPerCallPerCore": 11366.12042004297,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 44062,
+          "seconds": 0.5006115
+        },
+        {
+          "cpu": 4,
+          "calls": 44052,
+          "seconds": 0.5006111
+        },
+        {
+          "cpu": 6,
+          "calls": 44050,
+          "seconds": 0.5006112
+        },
+        {
+          "cpu": 8,
+          "calls": 44013,
+          "seconds": 0.5006152
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "implementation": "asm",
+      "size": 65536,
+      "cores": 4,
+      "callsPerSecond": 1225508.355670464,
+      "gigabytesPerSecond": 80.31491559721952,
+      "nanosecondsPerCallPerCore": 3263.951634023448,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 153875,
+          "seconds": 0.5017089
+        },
+        {
+          "cpu": 4,
+          "calls": 153813,
+          "seconds": 0.5017084
+        },
+        {
+          "cpu": 6,
+          "calls": 153571,
+          "seconds": 0.5017049
+        },
+        {
+          "cpu": 8,
+          "calls": 153590,
+          "seconds": 0.5017152
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "implementation": "cSharp",
+      "size": 1048576,
+      "cores": 1,
+      "callsPerSecond": 5484.307532396333,
+      "gigabytesPerSecond": 5.750713255090018,
+      "nanosecondsPerCallPerCore": 182338.42542434094,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 2769,
+          "seconds": 0.5048951
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "implementation": "asm",
+      "size": 1048576,
+      "cores": 1,
+      "callsPerSecond": 19135.228510388944,
+      "gigabytesPerSecond": 20.064741370509598,
+      "nanosecondsPerCallPerCore": 52259.63199013158,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9728,
+          "seconds": 0.5083817
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "implementation": "asm",
+      "size": 1048576,
+      "cores": 4,
+      "callsPerSecond": 76654.84789521081,
+      "gigabytesPerSecond": 80.37843378656858,
+      "nanosecondsPerCallPerCore": 52181.95730383687,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9695,
+          "seconds": 0.5059339
+        },
+        {
+          "cpu": 4,
+          "calls": 9702,
+          "seconds": 0.5059096
+        },
+        {
+          "cpu": 6,
+          "calls": 9698,
+          "seconds": 0.5059288
+        },
+        {
+          "cpu": 8,
+          "calls": 9687,
+          "seconds": 0.5059484
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "implementation": "cSharp",
+      "size": 1048576,
+      "cores": 4,
+      "callsPerSecond": 21935.18342850072,
+      "gigabytesPerSecond": 23.00070689872357,
+      "nanosecondsPerCallPerCore": 182355.43883361097,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 2771,
+          "seconds": 0.5049376
+        },
+        {
+          "cpu": 4,
+          "calls": 2769,
+          "seconds": 0.5048831
+        },
+        {
+          "cpu": 6,
+          "calls": 2771,
+          "seconds": 0.5050127
+        },
+        {
+          "cpu": 8,
+          "calls": 2765,
+          "seconds": 0.5049354
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "implementation": "asm",
+      "size": 64,
+      "cores": 1,
+      "callsPerSecond": 117093763.73166129,
+      "gigabytesPerSecond": 7.494000878826323,
+      "nanosecondsPerCallPerCore": 8.540164464195179,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 58571776,
+          "seconds": 0.5002126
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "implementation": "cSharp",
+      "size": 64,
+      "cores": 1,
+      "callsPerSecond": 154238850.60226056,
+      "gigabytesPerSecond": 9.871286438544676,
+      "nanosecondsPerCallPerCore": 6.483450804354891,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 78771200,
+          "seconds": 0.5107092
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "implementation": "cSharp",
+      "size": 64,
+      "cores": 4,
+      "callsPerSecond": 597703070.5365069,
+      "gigabytesPerSecond": 38.25299651433644,
+      "nanosecondsPerCallPerCore": 6.692286182183308,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 76143616,
+          "seconds": 0.5136025
+        },
+        {
+          "cpu": 4,
+          "calls": 76886016,
+          "seconds": 0.5136003
+        },
+        {
+          "cpu": 6,
+          "calls": 76854272,
+          "seconds": 0.5135972
+        },
+        {
+          "cpu": 8,
+          "calls": 77096960,
+          "seconds": 0.5136038
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "implementation": "asm",
+      "size": 64,
+      "cores": 4,
+      "callsPerSecond": 467443429.0925091,
+      "gigabytesPerSecond": 29.91637946192058,
+      "nanosecondsPerCallPerCore": 8.557185214402452,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 59970560,
+          "seconds": 0.513314
+        },
+        {
+          "cpu": 4,
+          "calls": 59663360,
+          "seconds": 0.5133133
+        },
+        {
+          "cpu": 6,
+          "calls": 60416000,
+          "seconds": 0.5133098
+        },
+        {
+          "cpu": 8,
+          "calls": 59894784,
+          "seconds": 0.5133142
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "implementation": "cSharp",
+      "size": 256,
+      "cores": 1,
+      "callsPerSecond": 36193067.63857858,
+      "gigabytesPerSecond": 9.265425315476117,
+      "nanosecondsPerCallPerCore": 27.629600507642223,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 18557952,
+          "seconds": 0.5127488
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "implementation": "asm",
+      "size": 256,
+      "cores": 1,
+      "callsPerSecond": 74640487.04299876,
+      "gigabytesPerSecond": 19.107964683007683,
+      "nanosecondsPerCallPerCore": 13.397554592910437,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 37467136,
+          "seconds": 0.501968
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "implementation": "asm",
+      "size": 256,
+      "cores": 4,
+      "callsPerSecond": 300041974.8543734,
+      "gigabytesPerSecond": 76.81074556271959,
+      "nanosecondsPerCallPerCore": 13.33146804523406,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 38006016,
+          "seconds": 0.5046706
+        },
+        {
+          "cpu": 4,
+          "calls": 37687040,
+          "seconds": 0.5046697
+        },
+        {
+          "cpu": 6,
+          "calls": 37844736,
+          "seconds": 0.5046671
+        },
+        {
+          "cpu": 8,
+          "calls": 37883904,
+          "seconds": 0.5046661
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "implementation": "cSharp",
+      "size": 256,
+      "cores": 4,
+      "callsPerSecond": 141748334.54048356,
+      "gigabytesPerSecond": 36.28757364236379,
+      "nanosecondsPerCallPerCore": 28.219026438420645,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 18280704,
+          "seconds": 0.5143807
+        },
+        {
+          "cpu": 4,
+          "calls": 18245376,
+          "seconds": 0.5143738
+        },
+        {
+          "cpu": 6,
+          "calls": 18276096,
+          "seconds": 0.5143732
+        },
+        {
+          "cpu": 8,
+          "calls": 18109952,
+          "seconds": 0.5143816
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "implementation": "asm",
+      "size": 1024,
+      "cores": 1,
+      "callsPerSecond": 19093596.884291638,
+      "gigabytesPerSecond": 19.551843209514637,
+      "nanosecondsPerCallPerCore": 52.37357874789444,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9574656,
+          "seconds": 0.501459
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "implementation": "cSharp",
+      "size": 1024,
+      "cores": 1,
+      "callsPerSecond": 6593390.73876758,
+      "gigabytesPerSecond": 6.751632116498002,
+      "nanosecondsPerCallPerCore": 151.6670313682816,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 3381760,
+          "seconds": 0.5129015
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "implementation": "cSharp",
+      "size": 1024,
+      "cores": 4,
+      "callsPerSecond": 26379865.097276833,
+      "gigabytesPerSecond": 27.012981859611475,
+      "nanosecondsPerCallPerCore": 151.63079815798284,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 3310272,
+          "seconds": 0.5018602
+        },
+        {
+          "cpu": 4,
+          "calls": 3309568,
+          "seconds": 0.501862
+        },
+        {
+          "cpu": 6,
+          "calls": 3308928,
+          "seconds": 0.5018559
+        },
+        {
+          "cpu": 8,
+          "calls": 3310272,
+          "seconds": 0.5018681
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "implementation": "asm",
+      "size": 1024,
+      "cores": 4,
+      "callsPerSecond": 76450900.58443339,
+      "gigabytesPerSecond": 78.2857221984598,
+      "nanosecondsPerCallPerCore": 52.32116259483885,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9786496,
+          "seconds": 0.5120093
+        },
+        {
+          "cpu": 4,
+          "calls": 9791680,
+          "seconds": 0.5120063
+        },
+        {
+          "cpu": 6,
+          "calls": 9779968,
+          "seconds": 0.5120058
+        },
+        {
+          "cpu": 8,
+          "calls": 9785344,
+          "seconds": 0.5120114
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "implementation": "cSharp",
+      "size": 65536,
+      "cores": 1,
+      "callsPerSecond": 87940.54217250923,
+      "gigabytesPerSecond": 5.763271371817565,
+      "nanosecondsPerCallPerCore": 11371.31947672488,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 45177,
+          "seconds": 0.5137221
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "implementation": "asm",
+      "size": 65536,
+      "cores": 1,
+      "callsPerSecond": 306748.84815261874,
+      "gigabytesPerSecond": 20.103092512530022,
+      "nanosecondsPerCallPerCore": 3259.995941378282,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 157689,
+          "seconds": 0.5140655
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "implementation": "asm",
+      "size": 65536,
+      "cores": 4,
+      "callsPerSecond": 1226156.0237930026,
+      "gigabytesPerSecond": 80.35736117529822,
+      "nanosecondsPerCallPerCore": 3262.2275814674567,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 153413,
+          "seconds": 0.5001485
+        },
+        {
+          "cpu": 4,
+          "calls": 153344,
+          "seconds": 0.500144
+        },
+        {
+          "cpu": 6,
+          "calls": 153274,
+          "seconds": 0.5001411
+        },
+        {
+          "cpu": 8,
+          "calls": 153226,
+          "seconds": 0.5001503
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "implementation": "cSharp",
+      "size": 65536,
+      "cores": 4,
+      "callsPerSecond": 351765.0762252984,
+      "gigabytesPerSecond": 23.053276035501156,
+      "nanosecondsPerCallPerCore": 11371.225486404117,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 45100,
+          "seconds": 0.5127507
+        },
+        {
+          "cpu": 4,
+          "calls": 45109,
+          "seconds": 0.5127474
+        },
+        {
+          "cpu": 6,
+          "calls": 45073,
+          "seconds": 0.5127483
+        },
+        {
+          "cpu": 8,
+          "calls": 45086,
+          "seconds": 0.5127588
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "implementation": "asm",
+      "size": 1048576,
+      "cores": 1,
+      "callsPerSecond": 19212.184178414565,
+      "gigabytesPerSecond": 20.145435237065232,
+      "nanosecondsPerCallPerCore": 52050.30259513795,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9749,
+          "seconds": 0.5074384
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "implementation": "cSharp",
+      "size": 1048576,
+      "cores": 1,
+      "callsPerSecond": 5485.530174825552,
+      "gigabytesPerSecond": 5.751995288597879,
+      "nanosecondsPerCallPerCore": 182297.78492318682,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 2799,
+          "seconds": 0.5102515
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "implementation": "cSharp",
+      "size": 1048576,
+      "cores": 4,
+      "callsPerSecond": 21867.09310359591,
+      "gigabytesPerSecond": 22.929309018196186,
+      "nanosecondsPerCallPerCore": 182923.2619557569,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 2740,
+          "seconds": 0.5011317
+        },
+        {
+          "cpu": 4,
+          "calls": 2739,
+          "seconds": 0.5011234
+        },
+        {
+          "cpu": 6,
+          "calls": 2740,
+          "seconds": 0.5011208
+        },
+        {
+          "cpu": 8,
+          "calls": 2739,
+          "seconds": 0.5010972
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "implementation": "asm",
+      "size": 1048576,
+      "cores": 4,
+      "callsPerSecond": 76115.48054961895,
+      "gigabytesPerSecond": 79.81286613279724,
+      "nanosecondsPerCallPerCore": 52551.72760017509,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9602,
+          "seconds": 0.5043836
+        },
+        {
+          "cpu": 4,
+          "calls": 9625,
+          "seconds": 0.5043769
+        },
+        {
+          "cpu": 6,
+          "calls": 9588,
+          "seconds": 0.5044097
+        },
+        {
+          "cpu": 8,
+          "calls": 9577,
+          "seconds": 0.5043958
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "implementation": "cSharp",
+      "size": 64,
+      "cores": 1,
+      "callsPerSecond": 155272645.85860375,
+      "gigabytesPerSecond": 9.93744933495064,
+      "nanosecondsPerCallPerCore": 6.440284407278228,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 78021632,
+          "seconds": 0.5024815
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "implementation": "asm",
+      "size": 64,
+      "cores": 1,
+      "callsPerSecond": 115975350.15339205,
+      "gigabytesPerSecond": 7.422422409817091,
+      "nanosecondsPerCallPerCore": 8.62252192968052,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 58463232,
+          "seconds": 0.5041005
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "implementation": "asm",
+      "size": 64,
+      "cores": 4,
+      "callsPerSecond": 467123270.87946737,
+      "gigabytesPerSecond": 29.89588933628591,
+      "nanosecondsPerCallPerCore": 8.56305016118995,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 58478592,
+          "seconds": 0.5005978
+        },
+        {
+          "cpu": 4,
+          "calls": 58509312,
+          "seconds": 0.5005954
+        },
+        {
+          "cpu": 6,
+          "calls": 58799104,
+          "seconds": 0.5005927
+        },
+        {
+          "cpu": 8,
+          "calls": 58053632,
+          "seconds": 0.5006033
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "implementation": "cSharp",
+      "size": 64,
+      "cores": 4,
+      "callsPerSecond": 605724809.9857161,
+      "gigabytesPerSecond": 38.76638783908583,
+      "nanosecondsPerCallPerCore": 6.60365884648893,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 76472320,
+          "seconds": 0.5046115
+        },
+        {
+          "cpu": 4,
+          "calls": 76624896,
+          "seconds": 0.5046081
+        },
+        {
+          "cpu": 6,
+          "calls": 76030976,
+          "seconds": 0.5046066
+        },
+        {
+          "cpu": 8,
+          "calls": 76526592,
+          "seconds": 0.5046137
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "implementation": "asm",
+      "size": 256,
+      "cores": 1,
+      "callsPerSecond": 74964445.06817432,
+      "gigabytesPerSecond": 19.190897937452625,
+      "nanosecondsPerCallPerCore": 13.339657208034795,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 37551872,
+          "seconds": 0.5009291
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "implementation": "cSharp",
+      "size": 256,
+      "cores": 1,
+      "callsPerSecond": 36325472.77748834,
+      "gigabytesPerSecond": 9.299321031037016,
+      "nanosecondsPerCallPerCore": 27.52889153364911,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 18700288,
+          "seconds": 0.5147982
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "implementation": "cSharp",
+      "size": 256,
+      "cores": 4,
+      "callsPerSecond": 143878436.87918836,
+      "gigabytesPerSecond": 36.83287984107222,
+      "nanosecondsPerCallPerCore": 27.801247266528996,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 18520064,
+          "seconds": 0.5145785
+        },
+        {
+          "cpu": 4,
+          "calls": 18503936,
+          "seconds": 0.5145744
+        },
+        {
+          "cpu": 6,
+          "calls": 18536448,
+          "seconds": 0.5145724
+        },
+        {
+          "cpu": 8,
+          "calls": 18476032,
+          "seconds": 0.5145812
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "implementation": "asm",
+      "size": 256,
+      "cores": 4,
+      "callsPerSecond": 300899188.26381534,
+      "gigabytesPerSecond": 77.03019219553673,
+      "nanosecondsPerCallPerCore": 13.29348883617783,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 38771712,
+          "seconds": 0.5144005
+        },
+        {
+          "cpu": 4,
+          "calls": 38785792,
+          "seconds": 0.5143985
+        },
+        {
+          "cpu": 6,
+          "calls": 38841344,
+          "seconds": 0.5143966
+        },
+        {
+          "cpu": 8,
+          "calls": 38383616,
+          "seconds": 0.5144034
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "implementation": "cSharp",
+      "size": 1024,
+      "cores": 1,
+      "callsPerSecond": 6608987.836865784,
+      "gigabytesPerSecond": 6.767603544950562,
+      "nanosecondsPerCallPerCore": 151.30909977196077,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 3339776,
+          "seconds": 0.5053385
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "implementation": "asm",
+      "size": 1024,
+      "cores": 1,
+      "callsPerSecond": 19096875.007295568,
+      "gigabytesPerSecond": 19.55520000747066,
+      "nanosecondsPerCallPerCore": 52.36458842705786,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9816000,
+          "seconds": 0.5140108
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "implementation": "asm",
+      "size": 1024,
+      "cores": 4,
+      "callsPerSecond": 76326235.57230361,
+      "gigabytesPerSecond": 78.1580652260389,
+      "nanosecondsPerCallPerCore": 52.406619689907444,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9563200,
+          "seconds": 0.5007626
+        },
+        {
+          "cpu": 4,
+          "calls": 9556736,
+          "seconds": 0.5007591
+        },
+        {
+          "cpu": 6,
+          "calls": 9558144,
+          "seconds": 0.5007571
+        },
+        {
+          "cpu": 8,
+          "calls": 9543040,
+          "seconds": 0.5007609
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "implementation": "cSharp",
+      "size": 1024,
+      "cores": 4,
+      "callsPerSecond": 26373522.681410506,
+      "gigabytesPerSecond": 27.00648722576436,
+      "nanosecondsPerCallPerCore": 151.66726297126087,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 3386240,
+          "seconds": 0.5133534
+        },
+        {
+          "cpu": 4,
+          "calls": 3385088,
+          "seconds": 0.5131477
+        },
+        {
+          "cpu": 6,
+          "calls": 3383168,
+          "seconds": 0.5129926
+        },
+        {
+          "cpu": 8,
+          "calls": 3383232,
+          "seconds": 0.5137371
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "implementation": "asm",
+      "size": 65536,
+      "cores": 1,
+      "callsPerSecond": 306343.89694501023,
+      "gigabytesPerSecond": 20.07655363018819,
+      "nanosecondsPerCallPerCore": 3264.3052790423417,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 157718,
+          "seconds": 0.5148397
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "implementation": "cSharp",
+      "size": 65536,
+      "cores": 1,
+      "callsPerSecond": 87896.65341423395,
+      "gigabytesPerSecond": 5.760395078155236,
+      "nanosecondsPerCallPerCore": 11376.997430007505,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 43969,
+          "seconds": 0.5002352
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "implementation": "cSharp",
+      "size": 65536,
+      "cores": 4,
+      "callsPerSecond": 351966.7524649427,
+      "gigabytesPerSecond": 23.066493089542483,
+      "nanosecondsPerCallPerCore": 11364.709797123283,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 45009,
+          "seconds": 0.5112585
+        },
+        {
+          "cpu": 4,
+          "calls": 44995,
+          "seconds": 0.5112612
+        },
+        {
+          "cpu": 6,
+          "calls": 44977,
+          "seconds": 0.5112487
+        },
+        {
+          "cpu": 8,
+          "calls": 44964,
+          "seconds": 0.5112543
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "implementation": "asm",
+      "size": 65536,
+      "cores": 4,
+      "callsPerSecond": 1222948.5173060824,
+      "gigabytesPerSecond": 80.14715403017142,
+      "nanosecondsPerCallPerCore": 3270.7836375739034,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 156092,
+          "seconds": 0.5102584
+        },
+        {
+          "cpu": 4,
+          "calls": 156012,
+          "seconds": 0.5102578
+        },
+        {
+          "cpu": 6,
+          "calls": 155820,
+          "seconds": 0.5102557
+        },
+        {
+          "cpu": 8,
+          "calls": 156096,
+          "seconds": 0.5102625
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "implementation": "cSharp",
+      "size": 1048576,
+      "cores": 1,
+      "callsPerSecond": 5468.972766559364,
+      "gigabytesPerSecond": 5.734633587667751,
+      "nanosecondsPerCallPerCore": 182849.6945742005,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 2783,
+          "seconds": 0.5088707
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "implementation": "asm",
+      "size": 1048576,
+      "cores": 1,
+      "callsPerSecond": 19158.38516896145,
+      "gigabytesPerSecond": 20.08902288692892,
+      "nanosecondsPerCallPerCore": 52196.46599547976,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9734,
+          "seconds": 0.5080804
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "implementation": "asm",
+      "size": 1048576,
+      "cores": 4,
+      "callsPerSecond": 76592.72938053524,
+      "gigabytesPerSecond": 80.31329780292411,
+      "nanosecondsPerCallPerCore": 52224.27810512956,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9659,
+          "seconds": 0.5042177
+        },
+        {
+          "cpu": 4,
+          "calls": 9657,
+          "seconds": 0.5042254
+        },
+        {
+          "cpu": 6,
+          "calls": 9656,
+          "seconds": 0.5041883
+        },
+        {
+          "cpu": 8,
+          "calls": 9647,
+          "seconds": 0.504218
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "implementation": "cSharp",
+      "size": 1048576,
+      "cores": 4,
+      "callsPerSecond": 21944.25687675814,
+      "gigabytesPerSecond": 23.010221098803544,
+      "nanosecondsPerCallPerCore": 182280.0390309196,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 2754,
+          "seconds": 0.5016525
+        },
+        {
+          "cpu": 4,
+          "calls": 2753,
+          "seconds": 0.5016514
+        },
+        {
+          "cpu": 6,
+          "calls": 2752,
+          "seconds": 0.5016534
+        },
+        {
+          "cpu": 8,
+          "calls": 2749,
+          "seconds": 0.5015813
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "implementation": "asm",
+      "size": 64,
+      "cores": 1,
+      "callsPerSecond": 116576096.95309608,
+      "gigabytesPerSecond": 7.460870204998149,
+      "nanosecondsPerCallPerCore": 8.578087842504678,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 58561536,
+          "seconds": 0.502346
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "implementation": "cSharp",
+      "size": 64,
+      "cores": 1,
+      "callsPerSecond": 153876312.8080958,
+      "gigabytesPerSecond": 9.848084019718131,
+      "nanosecondsPerCallPerCore": 6.4987260335977295,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 77201408,
+          "seconds": 0.5017108
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "implementation": "cSharp",
+      "size": 64,
+      "cores": 4,
+      "callsPerSecond": 596404676.9472722,
+      "gigabytesPerSecond": 38.16989932462542,
+      "nanosecondsPerCallPerCore": 6.7068555204399205,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 74402816,
+          "seconds": 0.5018664
+        },
+        {
+          "cpu": 4,
+          "calls": 75024384,
+          "seconds": 0.5018629
+        },
+        {
+          "cpu": 6,
+          "calls": 75323392,
+          "seconds": 0.501859
+        },
+        {
+          "cpu": 8,
+          "calls": 74563584,
+          "seconds": 0.5018687
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "implementation": "asm",
+      "size": 64,
+      "cores": 4,
+      "callsPerSecond": 467933067.89718866,
+      "gigabytesPerSecond": 29.947716345420073,
+      "nanosecondsPerCallPerCore": 8.548231092056215,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 58527744,
+          "seconds": 0.5015399
+        },
+        {
+          "cpu": 4,
+          "calls": 58826752,
+          "seconds": 0.5015309
+        },
+        {
+          "cpu": 6,
+          "calls": 58675200,
+          "seconds": 0.5015329
+        },
+        {
+          "cpu": 8,
+          "calls": 58655744,
+          "seconds": 0.5015417
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "implementation": "cSharp",
+      "size": 256,
+      "cores": 1,
+      "callsPerSecond": 36201852.92100934,
+      "gigabytesPerSecond": 9.26767434777839,
+      "nanosecondsPerCallPerCore": 27.62289549603858,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 18579200,
+          "seconds": 0.5132113
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "implementation": "asm",
+      "size": 256,
+      "cores": 1,
+      "callsPerSecond": 75081986.18981065,
+      "gigabytesPerSecond": 19.220988464591525,
+      "nanosecondsPerCallPerCore": 13.318773926304438,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 37749248,
+          "seconds": 0.5027737
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "implementation": "asm",
+      "size": 256,
+      "cores": 4,
+      "callsPerSecond": 300755808.2138378,
+      "gigabytesPerSecond": 76.99348690274248,
+      "nanosecondsPerCallPerCore": 13.299826273532826,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 38745600,
+          "seconds": 0.5142035
+        },
+        {
+          "cpu": 4,
+          "calls": 38645760,
+          "seconds": 0.5142007
+        },
+        {
+          "cpu": 6,
+          "calls": 38638080,
+          "seconds": 0.514197
+        },
+        {
+          "cpu": 8,
+          "calls": 38619648,
+          "seconds": 0.5142048
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "implementation": "cSharp",
+      "size": 256,
+      "cores": 4,
+      "callsPerSecond": 144119687.99958912,
+      "gigabytesPerSecond": 36.89464012789481,
+      "nanosecondsPerCallPerCore": 27.75470898890236,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 18527744,
+          "seconds": 0.5141105
+        },
+        {
+          "cpu": 4,
+          "calls": 18494464,
+          "seconds": 0.5141062
+        },
+        {
+          "cpu": 6,
+          "calls": 18524160,
+          "seconds": 0.5141031
+        },
+        {
+          "cpu": 8,
+          "calls": 18546688,
+          "seconds": 0.5141114
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "implementation": "asm",
+      "size": 1024,
+      "cores": 1,
+      "callsPerSecond": 19112815.920025878,
+      "gigabytesPerSecond": 19.571523502106498,
+      "nanosecondsPerCallPerCore": 52.32091410205169,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9607680,
+          "seconds": 0.5026826
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "implementation": "cSharp",
+      "size": 1024,
+      "cores": 1,
+      "callsPerSecond": 6591258.030389597,
+      "gigabytesPerSecond": 6.749448223118947,
+      "nanosecondsPerCallPerCore": 151.7161056947564,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 3305216,
+          "seconds": 0.5014545
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "implementation": "cSharp",
+      "size": 1024,
+      "cores": 4,
+      "callsPerSecond": 26389467.08638934,
+      "gigabytesPerSecond": 27.022814296462684,
+      "nanosecondsPerCallPerCore": 151.57562624911984,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 3389952,
+          "seconds": 0.513859
+        },
+        {
+          "cpu": 4,
+          "calls": 3390912,
+          "seconds": 0.5138427
+        },
+        {
+          "cpu": 6,
+          "calls": 3389824,
+          "seconds": 0.513854
+        },
+        {
+          "cpu": 8,
+          "calls": 3389632,
+          "seconds": 0.5138583
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "implementation": "asm",
+      "size": 1024,
+      "cores": 4,
+      "callsPerSecond": 76480192.64688382,
+      "gigabytesPerSecond": 78.31571727040902,
+      "nanosecondsPerCallPerCore": 52.301123487860096,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9879680,
+          "seconds": 0.5161541
+        },
+        {
+          "cpu": 4,
+          "calls": 9871040,
+          "seconds": 0.5161535
+        },
+        {
+          "cpu": 6,
+          "calls": 9871360,
+          "seconds": 0.516152
+        },
+        {
+          "cpu": 8,
+          "calls": 9853504,
+          "seconds": 0.5161578
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "implementation": "cSharp",
+      "size": 65536,
+      "cores": 1,
+      "callsPerSecond": 87943.32497130705,
+      "gigabytesPerSecond": 5.7634537453195795,
+      "nanosecondsPerCallPerCore": 11370.959653006823,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 44266,
+          "seconds": 0.5033469
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "implementation": "asm",
+      "size": 65536,
+      "cores": 1,
+      "callsPerSecond": 306685.0200203879,
+      "gigabytesPerSecond": 20.098909472056143,
+      "nanosecondsPerCallPerCore": 3260.6744207249567,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 153554,
+          "seconds": 0.5006896
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "implementation": "asm",
+      "size": 65536,
+      "cores": 4,
+      "callsPerSecond": 1225783.3619792638,
+      "gigabytesPerSecond": 80.33293841067304,
+      "nanosecondsPerCallPerCore": 3263.219361650682,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 157398,
+          "seconds": 0.5135071
+        },
+        {
+          "cpu": 4,
+          "calls": 157422,
+          "seconds": 0.5135046
+        },
+        {
+          "cpu": 6,
+          "calls": 157272,
+          "seconds": 0.5135037
+        },
+        {
+          "cpu": 8,
+          "calls": 157356,
+          "seconds": 0.5135115
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "implementation": "cSharp",
+      "size": 65536,
+      "cores": 4,
+      "callsPerSecond": 351767.7360975138,
+      "gigabytesPerSecond": 23.053450352886664,
+      "nanosecondsPerCallPerCore": 11371.13950351364,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 44181,
+          "seconds": 0.5023041
+        },
+        {
+          "cpu": 4,
+          "calls": 44180,
+          "seconds": 0.5023005
+        },
+        {
+          "cpu": 6,
+          "calls": 44105,
+          "seconds": 0.5019116
+        },
+        {
+          "cpu": 8,
+          "calls": 44194,
+          "seconds": 0.502309
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "implementation": "asm",
+      "size": 1048576,
+      "cores": 1,
+      "callsPerSecond": 18941.942571671138,
+      "gigabytesPerSecond": 19.862066374032636,
+      "nanosecondsPerCallPerCore": 52792.895776991885,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9614,
+          "seconds": 0.5075509
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "implementation": "cSharp",
+      "size": 1048576,
+      "cores": 1,
+      "callsPerSecond": 5462.923235216931,
+      "gigabytesPerSecond": 5.728290194290829,
+      "nanosecondsPerCallPerCore": 183052.17864923747,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 2754,
+          "seconds": 0.5041257
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "implementation": "cSharp",
+      "size": 1048576,
+      "cores": 4,
+      "callsPerSecond": 21889.591246516797,
+      "gigabytesPerSecond": 22.952900030907596,
+      "nanosecondsPerCallPerCore": 182735.2532513143,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 2803,
+          "seconds": 0.5118974
+        },
+        {
+          "cpu": 4,
+          "calls": 2801,
+          "seconds": 0.5119244
+        },
+        {
+          "cpu": 6,
+          "calls": 2800,
+          "seconds": 0.5118574
+        },
+        {
+          "cpu": 8,
+          "calls": 2801,
+          "seconds": 0.5118693
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "implementation": "asm",
+      "size": 1048576,
+      "cores": 4,
+      "callsPerSecond": 74884.47679744616,
+      "gigabytesPerSecond": 78.5220651423589,
+      "nanosecondsPerCallPerCore": 53415.6098976232,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9433,
+          "seconds": 0.5044365
+        },
+        {
+          "cpu": 4,
+          "calls": 9473,
+          "seconds": 0.5044039
+        },
+        {
+          "cpu": 6,
+          "calls": 9440,
+          "seconds": 0.5044063
+        },
+        {
+          "cpu": 8,
+          "calls": 9427,
+          "seconds": 0.5044212
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "implementation": "cSharp",
+      "size": 64,
+      "cores": 1,
+      "callsPerSecond": 154902929.02598315,
+      "gigabytesPerSecond": 9.913787457662922,
+      "nanosecondsPerCallPerCore": 6.455655850331027,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 79345664,
+          "seconds": 0.5122283
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "implementation": "asm",
+      "size": 64,
+      "cores": 1,
+      "callsPerSecond": 116129083.55763,
+      "gigabytesPerSecond": 7.43226134768832,
+      "nanosecondsPerCallPerCore": 8.611107307186678,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 58419200,
+          "seconds": 0.503054
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "implementation": "asm",
+      "size": 64,
+      "cores": 4,
+      "callsPerSecond": 466569112.4605961,
+      "gigabytesPerSecond": 29.86042319747815,
+      "nanosecondsPerCallPerCore": 8.573220758023965,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 58433536,
+          "seconds": 0.5019953
+        },
+        {
+          "cpu": 4,
+          "calls": 58602496,
+          "seconds": 0.5021419
+        },
+        {
+          "cpu": 6,
+          "calls": 58783744,
+          "seconds": 0.5021382
+        },
+        {
+          "cpu": 8,
+          "calls": 58446848,
+          "seconds": 0.5021438
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "implementation": "cSharp",
+      "size": 64,
+      "cores": 4,
+      "callsPerSecond": 592409236.5152141,
+      "gigabytesPerSecond": 37.9141911369737,
+      "nanosecondsPerCallPerCore": 6.752089186741221,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 76923904,
+          "seconds": 0.5152068
+        },
+        {
+          "cpu": 4,
+          "calls": 75848704,
+          "seconds": 0.5152059
+        },
+        {
+          "cpu": 6,
+          "calls": 76857344,
+          "seconds": 0.515201
+        },
+        {
+          "cpu": 8,
+          "calls": 75582464,
+          "seconds": 0.5152078
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "implementation": "asm",
+      "size": 256,
+      "cores": 1,
+      "callsPerSecond": 75224325.60908523,
+      "gigabytesPerSecond": 19.25742735592582,
+      "nanosecondsPerCallPerCore": 13.293572151070569,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 38248192,
+          "seconds": 0.5084551
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "implementation": "cSharp",
+      "size": 256,
+      "cores": 1,
+      "callsPerSecond": 36411505.841028586,
+      "gigabytesPerSecond": 9.321345495303317,
+      "nanosecondsPerCallPerCore": 27.463846300835964,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 18588416,
+          "seconds": 0.5105094
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "implementation": "cSharp",
+      "size": 256,
+      "cores": 4,
+      "callsPerSecond": 143664645.3303126,
+      "gigabytesPerSecond": 36.77814920456003,
+      "nanosecondsPerCallPerCore": 27.84261911344459,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 18435584,
+          "seconds": 0.5133964
+        },
+        {
+          "cpu": 4,
+          "calls": 18451712,
+          "seconds": 0.513391
+        },
+        {
+          "cpu": 6,
+          "calls": 18435840,
+          "seconds": 0.513389
+        },
+        {
+          "cpu": 8,
+          "calls": 18433280,
+          "seconds": 0.5133954
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "implementation": "asm",
+      "size": 256,
+      "cores": 4,
+      "callsPerSecond": 300074413.6650833,
+      "gigabytesPerSecond": 76.81904989826133,
+      "nanosecondsPerCallPerCore": 13.330026879480798,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 37656576,
+          "seconds": 0.5006194
+        },
+        {
+          "cpu": 4,
+          "calls": 37543680,
+          "seconds": 0.5006171
+        },
+        {
+          "cpu": 6,
+          "calls": 37510144,
+          "seconds": 0.5006146
+        },
+        {
+          "cpu": 8,
+          "calls": 37512448,
+          "seconds": 0.5006235
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "implementation": "cSharp",
+      "size": 1024,
+      "cores": 1,
+      "callsPerSecond": 6596709.065052959,
+      "gigabytesPerSecond": 6.75503008261423,
+      "nanosecondsPerCallPerCore": 151.59073867569023,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 3328768,
+          "seconds": 0.5046104
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "implementation": "asm",
+      "size": 1024,
+      "cores": 1,
+      "callsPerSecond": 19096651.365773436,
+      "gigabytesPerSecond": 19.554970998551997,
+      "nanosecondsPerCallPerCore": 52.365201670502344,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9677568,
+          "seconds": 0.5067678
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "implementation": "asm",
+      "size": 1024,
+      "cores": 4,
+      "callsPerSecond": 76353508.41718048,
+      "gigabytesPerSecond": 78.18599261919282,
+      "nanosecondsPerCallPerCore": 52.38790047661976,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9788800,
+          "seconds": 0.512927
+        },
+        {
+          "cpu": 4,
+          "calls": 9798976,
+          "seconds": 0.5129253
+        },
+        {
+          "cpu": 6,
+          "calls": 9786432,
+          "seconds": 0.5129236
+        },
+        {
+          "cpu": 8,
+          "calls": 9789568,
+          "seconds": 0.5129321
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "implementation": "cSharp",
+      "size": 1024,
+      "cores": 4,
+      "callsPerSecond": 26268703.773663882,
+      "gigabytesPerSecond": 26.899152664231817,
+      "nanosecondsPerCallPerCore": 152.2724544943198,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 3356672,
+          "seconds": 0.5110983
+        },
+        {
+          "cpu": 4,
+          "calls": 3357312,
+          "seconds": 0.5110945
+        },
+        {
+          "cpu": 6,
+          "calls": 3355648,
+          "seconds": 0.5110884
+        },
+        {
+          "cpu": 8,
+          "calls": 3356160,
+          "seconds": 0.5110971
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "implementation": "asm",
+      "size": 65536,
+      "cores": 1,
+      "callsPerSecond": 306752.72589763586,
+      "gigabytesPerSecond": 20.103346644427464,
+      "nanosecondsPerCallPerCore": 3259.9547308789115,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 156398,
+          "seconds": 0.5098504
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "implementation": "cSharp",
+      "size": 65536,
+      "cores": 1,
+      "callsPerSecond": 87864.51697633186,
+      "gigabytesPerSecond": 5.758288984560885,
+      "nanosecondsPerCallPerCore": 11381.158565628613,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 44089,
+          "seconds": 0.5017839
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "implementation": "cSharp",
+      "size": 65536,
+      "cores": 4,
+      "callsPerSecond": 351797.2064861001,
+      "gigabytesPerSecond": 23.055381724273055,
+      "nanosecondsPerCallPerCore": 11370.186932277544,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 45000,
+          "seconds": 0.5115419
+        },
+        {
+          "cpu": 4,
+          "calls": 45001,
+          "seconds": 0.5115372
+        },
+        {
+          "cpu": 6,
+          "calls": 44984,
+          "seconds": 0.5115366
+        },
+        {
+          "cpu": 8,
+          "calls": 44973,
+          "seconds": 0.5115404
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "implementation": "asm",
+      "size": 65536,
+      "cores": 4,
+      "callsPerSecond": 1226778.208933354,
+      "gigabytesPerSecond": 80.39813670065628,
+      "nanosecondsPerCallPerCore": 3260.5730774088966,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 157089,
+          "seconds": 0.5120667
+        },
+        {
+          "cpu": 4,
+          "calls": 157137,
+          "seconds": 0.5120633
+        },
+        {
+          "cpu": 6,
+          "calls": 156952,
+          "seconds": 0.5120598
+        },
+        {
+          "cpu": 8,
+          "calls": 157012,
+          "seconds": 0.5120696
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "implementation": "cSharp",
+      "size": 1048576,
+      "cores": 1,
+      "callsPerSecond": 5474.619118108111,
+      "gigabytesPerSecond": 5.740554216389331,
+      "nanosecondsPerCallPerCore": 182661.1090974991,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 2759,
+          "seconds": 0.503962
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "implementation": "asm",
+      "size": 1048576,
+      "cores": 1,
+      "callsPerSecond": 19133.390846690054,
+      "gigabytesPerSecond": 20.06281444045887,
+      "nanosecondsPerCallPerCore": 52264.65125877012,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9692,
+          "seconds": 0.506549
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "implementation": "asm",
+      "size": 1048576,
+      "cores": 4,
+      "callsPerSecond": 75690.0461891033,
+      "gigabytesPerSecond": 79.36676587278518,
+      "nanosecondsPerCallPerCore": 52847.10739912138,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9745,
+          "seconds": 0.5152173
+        },
+        {
+          "cpu": 4,
+          "calls": 9755,
+          "seconds": 0.5152061
+        },
+        {
+          "cpu": 6,
+          "calls": 9751,
+          "seconds": 0.5152081
+        },
+        {
+          "cpu": 8,
+          "calls": 9745,
+          "seconds": 0.5151943
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "implementation": "cSharp",
+      "size": 1048576,
+      "cores": 4,
+      "callsPerSecond": 21874.314512411955,
+      "gigabytesPerSecond": 22.936881214166878,
+      "nanosecondsPerCallPerCore": 182862.87315336507,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 2800,
+          "seconds": 0.5120008
+        },
+        {
+          "cpu": 4,
+          "calls": 2801,
+          "seconds": 0.5120611
+        },
+        {
+          "cpu": 6,
+          "calls": 2801,
+          "seconds": 0.5120869
+        },
+        {
+          "cpu": 8,
+          "calls": 2798,
+          "seconds": 0.5119153
+        }
+      ]
+    },
+    {
+      "round": 7,
+      "implementation": "asm",
+      "size": 64,
+      "cores": 1,
+      "callsPerSecond": 116411854.16574512,
+      "gigabytesPerSecond": 7.450358666607688,
+      "nanosecondsPerCallPerCore": 8.590190467855772,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 58687488,
+          "seconds": 0.5041367
+        }
+      ]
+    },
+    {
+      "round": 7,
+      "implementation": "cSharp",
+      "size": 64,
+      "cores": 1,
+      "callsPerSecond": 153344720.5940443,
+      "gigabytesPerSecond": 9.814062118018835,
+      "nanosecondsPerCallPerCore": 6.5212548311157095,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 78921728,
+          "seconds": 0.5146687
+        }
+      ]
+    },
+    {
+      "round": 7,
+      "implementation": "cSharp",
+      "size": 64,
+      "cores": 4,
+      "callsPerSecond": 570521970.2605541,
+      "gigabytesPerSecond": 36.51340609667546,
+      "nanosecondsPerCallPerCore": 7.011123512339451,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 72645632,
+          "seconds": 0.5144149
+        },
+        {
+          "cpu": 4,
+          "calls": 73949184,
+          "seconds": 0.514413
+        },
+        {
+          "cpu": 6,
+          "calls": 73418752,
+          "seconds": 0.5144096
+        },
+        {
+          "cpu": 8,
+          "calls": 73470976,
+          "seconds": 0.5144189
+        }
+      ]
+    },
+    {
+      "round": 7,
+      "implementation": "asm",
+      "size": 64,
+      "cores": 4,
+      "callsPerSecond": 468082628.39927274,
+      "gigabytesPerSecond": 29.957288217553455,
+      "nanosecondsPerCallPerCore": 8.545499784256071,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 59199488,
+          "seconds": 0.5045053
+        },
+        {
+          "cpu": 4,
+          "calls": 59110400,
+          "seconds": 0.5045089
+        },
+        {
+          "cpu": 6,
+          "calls": 59171840,
+          "seconds": 0.5045036
+        },
+        {
+          "cpu": 8,
+          "calls": 58670080,
+          "seconds": 0.5045175
+        }
+      ]
+    },
+    {
+      "round": 7,
+      "implementation": "cSharp",
+      "size": 256,
+      "cores": 1,
+      "callsPerSecond": 36175818.81280475,
+      "gigabytesPerSecond": 9.261009616078017,
+      "nanosecondsPerCallPerCore": 27.642774450375153,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 18561024,
+          "seconds": 0.5130782
+        }
+      ]
+    },
+    {
+      "round": 7,
+      "implementation": "asm",
+      "size": 256,
+      "cores": 1,
+      "callsPerSecond": 74984679.99054569,
+      "gigabytesPerSecond": 19.196078077579696,
+      "nanosecondsPerCallPerCore": 13.33605744701562,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 38133504,
+          "seconds": 0.5085506
+        }
+      ]
+    },
+    {
+      "round": 7,
+      "implementation": "asm",
+      "size": 256,
+      "cores": 4,
+      "callsPerSecond": 300193069.5536011,
+      "gigabytesPerSecond": 76.84942580572188,
+      "nanosecondsPerCallPerCore": 13.324757983081213,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 38348032,
+          "seconds": 0.5125379
+        },
+        {
+          "cpu": 4,
+          "calls": 38447104,
+          "seconds": 0.512826
+        },
+        {
+          "cpu": 6,
+          "calls": 38515200,
+          "seconds": 0.5128259
+        },
+        {
+          "cpu": 8,
+          "calls": 38615552,
+          "seconds": 0.5128345
+        }
+      ]
+    },
+    {
+      "round": 7,
+      "implementation": "cSharp",
+      "size": 256,
+      "cores": 4,
+      "callsPerSecond": 141249785.95682022,
+      "gigabytesPerSecond": 36.15994520494598,
+      "nanosecondsPerCallPerCore": 28.318626983426313,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 17947392,
+          "seconds": 0.5066564
+        },
+        {
+          "cpu": 4,
+          "calls": 17858816,
+          "seconds": 0.5066493
+        },
+        {
+          "cpu": 6,
+          "calls": 17859840,
+          "seconds": 0.5066482
+        },
+        {
+          "cpu": 8,
+          "calls": 17898496,
+          "seconds": 0.5066557
+        }
+      ]
+    },
+    {
+      "round": 7,
+      "implementation": "asm",
+      "size": 1024,
+      "cores": 1,
+      "callsPerSecond": 19074795.135202624,
+      "gigabytesPerSecond": 19.53259021844749,
+      "nanosecondsPerCallPerCore": 52.42520262534801,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9838848,
+          "seconds": 0.5158036
+        }
+      ]
+    },
+    {
+      "round": 7,
+      "implementation": "cSharp",
+      "size": 1024,
+      "cores": 1,
+      "callsPerSecond": 6582487.940109763,
+      "gigabytesPerSecond": 6.7404676506723975,
+      "nanosecondsPerCallPerCore": 151.9182426308137,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 3389248,
+          "seconds": 0.5148886
+        }
+      ]
+    },
+    {
+      "round": 7,
+      "implementation": "cSharp",
+      "size": 1024,
+      "cores": 4,
+      "callsPerSecond": 26366323.76712396,
+      "gigabytesPerSecond": 26.999115537534934,
+      "nanosecondsPerCallPerCore": 151.70867335656328,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 3306176,
+          "seconds": 0.5017625
+        },
+        {
+          "cpu": 4,
+          "calls": 3305408,
+          "seconds": 0.5017542
+        },
+        {
+          "cpu": 6,
+          "calls": 3306304,
+          "seconds": 0.5017579
+        },
+        {
+          "cpu": 8,
+          "calls": 3311680,
+          "seconds": 0.5017656
+        }
+      ]
+    },
+    {
+      "round": 7,
+      "implementation": "asm",
+      "size": 1024,
+      "cores": 4,
+      "callsPerSecond": 76408156.41872267,
+      "gigabytesPerSecond": 78.24195217277202,
+      "nanosecondsPerCallPerCore": 52.35043204130835,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9730880,
+          "seconds": 0.5093403
+        },
+        {
+          "cpu": 4,
+          "calls": 9727296,
+          "seconds": 0.5093408
+        },
+        {
+          "cpu": 6,
+          "calls": 9727616,
+          "seconds": 0.5093449
+        },
+        {
+          "cpu": 8,
+          "calls": 9732288,
+          "seconds": 0.5093523
+        }
+      ]
+    },
+    {
+      "round": 7,
+      "implementation": "cSharp",
+      "size": 65536,
+      "cores": 1,
+      "callsPerSecond": 87911.55615551859,
+      "gigabytesPerSecond": 5.761371744208066,
+      "nanosecondsPerCallPerCore": 11375.068804731034,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 43965,
+          "seconds": 0.5001049
+        }
+      ]
+    },
+    {
+      "round": 7,
+      "implementation": "asm",
+      "size": 65536,
+      "cores": 1,
+      "callsPerSecond": 305895.4719505039,
+      "gigabytesPerSecond": 20.047165649748223,
+      "nanosecondsPerCallPerCore": 3269.0905609802794,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 156690,
+          "seconds": 0.5122338
+        }
+      ]
+    },
+    {
+      "round": 7,
+      "implementation": "asm",
+      "size": 65536,
+      "cores": 4,
+      "callsPerSecond": 1213247.5457632584,
+      "gigabytesPerSecond": 79.5113911591409,
+      "nanosecondsPerCallPerCore": 3296.9364034308314,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 154921,
+          "seconds": 0.5123425
+        },
+        {
+          "cpu": 4,
+          "calls": 155509,
+          "seconds": 0.512354
+        },
+        {
+          "cpu": 6,
+          "calls": 155631,
+          "seconds": 0.5123513
+        },
+        {
+          "cpu": 8,
+          "calls": 155549,
+          "seconds": 0.5123608
+        }
+      ]
+    },
+    {
+      "round": 7,
+      "implementation": "cSharp",
+      "size": 65536,
+      "cores": 4,
+      "callsPerSecond": 349837.32496114826,
+      "gigabytesPerSecond": 22.92693892865381,
+      "nanosecondsPerCallPerCore": 11433.88573658979,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 44955,
+          "seconds": 0.5141921
+        },
+        {
+          "cpu": 4,
+          "calls": 44983,
+          "seconds": 0.5141937
+        },
+        {
+          "cpu": 6,
+          "calls": 44965,
+          "seconds": 0.5141899
+        },
+        {
+          "cpu": 8,
+          "calls": 44981,
+          "seconds": 0.5141974
+        }
+      ]
+    },
+    {
+      "round": 7,
+      "implementation": "asm",
+      "size": 1048576,
+      "cores": 1,
+      "callsPerSecond": 18812.016780192127,
+      "gigabytesPerSecond": 19.72582930730674,
+      "nanosecondsPerCallPerCore": 53157.51158870628,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9492,
+          "seconds": 0.5045711
+        }
+      ]
+    },
+    {
+      "round": 7,
+      "implementation": "cSharp",
+      "size": 1048576,
+      "cores": 1,
+      "callsPerSecond": 5469.0863372974245,
+      "gigabytesPerSecond": 5.734752675217984,
+      "nanosecondsPerCallPerCore": 182845.89752776784,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 2791,
+          "seconds": 0.5103229
+        }
+      ]
+    },
+    {
+      "round": 7,
+      "implementation": "cSharp",
+      "size": 1048576,
+      "cores": 4,
+      "callsPerSecond": 21852.726454477364,
+      "gigabytesPerSecond": 22.914244494730056,
+      "nanosecondsPerCallPerCore": 183043.52128932852,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 2789,
+          "seconds": 0.5104857
+        },
+        {
+          "cpu": 4,
+          "calls": 2790,
+          "seconds": 0.5104657
+        },
+        {
+          "cpu": 6,
+          "calls": 2789,
+          "seconds": 0.5104157
+        },
+        {
+          "cpu": 8,
+          "calls": 2787,
+          "seconds": 0.5104834
+        }
+      ]
+    },
+    {
+      "round": 7,
+      "implementation": "asm",
+      "size": 1048576,
+      "cores": 4,
+      "callsPerSecond": 75053.70762717573,
+      "gigabytesPerSecond": 78.69951652887342,
+      "nanosecondsPerCallPerCore": 53295.16857274703,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9405,
+          "seconds": 0.5021062
+        },
+        {
+          "cpu": 4,
+          "calls": 9423,
+          "seconds": 0.5020944
+        },
+        {
+          "cpu": 6,
+          "calls": 9415,
+          "seconds": 0.5021494
+        },
+        {
+          "cpu": 8,
+          "calls": 9443,
+          "seconds": 0.5021317
+        }
+      ]
+    },
+    {
+      "round": 8,
+      "implementation": "cSharp",
+      "size": 64,
+      "cores": 1,
+      "callsPerSecond": 154787669.1372025,
+      "gigabytesPerSecond": 9.90641082478096,
+      "nanosecondsPerCallPerCore": 6.460462939806971,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 78565376,
+          "seconds": 0.5075687
+        }
+      ]
+    },
+    {
+      "round": 8,
+      "implementation": "asm",
+      "size": 64,
+      "cores": 1,
+      "callsPerSecond": 116364999.16133446,
+      "gigabytesPerSecond": 7.447359946325405,
+      "nanosecondsPerCallPerCore": 8.593649355108475,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 58621952,
+          "seconds": 0.5037765
+        }
+      ]
+    },
+    {
+      "round": 8,
+      "implementation": "asm",
+      "size": 64,
+      "cores": 4,
+      "callsPerSecond": 466299737.18201697,
+      "gigabytesPerSecond": 29.843183179649085,
+      "nanosecondsPerCallPerCore": 8.578173395878684,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 59042816,
+          "seconds": 0.5022038
+        },
+        {
+          "cpu": 4,
+          "calls": 58187776,
+          "seconds": 0.5021965
+        },
+        {
+          "cpu": 6,
+          "calls": 58555392,
+          "seconds": 0.5021934
+        },
+        {
+          "cpu": 8,
+          "calls": 58389504,
+          "seconds": 0.5022042
+        }
+      ]
+    },
+    {
+      "round": 8,
+      "implementation": "cSharp",
+      "size": 64,
+      "cores": 4,
+      "callsPerSecond": 594927484.9886243,
+      "gigabytesPerSecond": 38.07535903927196,
+      "nanosecondsPerCallPerCore": 6.723508496294274,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 74462208,
+          "seconds": 0.5017003
+        },
+        {
+          "cpu": 4,
+          "calls": 74398720,
+          "seconds": 0.5016994
+        },
+        {
+          "cpu": 6,
+          "calls": 75025408,
+          "seconds": 0.5016991
+        },
+        {
+          "cpu": 8,
+          "calls": 74589184,
+          "seconds": 0.5017039
+        }
+      ]
+    },
+    {
+      "round": 8,
+      "implementation": "asm",
+      "size": 256,
+      "cores": 1,
+      "callsPerSecond": 75186186.93926567,
+      "gigabytesPerSecond": 19.24766385645201,
+      "nanosecondsPerCallPerCore": 13.300315399792595,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 38016512,
+          "seconds": 0.5056316
+        }
+      ]
+    },
+    {
+      "round": 8,
+      "implementation": "cSharp",
+      "size": 256,
+      "cores": 1,
+      "callsPerSecond": 36124592.25870828,
+      "gigabytesPerSecond": 9.24789561822932,
+      "nanosecondsPerCallPerCore": 27.681973344873878,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 18115840,
+          "seconds": 0.5014822
+        }
+      ]
+    },
+    {
+      "round": 8,
+      "implementation": "cSharp",
+      "size": 256,
+      "cores": 4,
+      "callsPerSecond": 140838000.9165268,
+      "gigabytesPerSecond": 36.05452823463086,
+      "nanosecondsPerCallPerCore": 28.40142556674571,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 18015744,
+          "seconds": 0.5117218
+        },
+        {
+          "cpu": 4,
+          "calls": 17976832,
+          "seconds": 0.5117181
+        },
+        {
+          "cpu": 6,
+          "calls": 18080000,
+          "seconds": 0.5117168
+        },
+        {
+          "cpu": 8,
+          "calls": 17997056,
+          "seconds": 0.5117236
+        }
+      ]
+    },
+    {
+      "round": 8,
+      "implementation": "asm",
+      "size": 256,
+      "cores": 4,
+      "callsPerSecond": 300217386.42944473,
+      "gigabytesPerSecond": 76.85565092593785,
+      "nanosecondsPerCallPerCore": 13.323678710193741,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 38590208,
+          "seconds": 0.5124475
+        },
+        {
+          "cpu": 4,
+          "calls": 38435840,
+          "seconds": 0.5124471
+        },
+        {
+          "cpu": 6,
+          "calls": 38484736,
+          "seconds": 0.5124432
+        },
+        {
+          "cpu": 8,
+          "calls": 38334976,
+          "seconds": 0.5124537
+        }
+      ]
+    },
+    {
+      "round": 8,
+      "implementation": "cSharp",
+      "size": 1024,
+      "cores": 1,
+      "callsPerSecond": 6602154.895933051,
+      "gigabytesPerSecond": 6.760606613435444,
+      "nanosecondsPerCallPerCore": 151.4656980580694,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 3394560,
+          "seconds": 0.5141594
+        }
+      ]
+    },
+    {
+      "round": 8,
+      "implementation": "asm",
+      "size": 1024,
+      "cores": 1,
+      "callsPerSecond": 19099238.89765406,
+      "gigabytesPerSecond": 19.557620631197757,
+      "nanosecondsPerCallPerCore": 52.35810732347188,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9782464,
+          "seconds": 0.5121913
+        }
+      ]
+    },
+    {
+      "round": 8,
+      "implementation": "asm",
+      "size": 1024,
+      "cores": 4,
+      "callsPerSecond": 76335195.89018962,
+      "gigabytesPerSecond": 78.16724059155416,
+      "nanosecondsPerCallPerCore": 52.4004681373205,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9681664,
+          "seconds": 0.5070224
+        },
+        {
+          "cpu": 4,
+          "calls": 9672896,
+          "seconds": 0.5070198
+        },
+        {
+          "cpu": 6,
+          "calls": 9678336,
+          "seconds": 0.5070181
+        },
+        {
+          "cpu": 8,
+          "calls": 9670720,
+          "seconds": 0.5070273
+        }
+      ]
+    },
+    {
+      "round": 8,
+      "implementation": "cSharp",
+      "size": 1024,
+      "cores": 4,
+      "callsPerSecond": 26362825.991590682,
+      "gigabytesPerSecond": 26.99553381538886,
+      "nanosecondsPerCallPerCore": 151.728801808878,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 3371840,
+          "seconds": 0.5113814
+        },
+        {
+          "cpu": 4,
+          "calls": 3370880,
+          "seconds": 0.5113803
+        },
+        {
+          "cpu": 6,
+          "calls": 3370880,
+          "seconds": 0.5113767
+        },
+        {
+          "cpu": 8,
+          "calls": 3367872,
+          "seconds": 0.5113892
+        }
+      ]
+    },
+    {
+      "round": 8,
+      "implementation": "asm",
+      "size": 65536,
+      "cores": 1,
+      "callsPerSecond": 306432.30047211563,
+      "gigabytesPerSecond": 20.08234724374057,
+      "nanosecondsPerCallPerCore": 3263.363550315404,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 157417,
+          "seconds": 0.5137089
+        }
+      ]
+    },
+    {
+      "round": 8,
+      "implementation": "cSharp",
+      "size": 65536,
+      "cores": 1,
+      "callsPerSecond": 87828.25199943307,
+      "gigabytesPerSecond": 5.7559123230348455,
+      "nanosecondsPerCallPerCore": 11385.85793562708,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 45050,
+          "seconds": 0.5129329
+        }
+      ]
+    },
+    {
+      "round": 8,
+      "implementation": "cSharp",
+      "size": 65536,
+      "cores": 4,
+      "callsPerSecond": 351600.38761962997,
+      "gigabytesPerSecond": 23.04248300304007,
+      "nanosecondsPerCallPerCore": 11376.551735566627,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 45140,
+          "seconds": 0.5133421
+        },
+        {
+          "cpu": 4,
+          "calls": 45115,
+          "seconds": 0.5133416
+        },
+        {
+          "cpu": 6,
+          "calls": 45123,
+          "seconds": 0.5133363
+        },
+        {
+          "cpu": 8,
+          "calls": 45113,
+          "seconds": 0.5133452
+        }
+      ]
+    },
+    {
+      "round": 8,
+      "implementation": "asm",
+      "size": 65536,
+      "cores": 4,
+      "callsPerSecond": 1226331.4357491983,
+      "gigabytesPerSecond": 80.36885697325945,
+      "nanosecondsPerCallPerCore": 3261.760959064296,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 157036,
+          "seconds": 0.5123652
+        },
+        {
+          "cpu": 4,
+          "calls": 157058,
+          "seconds": 0.5123628
+        },
+        {
+          "cpu": 6,
+          "calls": 157096,
+          "seconds": 0.512361
+        },
+        {
+          "cpu": 8,
+          "calls": 157139,
+          "seconds": 0.51237
+        }
+      ]
+    },
+    {
+      "round": 8,
+      "implementation": "cSharp",
+      "size": 1048576,
+      "cores": 1,
+      "callsPerSecond": 5473.548288726992,
+      "gigabytesPerSecond": 5.739431370400194,
+      "nanosecondsPerCallPerCore": 182696.8443960827,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 2757,
+          "seconds": 0.5036952
+        }
+      ]
+    },
+    {
+      "round": 8,
+      "implementation": "asm",
+      "size": 1048576,
+      "cores": 1,
+      "callsPerSecond": 18952.498420625132,
+      "gigabytesPerSecond": 19.87313498390542,
+      "nanosecondsPerCallPerCore": 52763.49206349206,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9576,
+          "seconds": 0.5052632
+        }
+      ]
+    },
+    {
+      "round": 8,
+      "implementation": "asm",
+      "size": 1048576,
+      "cores": 4,
+      "callsPerSecond": 75693.35341155928,
+      "gigabytesPerSecond": 79.37023374687918,
+      "nanosecondsPerCallPerCore": 52844.798383435766,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9545,
+          "seconds": 0.5059289
+        },
+        {
+          "cpu": 4,
+          "calls": 9581,
+          "seconds": 0.5059157
+        },
+        {
+          "cpu": 6,
+          "calls": 9581,
+          "seconds": 0.5059106
+        },
+        {
+          "cpu": 8,
+          "calls": 9587,
+          "seconds": 0.5058836
+        }
+      ]
+    },
+    {
+      "round": 8,
+      "implementation": "cSharp",
+      "size": 1048576,
+      "cores": 4,
+      "callsPerSecond": 21832.050811797548,
+      "gigabytesPerSecond": 22.892564512031427,
+      "nanosecondsPerCallPerCore": 183216.8692937674,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 2761,
+          "seconds": 0.5060225
+        },
+        {
+          "cpu": 4,
+          "calls": 2763,
+          "seconds": 0.5060911
+        },
+        {
+          "cpu": 6,
+          "calls": 2762,
+          "seconds": 0.5061831
+        },
+        {
+          "cpu": 8,
+          "calls": 2763,
+          "seconds": 0.5060665
+        }
+      ]
+    },
+    {
+      "round": 9,
+      "implementation": "asm",
+      "size": 64,
+      "cores": 1,
+      "callsPerSecond": 115276590.3962376,
+      "gigabytesPerSecond": 7.377701785359206,
+      "nanosecondsPerCallPerCore": 8.67478814703595,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 59248640,
+          "seconds": 0.5139694
+        }
+      ]
+    },
+    {
+      "round": 9,
+      "implementation": "cSharp",
+      "size": 64,
+      "cores": 1,
+      "callsPerSecond": 153443673.2429635,
+      "gigabytesPerSecond": 9.820395087549663,
+      "nanosecondsPerCallPerCore": 6.517049408851122,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 77062144,
+          "seconds": 0.5022178
+        }
+      ]
+    },
+    {
+      "round": 9,
+      "implementation": "cSharp",
+      "size": 64,
+      "cores": 4,
+      "callsPerSecond": 570241301.3437116,
+      "gigabytesPerSecond": 36.495443285997546,
+      "nanosecondsPerCallPerCore": 7.014574339975788,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 71321600,
+          "seconds": 0.5006617
+        },
+        {
+          "cpu": 4,
+          "calls": 70753280,
+          "seconds": 0.5006553
+        },
+        {
+          "cpu": 6,
+          "calls": 71831552,
+          "seconds": 0.5006564
+        },
+        {
+          "cpu": 8,
+          "calls": 71590912,
+          "seconds": 0.5006689
+        }
+      ]
+    },
+    {
+      "round": 9,
+      "implementation": "asm",
+      "size": 64,
+      "cores": 4,
+      "callsPerSecond": 465673660.2755852,
+      "gigabytesPerSecond": 29.80311425763745,
+      "nanosecondsPerCallPerCore": 8.589706357093085,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 59625472,
+          "seconds": 0.5141265
+        },
+        {
+          "cpu": 4,
+          "calls": 60034048,
+          "seconds": 0.5141242
+        },
+        {
+          "cpu": 6,
+          "calls": 60011520,
+          "seconds": 0.5141299
+        },
+        {
+          "cpu": 8,
+          "calls": 59745280,
+          "seconds": 0.5141353
+        }
+      ]
+    },
+    {
+      "round": 9,
+      "implementation": "cSharp",
+      "size": 256,
+      "cores": 1,
+      "callsPerSecond": 36185026.64095714,
+      "gigabytesPerSecond": 9.263366820085027,
+      "nanosecondsPerCallPerCore": 27.635740327689,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 18550272,
+          "seconds": 0.5126505
+        }
+      ]
+    },
+    {
+      "round": 9,
+      "implementation": "asm",
+      "size": 256,
+      "cores": 1,
+      "callsPerSecond": 74908049.41581003,
+      "gigabytesPerSecond": 19.176460650447368,
+      "nanosecondsPerCallPerCore": 13.349700169724894,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 37557248,
+          "seconds": 0.501378
+        }
+      ]
+    },
+    {
+      "round": 9,
+      "implementation": "asm",
+      "size": 256,
+      "cores": 4,
+      "callsPerSecond": 300625704.34001887,
+      "gigabytesPerSecond": 76.96018031104484,
+      "nanosecondsPerCallPerCore": 13.305582131712367,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 38526720,
+          "seconds": 0.5138867
+        },
+        {
+          "cpu": 4,
+          "calls": 38620672,
+          "seconds": 0.5138858
+        },
+        {
+          "cpu": 6,
+          "calls": 38632448,
+          "seconds": 0.5138818
+        },
+        {
+          "cpu": 8,
+          "calls": 38707712,
+          "seconds": 0.5138925
+        }
+      ]
+    },
+    {
+      "round": 9,
+      "implementation": "cSharp",
+      "size": 256,
+      "cores": 4,
+      "callsPerSecond": 141332032.3063868,
+      "gigabytesPerSecond": 36.18100027043502,
+      "nanosecondsPerCallPerCore": 28.302147324455053,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 17767936,
+          "seconds": 0.505569
+        },
+        {
+          "cpu": 4,
+          "calls": 17791232,
+          "seconds": 0.5055837
+        },
+        {
+          "cpu": 6,
+          "calls": 17917952,
+          "seconds": 0.5055764
+        },
+        {
+          "cpu": 8,
+          "calls": 17976576,
+          "seconds": 0.505564
+        }
+      ]
+    },
+    {
+      "round": 9,
+      "implementation": "asm",
+      "size": 1024,
+      "cores": 1,
+      "callsPerSecond": 18924517.153334055,
+      "gigabytesPerSecond": 19.378705565014073,
+      "nanosecondsPerCallPerCore": 52.841506702527596,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9720512,
+          "seconds": 0.5136465
+        }
+      ]
+    },
+    {
+      "round": 9,
+      "implementation": "cSharp",
+      "size": 1024,
+      "cores": 1,
+      "callsPerSecond": 6536347.515997287,
+      "gigabytesPerSecond": 6.693219856381222,
+      "nanosecondsPerCallPerCore": 152.99064157047417,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 3343296,
+          "seconds": 0.511493
+        }
+      ]
+    },
+    {
+      "round": 9,
+      "implementation": "cSharp",
+      "size": 1024,
+      "cores": 4,
+      "callsPerSecond": 26122100.485243645,
+      "gigabytesPerSecond": 26.749030896889494,
+      "nanosecondsPerCallPerCore": 153.1270428371408,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 3279744,
+          "seconds": 0.5021828
+        },
+        {
+          "cpu": 4,
+          "calls": 3279872,
+          "seconds": 0.5021833
+        },
+        {
+          "cpu": 6,
+          "calls": 3279744,
+          "seconds": 0.5021778
+        },
+        {
+          "cpu": 8,
+          "calls": 3278720,
+          "seconds": 0.5021889
+        }
+      ]
+    },
+    {
+      "round": 9,
+      "implementation": "asm",
+      "size": 1024,
+      "cores": 4,
+      "callsPerSecond": 74702331.550312,
+      "gigabytesPerSecond": 76.49518750751949,
+      "nanosecondsPerCallPerCore": 53.545852143932095,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9397568,
+          "seconds": 0.5032465
+        },
+        {
+          "cpu": 4,
+          "calls": 9393792,
+          "seconds": 0.5032459
+        },
+        {
+          "cpu": 6,
+          "calls": 9401152,
+          "seconds": 0.5032424
+        },
+        {
+          "cpu": 8,
+          "calls": 9401216,
+          "seconds": 0.5032534
+        }
+      ]
+    },
+    {
+      "round": 9,
+      "implementation": "cSharp",
+      "size": 65536,
+      "cores": 1,
+      "callsPerSecond": 87827.47988710036,
+      "gigabytesPerSecond": 5.7558617218810095,
+      "nanosecondsPerCallPerCore": 11385.958031421038,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 45129,
+          "seconds": 0.5138369
+        }
+      ]
+    },
+    {
+      "round": 9,
+      "implementation": "asm",
+      "size": 65536,
+      "cores": 1,
+      "callsPerSecond": 305705.93791446235,
+      "gigabytesPerSecond": 20.034744347162206,
+      "nanosecondsPerCallPerCore": 3271.117358145015,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 156163,
+          "seconds": 0.5108275
+        }
+      ]
+    },
+    {
+      "round": 9,
+      "implementation": "asm",
+      "size": 65536,
+      "cores": 4,
+      "callsPerSecond": 1224202.6883194917,
+      "gigabytesPerSecond": 80.2293473817062,
+      "nanosecondsPerCallPerCore": 3267.4327855716015,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 156091,
+          "seconds": 0.509911
+        },
+        {
+          "cpu": 4,
+          "calls": 156052,
+          "seconds": 0.5099074
+        },
+        {
+          "cpu": 6,
+          "calls": 156007,
+          "seconds": 0.5099043
+        },
+        {
+          "cpu": 8,
+          "calls": 156082,
+          "seconds": 0.5099134
+        }
+      ]
+    },
+    {
+      "round": 9,
+      "implementation": "cSharp",
+      "size": 65536,
+      "cores": 4,
+      "callsPerSecond": 349383.31762783835,
+      "gigabytesPerSecond": 22.897185104058014,
+      "nanosecondsPerCallPerCore": 11448.743538066643,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 45130,
+          "seconds": 0.5132993
+        },
+        {
+          "cpu": 4,
+          "calls": 45129,
+          "seconds": 0.513316
+        },
+        {
+          "cpu": 6,
+          "calls": 45138,
+          "seconds": 0.5136359
+        },
+        {
+          "cpu": 8,
+          "calls": 44004,
+          "seconds": 0.5136698
+        }
+      ]
+    },
+    {
+      "round": 9,
+      "implementation": "asm",
+      "size": 1048576,
+      "cores": 1,
+      "callsPerSecond": 19147.480562346078,
+      "gigabytesPerSecond": 20.077588578142603,
+      "nanosecondsPerCallPerCore": 52226.192200268946,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9667,
+          "seconds": 0.5048706
+        }
+      ]
+    },
+    {
+      "round": 9,
+      "implementation": "cSharp",
+      "size": 1048576,
+      "cores": 1,
+      "callsPerSecond": 5481.633858870652,
+      "gigabytesPerSecond": 5.747909705199153,
+      "nanosecondsPerCallPerCore": 182427.36121124733,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 2774,
+          "seconds": 0.5060535
+        }
+      ]
+    },
+    {
+      "round": 9,
+      "implementation": "cSharp",
+      "size": 1048576,
+      "cores": 4,
+      "callsPerSecond": 21928.295523347693,
+      "gigabytesPerSecond": 22.99348440668983,
+      "nanosecondsPerCallPerCore": 182412.7185690782,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 2770,
+          "seconds": 0.5050583
+        },
+        {
+          "cpu": 4,
+          "calls": 2769,
+          "seconds": 0.5048788
+        },
+        {
+          "cpu": 6,
+          "calls": 2768,
+          "seconds": 0.504885
+        },
+        {
+          "cpu": 8,
+          "calls": 2766,
+          "seconds": 0.505034
+        }
+      ]
+    },
+    {
+      "round": 9,
+      "implementation": "asm",
+      "size": 1048576,
+      "cores": 4,
+      "callsPerSecond": 76219.80263738603,
+      "gigabytesPerSecond": 79.9222557702997,
+      "nanosecondsPerCallPerCore": 52479.80002034259,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9634,
+          "seconds": 0.5056342
+        },
+        {
+          "cpu": 4,
+          "calls": 9645,
+          "seconds": 0.5056338
+        },
+        {
+          "cpu": 6,
+          "calls": 9631,
+          "seconds": 0.5055984
+        },
+        {
+          "cpu": 8,
+          "calls": 9628,
+          "seconds": 0.5056001
+        }
+      ]
+    },
+    {
+      "round": 10,
+      "implementation": "cSharp",
+      "size": 64,
+      "cores": 1,
+      "callsPerSecond": 153333781.84858766,
+      "gigabytesPerSecond": 9.813362038309611,
+      "nanosecondsPerCallPerCore": 6.521720053754814,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 78174208,
+          "seconds": 0.5098303
+        }
+      ]
+    },
+    {
+      "round": 10,
+      "implementation": "asm",
+      "size": 64,
+      "cores": 1,
+      "callsPerSecond": 116911727.35616183,
+      "gigabytesPerSecond": 7.482350550794357,
+      "nanosecondsPerCallPerCore": 8.553461852065391,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 60164096,
+          "seconds": 0.5146113
+        }
+      ]
+    },
+    {
+      "round": 10,
+      "implementation": "asm",
+      "size": 64,
+      "cores": 4,
+      "callsPerSecond": 466639732.5226112,
+      "gigabytesPerSecond": 29.864942881447117,
+      "nanosecondsPerCallPerCore": 8.571923308751208,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 59923456,
+          "seconds": 0.513386
+        },
+        {
+          "cpu": 4,
+          "calls": 59925504,
+          "seconds": 0.5133815
+        },
+        {
+          "cpu": 6,
+          "calls": 59992064,
+          "seconds": 0.5133803
+        },
+        {
+          "cpu": 8,
+          "calls": 59724800,
+          "seconds": 0.5133921
+        }
+      ]
+    },
+    {
+      "round": 10,
+      "implementation": "cSharp",
+      "size": 64,
+      "cores": 4,
+      "callsPerSecond": 583406346.1976709,
+      "gigabytesPerSecond": 37.33800615665094,
+      "nanosecondsPerCallPerCore": 6.856284690884579,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 74806272,
+          "seconds": 0.5144862
+        },
+        {
+          "cpu": 4,
+          "calls": 74862592,
+          "seconds": 0.51448
+        },
+        {
+          "cpu": 6,
+          "calls": 75403264,
+          "seconds": 0.5144759
+        },
+        {
+          "cpu": 8,
+          "calls": 75080704,
+          "seconds": 0.5144912
+        }
+      ]
+    },
+    {
+      "round": 10,
+      "implementation": "asm",
+      "size": 256,
+      "cores": 1,
+      "callsPerSecond": 74836984.67345291,
+      "gigabytesPerSecond": 19.158268076403946,
+      "nanosecondsPerCallPerCore": 13.362376963254803,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 38401536,
+          "seconds": 0.5131358
+        }
+      ]
+    },
+    {
+      "round": 10,
+      "implementation": "cSharp",
+      "size": 256,
+      "cores": 1,
+      "callsPerSecond": 36255803.83443603,
+      "gigabytesPerSecond": 9.281485781615624,
+      "nanosecondsPerCallPerCore": 27.581790892474782,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 18172928,
+          "seconds": 0.5012419
+        }
+      ]
+    },
+    {
+      "round": 10,
+      "implementation": "cSharp",
+      "size": 256,
+      "cores": 4,
+      "callsPerSecond": 141937459.74017525,
+      "gigabytesPerSecond": 36.33598969348486,
+      "nanosecondsPerCallPerCore": 28.181425871100075,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 17769728,
+          "seconds": 0.5011607
+        },
+        {
+          "cpu": 4,
+          "calls": 17776640,
+          "seconds": 0.5009613
+        },
+        {
+          "cpu": 6,
+          "calls": 17843712,
+          "seconds": 0.5008598
+        },
+        {
+          "cpu": 8,
+          "calls": 17741312,
+          "seconds": 0.5016049
+        }
+      ]
+    },
+    {
+      "round": 10,
+      "implementation": "asm",
+      "size": 256,
+      "cores": 4,
+      "callsPerSecond": 300676792.0896075,
+      "gigabytesPerSecond": 76.97325877493951,
+      "nanosecondsPerCallPerCore": 13.303321391056755,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 38510336,
+          "seconds": 0.5125887
+        },
+        {
+          "cpu": 4,
+          "calls": 38419200,
+          "seconds": 0.5125861
+        },
+        {
+          "cpu": 6,
+          "calls": 38562048,
+          "seconds": 0.5125833
+        },
+        {
+          "cpu": 8,
+          "calls": 38631680,
+          "seconds": 0.5125932
+        }
+      ]
+    },
+    {
+      "round": 10,
+      "implementation": "cSharp",
+      "size": 1024,
+      "cores": 1,
+      "callsPerSecond": 6584301.108420315,
+      "gigabytesPerSecond": 6.742324335022403,
+      "nanosecondsPerCallPerCore": 151.876407766521,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 3310208,
+          "seconds": 0.5027425
+        }
+      ]
+    },
+    {
+      "round": 10,
+      "implementation": "asm",
+      "size": 1024,
+      "cores": 1,
+      "callsPerSecond": 19093976.27843671,
+      "gigabytesPerSecond": 19.55223170911919,
+      "nanosecondsPerCallPerCore": 52.37253809356222,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9820032,
+          "seconds": 0.5143
+        }
+      ]
+    },
+    {
+      "round": 10,
+      "implementation": "asm",
+      "size": 1024,
+      "cores": 4,
+      "callsPerSecond": 76394124.19851655,
+      "gigabytesPerSecond": 78.22758317928094,
+      "nanosecondsPerCallPerCore": 52.36004786972443,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9776256,
+          "seconds": 0.5117012
+        },
+        {
+          "cpu": 4,
+          "calls": 9769088,
+          "seconds": 0.5117001
+        },
+        {
+          "cpu": 6,
+          "calls": 9773824,
+          "seconds": 0.5116956
+        },
+        {
+          "cpu": 8,
+          "calls": 9771776,
+          "seconds": 0.5117068
+        }
+      ]
+    },
+    {
+      "round": 10,
+      "implementation": "cSharp",
+      "size": 1024,
+      "cores": 4,
+      "callsPerSecond": 26355828.9177211,
+      "gigabytesPerSecond": 26.98836881174641,
+      "nanosecondsPerCallPerCore": 151.76908351042167,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 3377344,
+          "seconds": 0.5129215
+        },
+        {
+          "cpu": 4,
+          "calls": 3381760,
+          "seconds": 0.5129181
+        },
+        {
+          "cpu": 6,
+          "calls": 3381120,
+          "seconds": 0.5129157
+        },
+        {
+          "cpu": 8,
+          "calls": 3378240,
+          "seconds": 0.5129296
+        }
+      ]
+    },
+    {
+      "round": 10,
+      "implementation": "asm",
+      "size": 65536,
+      "cores": 1,
+      "callsPerSecond": 306138.1761348594,
+      "gigabytesPerSecond": 20.063071511174144,
+      "nanosecondsPerCallPerCore": 3266.4988490670366,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 155526,
+          "seconds": 0.5080255
+        }
+      ]
+    },
+    {
+      "round": 10,
+      "implementation": "cSharp",
+      "size": 65536,
+      "cores": 1,
+      "callsPerSecond": 87977.91329857157,
+      "gigabytesPerSecond": 5.765720525935186,
+      "nanosecondsPerCallPerCore": 11366.48918469218,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 45075,
+          "seconds": 0.5123445
+        }
+      ]
+    },
+    {
+      "round": 10,
+      "implementation": "cSharp",
+      "size": 65536,
+      "cores": 4,
+      "callsPerSecond": 350969.5228584242,
+      "gigabytesPerSecond": 23.00113865004969,
+      "nanosecondsPerCallPerCore": 11397.000991489336,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 44932,
+          "seconds": 0.512669
+        },
+        {
+          "cpu": 4,
+          "calls": 45000,
+          "seconds": 0.5126579
+        },
+        {
+          "cpu": 6,
+          "calls": 44995,
+          "seconds": 0.5126548
+        },
+        {
+          "cpu": 8,
+          "calls": 45002,
+          "seconds": 0.5126693
+        }
+      ]
+    },
+    {
+      "round": 10,
+      "implementation": "asm",
+      "size": 65536,
+      "cores": 4,
+      "callsPerSecond": 1216768.3466792046,
+      "gigabytesPerSecond": 79.74213036796836,
+      "nanosecondsPerCallPerCore": 3287.39649656138,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 154770,
+          "seconds": 0.5087589
+        },
+        {
+          "cpu": 4,
+          "calls": 154620,
+          "seconds": 0.5087571
+        },
+        {
+          "cpu": 6,
+          "calls": 154834,
+          "seconds": 0.5087544
+        },
+        {
+          "cpu": 8,
+          "calls": 154818,
+          "seconds": 0.5087661
+        }
+      ]
+    },
+    {
+      "round": 10,
+      "implementation": "cSharp",
+      "size": 1048576,
+      "cores": 1,
+      "callsPerSecond": 5422.697717562203,
+      "gigabytesPerSecond": 5.686110681890505,
+      "nanosecondsPerCallPerCore": 184410.0578871201,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 2764,
+          "seconds": 0.5097094
+        }
+      ]
+    },
+    {
+      "round": 10,
+      "implementation": "asm",
+      "size": 1048576,
+      "cores": 1,
+      "callsPerSecond": 18449.230778943846,
+      "gigabytesPerSecond": 19.345420613261822,
+      "nanosecondsPerCallPerCore": 54202.80183937547,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9351,
+          "seconds": 0.5068504
+        }
+      ]
+    },
+    {
+      "round": 10,
+      "implementation": "asm",
+      "size": 1048576,
+      "cores": 4,
+      "callsPerSecond": 74660.97615179556,
+      "gigabytesPerSecond": 78.28770772934519,
+      "nanosecondsPerCallPerCore": 53575.511681865435,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9401,
+          "seconds": 0.5050331
+        },
+        {
+          "cpu": 4,
+          "calls": 9362,
+          "seconds": 0.5021407
+        },
+        {
+          "cpu": 6,
+          "calls": 9475,
+          "seconds": 0.5071728
+        },
+        {
+          "cpu": 8,
+          "calls": 9495,
+          "seconds": 0.5072066
+        }
+      ]
+    },
+    {
+      "round": 10,
+      "implementation": "cSharp",
+      "size": 1048576,
+      "cores": 4,
+      "callsPerSecond": 21848.213176090583,
+      "gigabytesPerSecond": 22.909511979332358,
+      "nanosecondsPerCallPerCore": 183081.3333685964,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 2744,
+          "seconds": 0.5021185
+        },
+        {
+          "cpu": 4,
+          "calls": 2743,
+          "seconds": 0.5020079
+        },
+        {
+          "cpu": 6,
+          "calls": 2742,
+          "seconds": 0.5020867
+        },
+        {
+          "cpu": 8,
+          "calls": 2740,
+          "seconds": 0.502006
+        }
+      ]
+    },
+    {
+      "round": 11,
+      "implementation": "asm",
+      "size": 64,
+      "cores": 1,
+      "callsPerSecond": 115289042.92321692,
+      "gigabytesPerSecond": 7.378498747085883,
+      "nanosecondsPerCallPerCore": 8.673851171320807,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 59185152,
+          "seconds": 0.5133632
+        }
+      ]
+    },
+    {
+      "round": 11,
+      "implementation": "cSharp",
+      "size": 64,
+      "cores": 1,
+      "callsPerSecond": 152691692.3437523,
+      "gigabytesPerSecond": 9.772268310000147,
+      "nanosecondsPerCallPerCore": 6.549144780900827,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 78173184,
+          "seconds": 0.5119675
+        }
+      ]
+    },
+    {
+      "round": 11,
+      "implementation": "cSharp",
+      "size": 64,
+      "cores": 4,
+      "callsPerSecond": 604107245.9986727,
+      "gigabytesPerSecond": 38.662863743915054,
+      "nanosecondsPerCallPerCore": 6.621340873651412,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 77203456,
+          "seconds": 0.512345
+        },
+        {
+          "cpu": 4,
+          "calls": 77213696,
+          "seconds": 0.5123458
+        },
+        {
+          "cpu": 6,
+          "calls": 77424640,
+          "seconds": 0.5123415
+        },
+        {
+          "cpu": 8,
+          "calls": 77670400,
+          "seconds": 0.5123534
+        }
+      ]
+    },
+    {
+      "round": 11,
+      "implementation": "asm",
+      "size": 64,
+      "cores": 4,
+      "callsPerSecond": 462519630.8164372,
+      "gigabytesPerSecond": 29.60125637225198,
+      "nanosecondsPerCallPerCore": 8.648281572263693,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 57886720,
+          "seconds": 0.5001799
+        },
+        {
+          "cpu": 4,
+          "calls": 57652224,
+          "seconds": 0.5001769
+        },
+        {
+          "cpu": 6,
+          "calls": 58016768,
+          "seconds": 0.5001791
+        },
+        {
+          "cpu": 8,
+          "calls": 57787392,
+          "seconds": 0.5001844
+        }
+      ]
+    },
+    {
+      "round": 11,
+      "implementation": "cSharp",
+      "size": 256,
+      "cores": 1,
+      "callsPerSecond": 36115628.753654875,
+      "gigabytesPerSecond": 9.245600960935647,
+      "nanosecondsPerCallPerCore": 27.688843708661746,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 18578432,
+          "seconds": 0.5144153
+        }
+      ]
+    },
+    {
+      "round": 11,
+      "implementation": "asm",
+      "size": 256,
+      "cores": 1,
+      "callsPerSecond": 75227892.3904885,
+      "gigabytesPerSecond": 19.258340451965058,
+      "nanosecondsPerCallPerCore": 13.292941862697136,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 37675776,
+          "seconds": 0.5008219
+        }
+      ]
+    },
+    {
+      "round": 11,
+      "implementation": "asm",
+      "size": 256,
+      "cores": 4,
+      "callsPerSecond": 300350331.0220291,
+      "gigabytesPerSecond": 76.88968474163946,
+      "nanosecondsPerCallPerCore": 13.317781226971983,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 38396928,
+          "seconds": 0.5117406
+        },
+        {
+          "cpu": 4,
+          "calls": 38369280,
+          "seconds": 0.5117385
+        },
+        {
+          "cpu": 6,
+          "calls": 38504448,
+          "seconds": 0.5117343
+        },
+        {
+          "cpu": 8,
+          "calls": 38430464,
+          "seconds": 0.5117445
+        }
+      ]
+    },
+    {
+      "round": 11,
+      "implementation": "cSharp",
+      "size": 256,
+      "cores": 4,
+      "callsPerSecond": 142533828.70915592,
+      "gigabytesPerSecond": 36.48866014954392,
+      "nanosecondsPerCallPerCore": 28.063513316281615,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 18355968,
+          "seconds": 0.5141066
+        },
+        {
+          "cpu": 4,
+          "calls": 18294528,
+          "seconds": 0.5141037
+        },
+        {
+          "cpu": 6,
+          "calls": 18295296,
+          "seconds": 0.5141015
+        },
+        {
+          "cpu": 8,
+          "calls": 18331648,
+          "seconds": 0.5141106
+        }
+      ]
+    },
+    {
+      "round": 11,
+      "implementation": "asm",
+      "size": 1024,
+      "cores": 1,
+      "callsPerSecond": 19085430.87325937,
+      "gigabytesPerSecond": 19.543481214217593,
+      "nanosecondsPerCallPerCore": 52.39598763269745,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9591744,
+          "seconds": 0.5025689
+        }
+      ]
+    },
+    {
+      "round": 11,
+      "implementation": "cSharp",
+      "size": 1024,
+      "cores": 1,
+      "callsPerSecond": 6597357.2204406485,
+      "gigabytesPerSecond": 6.755693793731224,
+      "nanosecondsPerCallPerCore": 151.5758456888906,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 3319424,
+          "seconds": 0.5031445
+        }
+      ]
+    },
+    {
+      "round": 11,
+      "implementation": "cSharp",
+      "size": 1024,
+      "cores": 4,
+      "callsPerSecond": 26366021.482426226,
+      "gigabytesPerSecond": 26.998805998004457,
+      "nanosecondsPerCallPerCore": 151.71041268649972,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 3373440,
+          "seconds": 0.5122466
+        },
+        {
+          "cpu": 4,
+          "calls": 3376576,
+          "seconds": 0.5122491
+        },
+        {
+          "cpu": 6,
+          "calls": 3377152,
+          "seconds": 0.5122468
+        },
+        {
+          "cpu": 8,
+          "calls": 3378816,
+          "seconds": 0.5122559
+        }
+      ]
+    },
+    {
+      "round": 11,
+      "implementation": "asm",
+      "size": 1024,
+      "cores": 4,
+      "callsPerSecond": 76438282.36417949,
+      "gigabytesPerSecond": 78.2728011409198,
+      "nanosecondsPerCallPerCore": 52.32979962765987,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9756352,
+          "seconds": 0.5100631
+        },
+        {
+          "cpu": 4,
+          "calls": 9744704,
+          "seconds": 0.5100583
+        },
+        {
+          "cpu": 6,
+          "calls": 9745920,
+          "seconds": 0.5100561
+        },
+        {
+          "cpu": 8,
+          "calls": 9741184,
+          "seconds": 0.5100651
+        }
+      ]
+    },
+    {
+      "round": 11,
+      "implementation": "cSharp",
+      "size": 65536,
+      "cores": 1,
+      "callsPerSecond": 87911.0611735929,
+      "gigabytesPerSecond": 5.7613393050725845,
+      "nanosecondsPerCallPerCore": 11375.132851887178,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 44034,
+          "seconds": 0.5008926
+        }
+      ]
+    },
+    {
+      "round": 11,
+      "implementation": "asm",
+      "size": 65536,
+      "cores": 1,
+      "callsPerSecond": 306911.61974897695,
+      "gigabytesPerSecond": 20.113759911868954,
+      "nanosecondsPerCallPerCore": 3258.266991708884,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 157518,
+          "seconds": 0.5132357
+        }
+      ]
+    },
+    {
+      "round": 11,
+      "implementation": "asm",
+      "size": 65536,
+      "cores": 4,
+      "callsPerSecond": 1227137.4249063064,
+      "gigabytesPerSecond": 80.4216782786597,
+      "nanosecondsPerCallPerCore": 3259.6186203883444,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 153940,
+          "seconds": 0.5015791
+        },
+        {
+          "cpu": 4,
+          "calls": 153886,
+          "seconds": 0.5015751
+        },
+        {
+          "cpu": 6,
+          "calls": 153860,
+          "seconds": 0.5015723
+        },
+        {
+          "cpu": 8,
+          "calls": 153818,
+          "seconds": 0.5015818
+        }
+      ]
+    },
+    {
+      "round": 11,
+      "implementation": "cSharp",
+      "size": 65536,
+      "cores": 4,
+      "callsPerSecond": 351485.4349015808,
+      "gigabytesPerSecond": 23.03494946171,
+      "nanosecondsPerCallPerCore": 11380.272417603983,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 45233,
+          "seconds": 0.5144677
+        },
+        {
+          "cpu": 4,
+          "calls": 45222,
+          "seconds": 0.5144688
+        },
+        {
+          "cpu": 6,
+          "calls": 45180,
+          "seconds": 0.5144664
+        },
+        {
+          "cpu": 8,
+          "calls": 45193,
+          "seconds": 0.514469
+        }
+      ]
+    },
+    {
+      "round": 11,
+      "implementation": "asm",
+      "size": 1048576,
+      "cores": 1,
+      "callsPerSecond": 18644.799684402755,
+      "gigabytesPerSecond": 19.550489473872304,
+      "nanosecondsPerCallPerCore": 53634.258180662924,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9443,
+          "seconds": 0.5064683
+        }
+      ]
+    },
+    {
+      "round": 11,
+      "implementation": "cSharp",
+      "size": 1048576,
+      "cores": 1,
+      "callsPerSecond": 5436.005542593886,
+      "gigabytesPerSecond": 5.700064947830927,
+      "nanosecondsPerCallPerCore": 183958.60566448802,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 2754,
+          "seconds": 0.506622
+        }
+      ]
+    },
+    {
+      "round": 11,
+      "implementation": "cSharp",
+      "size": 1048576,
+      "cores": 4,
+      "callsPerSecond": 21720.05019195993,
+      "gigabytesPerSecond": 22.775123350084577,
+      "nanosecondsPerCallPerCore": 184161.63704265622,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 2765,
+          "seconds": 0.50937
+        },
+        {
+          "cpu": 4,
+          "calls": 2765,
+          "seconds": 0.5094607
+        },
+        {
+          "cpu": 6,
+          "calls": 2767,
+          "seconds": 0.509366
+        },
+        {
+          "cpu": 8,
+          "calls": 2767,
+          "seconds": 0.5093677
+        }
+      ]
+    },
+    {
+      "round": 11,
+      "implementation": "asm",
+      "size": 1048576,
+      "cores": 4,
+      "callsPerSecond": 74270.56586211611,
+      "gigabytesPerSecond": 77.87833286943426,
+      "nanosecondsPerCallPerCore": 53857.13645195637,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9329,
+          "seconds": 0.5028338
+        },
+        {
+          "cpu": 4,
+          "calls": 9369,
+          "seconds": 0.5028284
+        },
+        {
+          "cpu": 6,
+          "calls": 9302,
+          "seconds": 0.5028092
+        },
+        {
+          "cpu": 8,
+          "calls": 9345,
+          "seconds": 0.5028233
+        }
+      ]
+    },
+    {
+      "round": 12,
+      "implementation": "cSharp",
+      "size": 64,
+      "cores": 1,
+      "callsPerSecond": 153269998.599559,
+      "gigabytesPerSecond": 9.809279910371776,
+      "nanosecondsPerCallPerCore": 6.5244340649643435,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 78690304,
+          "seconds": 0.5134097
+        }
+      ]
+    },
+    {
+      "round": 12,
+      "implementation": "asm",
+      "size": 64,
+      "cores": 1,
+      "callsPerSecond": 116428870.67375717,
+      "gigabytesPerSecond": 7.4514477231204586,
+      "nanosecondsPerCallPerCore": 8.58893497989926,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 59667456,
+          "seconds": 0.5124799
+        }
+      ]
+    },
+    {
+      "round": 12,
+      "implementation": "asm",
+      "size": 64,
+      "cores": 4,
+      "callsPerSecond": 465914162.7028428,
+      "gigabytesPerSecond": 29.818506412981936,
+      "nanosecondsPerCallPerCore": 8.585272396089783,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 58862592,
+          "seconds": 0.5051592
+        },
+        {
+          "cpu": 4,
+          "calls": 58552320,
+          "seconds": 0.5051548
+        },
+        {
+          "cpu": 6,
+          "calls": 59089920,
+          "seconds": 0.5051561
+        },
+        {
+          "cpu": 8,
+          "calls": 58855424,
+          "seconds": 0.5051618
+        }
+      ]
+    },
+    {
+      "round": 12,
+      "implementation": "cSharp",
+      "size": 64,
+      "cores": 4,
+      "callsPerSecond": 579189467.2151322,
+      "gigabytesPerSecond": 37.06812590176846,
+      "nanosecondsPerCallPerCore": 6.906202937758627,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 72276992,
+          "seconds": 0.5009026
+        },
+        {
+          "cpu": 4,
+          "calls": 72562688,
+          "seconds": 0.5009033
+        },
+        {
+          "cpu": 6,
+          "calls": 72741888,
+          "seconds": 0.5008924
+        },
+        {
+          "cpu": 8,
+          "calls": 72535040,
+          "seconds": 0.5009059
+        }
+      ]
+    },
+    {
+      "round": 12,
+      "implementation": "asm",
+      "size": 256,
+      "cores": 1,
+      "callsPerSecond": 75180514.6202228,
+      "gigabytesPerSecond": 19.24621174277704,
+      "nanosecondsPerCallPerCore": 13.301318899605004,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 37784832,
+          "seconds": 0.5025881
+        }
+      ]
+    },
+    {
+      "round": 12,
+      "implementation": "cSharp",
+      "size": 256,
+      "cores": 1,
+      "callsPerSecond": 36287728.01019436,
+      "gigabytesPerSecond": 9.289658370609757,
+      "nanosecondsPerCallPerCore": 27.557525776181652,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 18230784,
+          "seconds": 0.5023953
+        }
+      ]
+    },
+    {
+      "round": 12,
+      "implementation": "cSharp",
+      "size": 256,
+      "cores": 4,
+      "callsPerSecond": 142633759.4914674,
+      "gigabytesPerSecond": 36.51424242981565,
+      "nanosecondsPerCallPerCore": 28.043851709870182,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 18176000,
+          "seconds": 0.5143874
+        },
+        {
+          "cpu": 4,
+          "calls": 18432000,
+          "seconds": 0.5143808
+        },
+        {
+          "cpu": 6,
+          "calls": 18356736,
+          "seconds": 0.514381
+        },
+        {
+          "cpu": 8,
+          "calls": 18403840,
+          "seconds": 0.5143883
+        }
+      ]
+    },
+    {
+      "round": 12,
+      "implementation": "asm",
+      "size": 256,
+      "cores": 4,
+      "callsPerSecond": 299909728.97773814,
+      "gigabytesPerSecond": 76.77689061830097,
+      "nanosecondsPerCallPerCore": 13.337346586368707,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 37670912,
+          "seconds": 0.5050127
+        },
+        {
+          "cpu": 4,
+          "calls": 38024960,
+          "seconds": 0.5050122
+        },
+        {
+          "cpu": 6,
+          "calls": 37902848,
+          "seconds": 0.5050094
+        },
+        {
+          "cpu": 8,
+          "calls": 37859584,
+          "seconds": 0.5050176
+        }
+      ]
+    },
+    {
+      "round": 12,
+      "implementation": "cSharp",
+      "size": 1024,
+      "cores": 1,
+      "callsPerSecond": 6585834.885323749,
+      "gigabytesPerSecond": 6.743894922571519,
+      "nanosecondsPerCallPerCore": 151.8410372280145,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 3388416,
+          "seconds": 0.5145006
+        }
+      ]
+    },
+    {
+      "round": 12,
+      "implementation": "asm",
+      "size": 1024,
+      "cores": 1,
+      "callsPerSecond": 19090760.916237816,
+      "gigabytesPerSecond": 19.548939178227524,
+      "nanosecondsPerCallPerCore": 52.3813589404622,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9803520,
+          "seconds": 0.5135217
+        }
+      ]
+    },
+    {
+      "round": 12,
+      "implementation": "asm",
+      "size": 1024,
+      "cores": 4,
+      "callsPerSecond": 76393273.45175184,
+      "gigabytesPerSecond": 78.22671201459389,
+      "nanosecondsPerCallPerCore": 52.360630972651066,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9813440,
+          "seconds": 0.5131193
+        },
+        {
+          "cpu": 4,
+          "calls": 9799424,
+          "seconds": 0.5131147
+        },
+        {
+          "cpu": 6,
+          "calls": 9793216,
+          "seconds": 0.5131106
+        },
+        {
+          "cpu": 8,
+          "calls": 9793344,
+          "seconds": 0.513162
+        }
+      ]
+    },
+    {
+      "round": 12,
+      "implementation": "cSharp",
+      "size": 1024,
+      "cores": 4,
+      "callsPerSecond": 26361930.16116757,
+      "gigabytesPerSecond": 26.994616485035593,
+      "nanosecondsPerCallPerCore": 151.73395785306337,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 3383872,
+          "seconds": 0.5136868
+        },
+        {
+          "cpu": 4,
+          "calls": 3387584,
+          "seconds": 0.5137036
+        },
+        {
+          "cpu": 6,
+          "calls": 3385472,
+          "seconds": 0.5137012
+        },
+        {
+          "cpu": 8,
+          "calls": 3385216,
+          "seconds": 0.5137115
+        }
+      ]
+    },
+    {
+      "round": 12,
+      "implementation": "asm",
+      "size": 65536,
+      "cores": 1,
+      "callsPerSecond": 306529.8333989274,
+      "gigabytesPerSecond": 20.088739161632105,
+      "nanosecondsPerCallPerCore": 3262.3251998397463,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 157251,
+          "seconds": 0.5130039
+        }
+      ]
+    },
+    {
+      "round": 12,
+      "implementation": "cSharp",
+      "size": 65536,
+      "cores": 1,
+      "callsPerSecond": 87885.79880072919,
+      "gigabytesPerSecond": 5.759683710204588,
+      "nanosecondsPerCallPerCore": 11378.402582052915,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 43996,
+          "seconds": 0.5006042
+        }
+      ]
+    },
+    {
+      "round": 12,
+      "implementation": "cSharp",
+      "size": 65536,
+      "cores": 4,
+      "callsPerSecond": 351828.6247903466,
+      "gigabytesPerSecond": 23.057440754260156,
+      "nanosecondsPerCallPerCore": 11369.171574324248,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 44911,
+          "seconds": 0.5103855
+        },
+        {
+          "cpu": 4,
+          "calls": 44906,
+          "seconds": 0.5103852
+        },
+        {
+          "cpu": 6,
+          "calls": 44868,
+          "seconds": 0.5103828
+        },
+        {
+          "cpu": 8,
+          "calls": 44883,
+          "seconds": 0.5103859
+        }
+      ]
+    },
+    {
+      "round": 12,
+      "implementation": "asm",
+      "size": 65536,
+      "cores": 4,
+      "callsPerSecond": 1226583.4659627788,
+      "gigabytesPerSecond": 80.38537402533667,
+      "nanosecondsPerCallPerCore": 3261.0907541137376,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 158147,
+          "seconds": 0.5154368
+        },
+        {
+          "cpu": 4,
+          "calls": 158045,
+          "seconds": 0.5154347
+        },
+        {
+          "cpu": 6,
+          "calls": 157992,
+          "seconds": 0.5154311
+        },
+        {
+          "cpu": 8,
+          "calls": 158041,
+          "seconds": 0.5154405
+        }
+      ]
+    },
+    {
+      "round": 12,
+      "implementation": "cSharp",
+      "size": 1048576,
+      "cores": 1,
+      "callsPerSecond": 5477.474333015368,
+      "gigabytesPerSecond": 5.743548126215923,
+      "nanosecondsPerCallPerCore": 182565.8942795076,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 2762,
+          "seconds": 0.504247
+        }
+      ]
+    },
+    {
+      "round": 12,
+      "implementation": "asm",
+      "size": 1048576,
+      "cores": 1,
+      "callsPerSecond": 19115.173272317807,
+      "gigabytesPerSecond": 20.043711929193915,
+      "nanosecondsPerCallPerCore": 52314.46169772257,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9660,
+          "seconds": 0.5053577
+        }
+      ]
+    },
+    {
+      "round": 12,
+      "implementation": "asm",
+      "size": 1048576,
+      "cores": 4,
+      "callsPerSecond": 76679.37319446108,
+      "gigabytesPerSecond": 80.40415042675522,
+      "nanosecondsPerCallPerCore": 52165.267311926065,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 9663,
+          "seconds": 0.5032278
+        },
+        {
+          "cpu": 4,
+          "calls": 9629,
+          "seconds": 0.5031843
+        },
+        {
+          "cpu": 6,
+          "calls": 9628,
+          "seconds": 0.5031749
+        },
+        {
+          "cpu": 8,
+          "calls": 9665,
+          "seconds": 0.5032097
+        }
+      ]
+    },
+    {
+      "round": 12,
+      "implementation": "cSharp",
+      "size": 1048576,
+      "cores": 4,
+      "callsPerSecond": 21847.747485631662,
+      "gigabytesPerSecond": 22.909023667493706,
+      "nanosecondsPerCallPerCore": 183085.2357951606,
+      "streams": [
+        {
+          "cpu": 2,
+          "calls": 2809,
+          "seconds": 0.5142319
+        },
+        {
+          "cpu": 4,
+          "calls": 2810,
+          "seconds": 0.5142148
+        },
+        {
+          "cpu": 6,
+          "calls": 2807,
+          "seconds": 0.5141268
+        },
+        {
+          "cpu": 8,
+          "calls": 2808,
+          "seconds": 0.514206
+        }
+      ]
+    }
+  ]
+}

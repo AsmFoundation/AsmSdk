@@ -28,6 +28,19 @@ Each SDK release names the one it was tested with.
   - Checked by hand on Windows 11 x64: C++ with MSVC 2022, Rust, and the Python wheel
     (`py3-none-win_amd64`).
 
+- **`Crc32C.Bench --cores`: the C# loop and the library on one core and on several at once**
+  (`samples/Crc32C.Bench/Cores.cs`, the Examples page "Testing and measuring from C#").
+  - **How it times:** N threads, each pinned to a logical CPU of its own (`--cpus`, on Windows
+    and Linux), checksum their own copies of the input in paired rounds, and each checks its
+    checksum before and after its window. On Windows the mode turns power throttling off for its
+    process.
+  - **Measured on 2026-11-26** (`samples/Crc32C.Bench/results/2026-11-26-i9-13900K-cores`):
+    both sides grow 4.00x from one core to four, so the library's lead holds (3.49x at 1 MiB),
+    and the C# loop's at 64 B holds too (1.6x).
+  - **Its BenchmarkDotNet cross-check:** BenchmarkDotNet's in-process run timed the 64 B and
+    256 B calls into the library on unoptimized Tier-0 glue code (24.2 ns at 64 B; 9.92 ns with
+    tiered compilation off). The Examples page now says so.
+
 - **Documentation: link previews.** A link to the documentation now shows a card on X, Slack,
   Discord, LinkedIn, WhatsApp and the rest: each Wasm Demo page its own frame (Life zoomed in,
   the ray-marched scene, the swarm pushed outward), every other page AsmSdk's card, with the

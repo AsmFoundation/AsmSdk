@@ -192,3 +192,49 @@ the lowest and highest of each, and BenchmarkDotNet's own reports.
   than the 3-way kernel. That is why the dispatcher exists.
 - **Noise:** the hybrid CPU and the virtual machine move the benchmark between core types. The
   64-byte cases varied up to 17% between runs, the 64 KiB and 1 MiB cases within 4%.
+
+## One core and four
+
+**Not released yet: `--cores`.** BenchmarkDotNet times one call on one thread. The benchmark's
+`--cores` mode times the C# loop and the library on one core and on several at once:
+
+- **On N cores,** N threads each checksum their own copy of the input, and a cell's figure is
+  their total.
+- **Each thread is pinned** to a logical CPU of its own (`--cpus`, on Windows and Linux). On
+  Windows, the mode also turns power throttling off for its process.
+- **Paired rounds** alternate which side goes first.
+- **Checks:** every thread compares its checksum with the managed one before and after its
+  timed window.
+
+```sh
+# one core and four, on performance cores 1 to 4 of an i9-13900K
+dotnet run -c Release --project samples/Crc32C.Bench -- --cores 1,4 --cpus 2,4,6,8
+```
+
+Three runs on 2026-11-26, natively on Windows. The cores ran at 2.9 GHz, and `coreguard` held
+each timed core's other hyperthread. The
+[results folder](https://github.com/AsmFoundation/AsmSdk/tree/main/samples/Crc32C.Bench/results/2026-11-26-i9-13900K-cores)
+has the setup, every round's raw counts and the scripts. Below are the medians of 36 rounds,
+all cores together:
+
+| Size | C#, 1 core | Assembly, 1 core | C#, 4 cores | Assembly, 4 cores | Assembly / C# |
+|---|---:|---:|---:|---:|---:|
+| 64 B | 187M/s | 115M/s | 749M/s | 461M/s | 0.61x |
+| 256 B | 9.31 GB/s | 19.1 GB/s | 37.2 GB/s | 76.4 GB/s | 2.04x |
+| 1 KiB | 6.78 GB/s | 19.6 GB/s | 27.2 GB/s | 78.3 GB/s | 2.88x |
+| 64 KiB | 5.76 GB/s | 20.1 GB/s | 23.1 GB/s | 80.4 GB/s | 3.49x |
+| 1 MiB | 5.74 GB/s | 20.0 GB/s | 23.0 GB/s | 79.9 GB/s | 3.49x |
+
+- **Four cores do four times the work, on both sides:** 4.00x at every size, since each
+  thread's input stays in its own core's caches. So the library's lead is the same on four
+  cores as on one, and so is the C# loop's at 64 B.
+- **The run's BenchmarkDotNet cross-check found a trap in the first table.** Run natively on the
+  same core, BenchmarkDotNet timed the dispatcher at 64 B at 24.2 ns with tiered compilation on,
+  and at 9.92 ns with it off.
+  - **The cause:** the JIT's log shows the C# methods between BenchmarkDotNet and the library
+    (`Dispatcher()`, `HashToUInt32`, `Append`) still running unoptimized Tier-0 code through the
+    small sizes. They reached Tier-1 only during the 64 KiB case.
+  - **So the first table's library figures at 64 B and 256 B** (13.0 and 18.2 ns) most likely
+    include that unoptimized glue too.
+  - **With optimized code,** the same pinned core gives 8.72 ns at 64 B and 13.4 ns at 256 B.
+    The C# loop still wins at 64 B (1.6x), and the library wins from 256 B (2.0x).

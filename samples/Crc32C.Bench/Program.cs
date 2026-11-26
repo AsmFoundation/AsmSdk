@@ -16,17 +16,22 @@ using BenchmarkDotNet.Toolchains.InProcess.Emit;
 namespace Samples.Hashing.Bench;
 
 /// <summary>
-/// Starts BenchmarkDotNet on <see cref="Crc32CBenchmarks"/> and <see cref="CallBenchmarks"/>, or only
-/// checks the paths with --check.
+/// Starts BenchmarkDotNet on <see cref="Crc32CBenchmarks"/> and <see cref="CallBenchmarks"/>, only
+/// checks the paths with --check, or times one core against several with --cores.
 /// </summary>
 internal static class Program
 {
-    /// <summary>Runs the benchmarks (any BenchmarkDotNet arguments pass through), or the check alone.</summary>
+    /// <summary>Runs the benchmarks (any BenchmarkDotNet arguments pass through), the check alone, or the core-scaling run.</summary>
     /// <param name="args">
-    /// "--check" to verify every path and exit; otherwise BenchmarkDotNet's own arguments, such as
-    /// --filter '*' to run both classes without the interactive menu.
+    /// "--check" to verify every path and exit; "--cores 1,4" and its options for
+    /// <see cref="CoreScaling"/> (the C# loop and the assembly on one core and on several at once);
+    /// otherwise BenchmarkDotNet's own arguments, such as --filter '*' to run both classes without
+    /// the interactive menu.
     /// </param>
-    /// <returns>0 on success; 1 when a path disagrees with the managed checksum.</returns>
+    /// <returns>
+    /// 0 on success; 1 when a path disagrees with the managed checksum (or, with --cores, a timed
+    /// thread failed); 2 for a bad --cores command line.
+    /// </returns>
     private static int Main(string[] args)
     {
         if (args is ["--check"])
@@ -35,6 +40,13 @@ internal static class Program
             string? problem = Crc32CBenchmarks.Check();
             Console.WriteLine(problem ?? $"OK: every path agrees with BitOperations.Crc32C; dispatcher path: {Crc32C.Path}");
             return problem is null ? 0 : 1;
+        }
+
+        if (args is ["--cores", ..])
+        {
+            // Several threads at once, each pinned to a core of its own, which BenchmarkDotNet's
+            // one-thread jobs cannot time; CoreScaling has its own options and checks.
+            return CoreScaling.Run(args[1..]);
         }
 
         // In process: the benchmark runs in this process instead of a generated and rebuilt
@@ -170,10 +182,13 @@ public class Crc32CBenchmarks
         return ~crc;
     }
 
-    /// <summary>Random bytes with a fixed seed, so every run times the same input.</summary>
+    /// <summary>
+    /// Random bytes with a fixed seed, so every run times the same input; the seed is the size, so
+    /// <see cref="CoreScaling"/>'s threads, each allocating its own copy, all get the same bytes.
+    /// </summary>
     /// <param name="size">How many bytes.</param>
     /// <returns>The bytes.</returns>
-    private static byte[] Input(int size)
+    internal static byte[] Input(int size)
     {
         byte[] data = new byte[size];
         new Random(size).NextBytes(data);
