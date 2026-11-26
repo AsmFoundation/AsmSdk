@@ -78,13 +78,14 @@ SDK names the variables to them, never their values:
 | Runs in | `-e` variables | a launch profile's variables | a launch profile's arguments |
 |---|---|---|---|
 | this machine | yes | yes | yes |
-| wasmtime (`--env NAME`) | yes, with the .NET 11 SDK | yes | yes, through the launcher |
-| Docker (`docker run -e NAME`) | yes, with the .NET 11 SDK | yes | yes, through the launcher |
-| WSL (`WSLENV`) | yes, with the .NET 11 SDK | yes, through the launcher | yes, through the launcher |
+| wasmtime (`--env NAME`) | yes, with SDK 10.0.300 or later | yes | yes, through the launcher |
+| Docker (`docker run -e NAME`) | yes, with SDK 10.0.300 or later | yes | yes, through the launcher |
+| WSL (`WSLENV`) | yes, with SDK 10.0.300 or later, through the launcher | yes, through the launcher | yes, through the launcher |
 
-Only the .NET 11 SDK's `dotnet run` tells a build its `-e` variables. A profile's variables
-reach wasmtime and Docker under any SDK, because the SDK reads their names from the launch
-settings file. `PATH` is never passed on.
+`dotnet run` tells a build its `-e` variables from SDK 10.0.300 on (the 10.0.3xx and 10.0.4xx
+bands, and .NET 11); with 10.0.1xx and 10.0.2xx, `-e` reaches none of the three. A profile's
+variables reach wasmtime and Docker under any SDK, because the SDK reads their names from the
+launch settings file. `PATH` is never passed on.
 
 Comments and trailing commas are fine in a launch settings file, as Visual Studio writes them,
 but with the .NET 10.0.4xx SDKs not inside the profile `dotnet run` runs: their CLI reads that
@@ -96,15 +97,18 @@ with "The launch profile … could not be applied", for a .NET project too (meas
 has no arguments of its own, and `wasmtime run …`, `wsl.exe --exec …` and `docker run …` always
 have some. So when the project has launch settings, `dotnet run` starts a launcher in
 `obj/<Configuration>/<tfm>/[<rid>/]asm-run/` instead, which starts wasmtime, WSL or Docker with
-the arguments the CLI hands it:
+the arguments the CLI hands it. Through WSL it also starts one when `-e` names variables, even
+without launch settings, because only the .NET 11 SDK's CLI sets the `WSLENV` the SDK asks it
+for (the 10.0.3xx and 10.0.4xx CLIs never do):
 
 - on Windows, `<project>-run.exe`, a small x64 program the SDK assembles and links with the
   bundled toolchain the first time it is needed (Windows on Arm runs it under its x64
   emulation), and `<project>-run.exe.run`, the command it starts. Through WSL it also adds to
   `WSLENV` the `-e` and profile variables that are set when it starts: WSL would pass a name
   `WSLENV` lists but the environment lacks as an empty variable, so a name another profile sets
-  stays out. With `AsmToolchain=System` there is no launcher, and a profile's arguments and
-  variables do not reach those three (give the arguments after `--`; `-e` still works).
+  stays out. With `AsmToolchain=System` there is no launcher: a profile's arguments reach none
+  of the three (give them after `--`), a profile's variables do not reach WSL, and `-e` reaches
+  WSL only with the .NET 11 SDK.
 - on Linux and macOS, `<project>-run.sh`, a shell script that `exec`s the command with every
   argument quoted.
 

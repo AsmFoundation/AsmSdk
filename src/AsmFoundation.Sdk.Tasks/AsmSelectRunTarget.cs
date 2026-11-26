@@ -50,25 +50,30 @@ namespace AsmFoundation.Sdk.Tasks;
 /// told the names, never the values, which stay in that process's environment: wasmtime
 /// "--env NAME" and docker "-e NAME" inherit the variable, and pass nothing for a name the
 /// environment lacks (measured: wasmtime 39, Docker 28); WSL takes "NAME/u" entries from WSLENV,
-/// which this task sets on wsl.exe through the CLI (<see cref="EnvironmentVariablesToSet"/>).
-/// wasmtime and Docker get the names of -e (<see cref="EnvironmentVariables"/>) and of every
-/// profile in the launch settings file (<see cref="LaunchSettingsFile"/>), whichever profile
-/// runs. WSL, without the launcher, gets -e's alone: a name WSLENV lists that the environment
-/// lacks reaches the Linux program as an EMPTY variable (measured, WSL 2), and the names of a
-/// profile that does not run would be just that; with the launcher (below) it gets a profile's
-/// too, because the launcher lists only those really set when it starts. PATH is never passed:
-/// the host's would replace the program's own. Footgun: the .NET 10 SDK's CLI passes -e to no
-/// build and applies no item, so there -e reaches none of the three (a launch profile's
-/// variables still do).
+/// which the launcher (below) sets, or else this task through the CLI
+/// (<see cref="EnvironmentVariablesToSet"/>). wasmtime and Docker get the names of -e
+/// (<see cref="EnvironmentVariables"/>) and of every profile in the launch settings file
+/// (<see cref="LaunchSettingsFile"/>), whichever profile runs. WSL gets them through the
+/// launcher, which lists only those really set when it starts; without it, -e's alone: a name
+/// WSLENV lists that the environment lacks reaches the Linux program as an EMPTY variable
+/// (measured, WSL 2), and the names of a profile that does not run would be just that. PATH is
+/// never passed: the host's would replace the program's own. Which CLI does what: from SDK
+/// 10.0.300 on, dotnet run passes -e to the build as RuntimeEnvironmentVariable items (so this
+/// task knows the names), but only the .NET 11 SDK's CLI applies the items the build returns to
+/// the started process; the 10.0.3xx and 10.0.4xx CLIs ignore them, so WSLENV through the CLI
+/// never arrived there (measured with 10.0.404: "(unset)" in WSL), and WSL with -e names goes
+/// through the launcher (<see cref="UseLauncher"/>). Footgun: the 10.0.1xx and 10.0.2xx CLIs pass
+/// -e to no build, so there -e reaches none of the three (a launch profile's variables still do).
 /// </para>
 /// <para>
 /// Launch profile arguments: the CLI applies a profile's commandLineArgs only to a command with
 /// no arguments of its own (RunCommand.cs and CommonRunHelpers.CombineRunArguments, .NET 10 and
 /// 11 SDKs), and wasmtime's, wsl.exe's and docker's command lines always have some: the profile's
-/// arguments never reached the program. When the project has launch settings, the run command is
-/// therefore a launcher whose only arguments are the project's own RunArguments
-/// (<see cref="UseLauncher"/>), which runs the chosen command with what the CLI hands it
-/// appended. A project that sets RunArguments gets no profile's arguments, as any .NET project.
+/// arguments never reached the program. When the project has launch settings (and through WSL
+/// when dotnet run -e names variables, above), the run command is therefore a launcher whose
+/// only arguments are the project's own RunArguments (<see cref="UseLauncher"/>), which runs the
+/// chosen command with what the CLI hands it appended. A project that sets RunArguments gets no
+/// profile's arguments, as any .NET project.
 /// </para>
 /// <para>
 /// Footguns: a program run through Docker sees its own folder as /app and works there, not in
@@ -117,10 +122,11 @@ public sealed class AsmSelectRunTarget : Task
     public string ProjectFile { get; set; } = "";
 
     /// <summary>
-    /// The variables of dotnet run -e: the .NET 11 SDK's CLI passes them as RuntimeEnvironmentVariable
-    /// items (the item is the name, Value metadata the value) to a project that declares the
-    /// RuntimeEnvironmentVariableSupport capability, as an asm program does. Empty with the .NET 10
-    /// SDK's CLI, which passes -e to no build.
+    /// The variables of dotnet run -e: the CLI passes them as RuntimeEnvironmentVariable items
+    /// (the item is the name, Value metadata the value) to a project that declares the
+    /// RuntimeEnvironmentVariableSupport capability, as an asm program does, from SDK 10.0.300 on
+    /// (10.0.3xx, 10.0.4xx, 11). Empty with the 10.0.1xx and 10.0.2xx CLIs, which pass -e to no
+    /// build.
     /// </summary>
     public ITaskItem[] EnvironmentVariables { get; set; } = Array.Empty<ITaskItem>();
 
@@ -133,25 +139,26 @@ public sealed class AsmSelectRunTarget : Task
     /// launcher, which lists those that are set (<see cref="UseLauncher"/>). A file this task
     /// cannot read (not JSON even with comments and trailing commas removed) only stops that,
     /// with a low-importance message: dotnet run itself reports a broken launch settings file.
-    /// Its presence also decides whether the launcher is used at all.
+    /// Its presence is also a reason to start the launcher (<see cref="UseLauncher"/>).
     /// </summary>
     public string LaunchSettingsFile { get; set; } = "";
 
     /// <summary>
     /// Variables for the CLI to set on the started process, as RuntimeEnvironmentVariable items (the
-    /// item is the name, Value metadata the value): WSLENV, when the program runs through WSL and
-    /// variables must reach it. The .NET 11 SDK's CLI applies the RuntimeEnvironmentVariable items
-    /// after ComputeRunArguments (EnvironmentVariablesToMSBuild.ReadFromItems); the .NET 10 SDK's
-    /// ignores them.
+    /// item is the name, Value metadata the value): WSLENV, when the program runs through WSL
+    /// without the launcher and variables must reach it. The .NET 11 SDK's CLI applies the
+    /// RuntimeEnvironmentVariable items after ComputeRunArguments
+    /// (EnvironmentVariablesToMSBuild.ReadFromItems); the .NET 10 SDKs' CLIs ignore them, which
+    /// is why WSL with -e names goes through the launcher whenever there is one.
     /// </summary>
     [Output]
     public ITaskItem[] EnvironmentVariablesToSet { get; set; } = Array.Empty<ITaskItem>();
 
     /// <summary>
-    /// Where the launcher goes (see <see cref="UseLauncher"/>): the program the targets build on
-    /// Windows (an .exe), or the shell script this task writes elsewhere (a .sh). Empty for no
-    /// launcher: the targets name one only when the project has launch settings and, on Windows,
-    /// the bundled toolchain can build it.
+    /// Where the launcher goes (see <see cref="UseLauncher"/>, which decides whether it is used):
+    /// the program the targets build on Windows (an .exe), or the shell script this task writes
+    /// elsewhere (a .sh). Empty for no launcher: on Windows the targets name one only when the
+    /// bundled toolchain can build it.
     /// </summary>
     public string LauncherFile { get; set; } = "";
 
@@ -564,7 +571,9 @@ public sealed class AsmSelectRunTarget : Task
         string variables = passed.Count == 0 ? ""
             : RunsIn == "Wsl" && LauncherUsed ? " (environment variables passed on when set: " + string.Join(", ", passed) + ")"
             : " (environment variables passed on: " + string.Join(", ", passed) + ")";
-        string launcher = LauncherUsed ? " (started by " + RunCommand + ", which hands it a launch profile's arguments)" : "";
+        string launcher = !LauncherUsed ? ""
+            : RunsIn == "Wsl" ? " (started by " + RunCommand + ", which hands it a launch profile's arguments and sets WSLENV)"
+            : " (started by " + RunCommand + ", which hands it a launch profile's arguments)";
         Log.LogMessage(MessageImportance.High, "{0}: running the {1} build{2}: {3}{4}{5}", ProjectName, SelectedRuntimeIdentifier, where, _selectedProgram, variables, launcher);
     }
 
@@ -754,13 +763,14 @@ public sealed class AsmSelectRunTarget : Task
     private IEnumerable<string> ForwardOptions(string option) => _forwarded.SelectMany(name => new[] { option, name });
 
     /// <summary>
-    /// When the project has launch settings, starts the program through the launcher instead of
-    /// the command chosen above (wasmtime, wsl.exe or docker with their arguments): RunCommand
-    /// becomes <see cref="LauncherFile"/>, and RunArguments only the project's own, so that the
-    /// .NET CLI hands it a launch profile's commandLineArgs, which it applies only to a command
-    /// without arguments (the owner's choice for AsmSdk, 2026-11-26). The launcher then runs the
-    /// chosen command (<see cref="RunCommand"/> and <see cref="_fixedArguments"/>) with what it
-    /// was given appended.
+    /// When the project has launch settings, or the program runs through WSL and dotnet run -e
+    /// names variables, starts the program through the launcher instead of the command chosen
+    /// above (wasmtime, wsl.exe or docker with their arguments): RunCommand becomes
+    /// <see cref="LauncherFile"/>, and RunArguments only the project's own, so that the .NET CLI
+    /// hands it a launch profile's commandLineArgs, which it applies only to a command without
+    /// arguments (the owner's choice for AsmSdk, 2026-11-26). The launcher then runs the chosen
+    /// command (<see cref="RunCommand"/> and <see cref="_fixedArguments"/>) with what it was
+    /// given appended, and through WSL lists in WSLENV the variables that are set.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -780,15 +790,29 @@ public sealed class AsmSelectRunTarget : Task
     /// argument quoted for the shell; the targets make it executable. WSL exists on Windows only.
     /// </para>
     /// <para>
-    /// Nothing changes when the targets name no launcher: a project without launch settings has
-    /// no profile arguments to pass, and on Windows only the bundled toolchain builds the launcher.
-    /// A launcher that cannot be written leaves the chosen command as it is, with a warning
-    /// (ASM0094): the program still runs, without a profile's arguments.
+    /// Through WSL the launcher also carries dotnet run -e's variables when the project has no
+    /// launch settings: the .NET 10.0.3xx and 10.0.4xx SDKs' CLI tells the build the -e names but
+    /// never applies the WSLENV item <see cref="SetWslEnvironment"/> returns (measured with
+    /// 10.0.404: the variable reached the Linux program as unset; the .NET 11 SDK's CLI applies
+    /// it), while the launcher sets WSLENV in its own environment, which wsl.exe inherits, on
+    /// every CLI. Without -e names and launch settings there is nothing for it to do, and the
+    /// command runs directly.
+    /// </para>
+    /// <para>
+    /// Nothing changes when the targets name no launcher: on Windows only the bundled toolchain
+    /// builds it (WSL's -e variables then rely on the CLI applying WSLENV: the .NET 11 SDK's
+    /// does). A launcher that cannot be written leaves the chosen command as it is, with a
+    /// warning (ASM0094): the program still runs, without a profile's arguments.
     /// </para>
     /// </remarks>
     private void UseLauncher()
     {
-        if (LauncherFile.Trim().Length == 0 || LaunchSettingsFile.Trim().Length == 0)
+        // A reason to start the launcher: a launch profile may hand arguments (the project has
+        // launch settings), or WSL needs WSLENV for -e's names, which only the launcher sets on
+        // every CLI (see the remarks).
+        bool profileArguments = LaunchSettingsFile.Trim().Length != 0;
+        bool wslVariables = RunsIn == "Wsl" && _forwardedToWsl.Count != 0;
+        if (LauncherFile.Trim().Length == 0 || !(profileArguments || wslVariables))
         {
             return;
         }
@@ -883,8 +907,9 @@ public sealed class AsmSelectRunTarget : Task
     /// For a program run through WSL: WSLENV for wsl.exe, listing the passed-on names
     /// (<see cref="_forwardedToWsl"/>: dotnet run -e's) with the /u flag (from Windows into WSL),
     /// after the entries WSLENV already has, so a user's own entries keep working. Set through
-    /// <see cref="EnvironmentVariablesToSet"/>, which the .NET 11 SDK's CLI applies to wsl.exe;
-    /// nothing when no variable is passed on.
+    /// <see cref="EnvironmentVariablesToSet"/>, which the .NET 11 SDK's CLI applies to wsl.exe
+    /// and the .NET 10 SDKs' CLIs ignore; nothing when no variable is passed on. The launcher,
+    /// when <see cref="UseLauncher"/> starts it, replaces this with WSLENV of its own.
     /// </summary>
     /// <remarks>
     /// The current WSLENV is the one dotnet run -e gave (an item named WSLENV), else this

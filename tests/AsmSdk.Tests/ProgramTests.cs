@@ -261,6 +261,13 @@ public sealed class ProgramTests(SdkUnderTest sdk)
     /// <summary>EchoProgram: prints its arguments, then ASM_PROBE ("(unset)" without it), and exits with their number.</summary>
     private static string EchoProgram => Repo.TestProject("EchoProgram");
 
+    /// <summary>
+    /// EchoBare: EchoProgram's program in a project without launch settings, so that only
+    /// dotnet run -e can name ASM_PROBE (EchoProgram's profile names it too, which would hide a
+    /// broken -e path).
+    /// </summary>
+    private static string EchoBare => Repo.TestProject("EchoBare");
+
     /// <summary>This machine's glibc Linux RID: the build WSL runs, and the one Docker runs without emulation.</summary>
     private static string LinuxRidOfThisCpu =>
         System.Runtime.InteropServices.RuntimeInformation.OSArchitecture == System.Runtime.InteropServices.Architecture.Arm64 ? "linux-arm64" : "linux-x64";
@@ -286,23 +293,40 @@ public sealed class ProgramTests(SdkUnderTest sdk)
     }
 
     /// <summary>
-    /// dotnet run -e reaches a Linux program run through WSL: WSL passes a Windows variable only
-    /// when WSLENV names it, and the SDK sets WSLENV on wsl.exe (as a RuntimeEnvironmentVariable
-    /// item, which the .NET 11 SDK's CLI applies after ComputeRunArguments), keeping the entries
-    /// WSLENV already has. Skipped on the .NET 10 SDK, whose dotnet run passes -e to no build.
+    /// dotnet run -e reaches a Linux program run through WSL, from a project without launch
+    /// settings (EchoBare, so no profile names the variable): WSL passes a Windows variable only
+    /// when WSLENV names it, and the SDK's launcher lists the -e names that are set, after the
+    /// entries WSLENV already has. The launcher starts only for a reason: without -e (and launch
+    /// settings) the program runs through wsl.exe directly. Through the launcher because the .NET
+    /// 10.0.3xx and 10.0.4xx SDKs' CLIs tell the build the -e names but never apply the WSLENV
+    /// item it returns (measured with 10.0.404: "(unset)"); the .NET 11 SDK's would. Skipped
+    /// before SDK 10.0.300, whose dotnet run passes -e to no build.
     /// </summary>
     [Fact]
     public void Dotnet_run_passes_e_variables_through_WSL()
     {
         RequireWsl();
-        if (sdk.SdkMajorVersion() < 11)
+        if (!sdk.DotnetRunPassesEnvironmentToBuild())
         {
-            Assert.Skip($"The .NET {sdk.SdkMajorVersion()} SDK's dotnet run passes -e to no build, so the SDK cannot list the variables in WSLENV (it can from the .NET 11 SDK on)");
+            Assert.Skip($"SDK {sdk.SdkVersion()}'s dotnet run passes -e to no build, so the SDK cannot list the variables in WSLENV (it can from SDK 10.0.300 on)");
         }
 
-        CommandResult run = sdk.DotnetRun(EchoProgram, ["-c", "Release", "-r", LinuxRidOfThisCpu, "-p:AsmRunIn=Wsl", "--no-launch-profile", "-e", "ASM_PROBE=through-wsl"], "x");
+        // A launcher left by an earlier run would answer the second check for this one.
+        string launcherFolder = Repo.TestProjectPath("EchoBare", "obj", "Release", "libc", LinuxRidOfThisCpu, "asm-run");
+        if (Directory.Exists(launcherFolder))
+        {
+            Directory.Delete(launcherFolder, recursive: true);
+        }
+
+        CommandResult plain = sdk.DotnetRun(EchoBare, ["-c", "Release", "-r", LinuxRidOfThisCpu, "-p:AsmRunIn=Wsl"], "x");
+        Assert.True(plain.ExitCode == 1, $"exit {plain.ExitCode}, want 1 (one argument): {plain.Tail()}");
+        Assert.Contains("(unset)", Lines(plain));
+        Assert.False(File.Exists(Path.Combine(launcherFolder, "EchoBare-run.exe")), "a launcher started without -e names or launch settings");
+
+        CommandResult run = sdk.DotnetRun(EchoBare, ["-c", "Release", "-r", LinuxRidOfThisCpu, "-p:AsmRunIn=Wsl", "-e", "ASM_PROBE=through-wsl"], "x");
         Assert.True(run.ExitCode == 1, $"exit {run.ExitCode}, want 1 (one argument): {run.Tail()}");
-        Assert.Contains("through-wsl", run.StdOut, StringComparison.Ordinal);
+        Assert.Contains("through-wsl", Lines(run));
+        Assert.True(File.Exists(Path.Combine(launcherFolder, "EchoBare-run.exe")), $"no launcher in {launcherFolder}");
     }
 
     /// <summary>The lines a run printed, without line ends.</summary>
@@ -381,21 +405,22 @@ public sealed class ProgramTests(SdkUnderTest sdk)
 
     /// <summary>
     /// dotnet run -e reaches a Linux program in a Docker container (docker run -e NAME, its value
-    /// from docker's environment). Skipped on the .NET 10 SDK, whose dotnet run passes -e to no
-    /// build: there the SDK cannot know the names.
+    /// from docker's environment), from a project without launch settings (EchoBare: no profile
+    /// names the variable, so only -e's own path can). Skipped before SDK 10.0.300, whose dotnet
+    /// run passes -e to no build: there the SDK cannot know the names.
     /// </summary>
     [Fact]
     public void Dotnet_run_passes_e_variables_into_docker()
     {
         RequireLinuxDocker();
-        if (sdk.SdkMajorVersion() < 11)
+        if (!sdk.DotnetRunPassesEnvironmentToBuild())
         {
-            Assert.Skip($"The .NET {sdk.SdkMajorVersion()} SDK's dotnet run passes -e to no build, so the SDK cannot name the variables to docker (it can from the .NET 11 SDK on)");
+            Assert.Skip($"SDK {sdk.SdkVersion()}'s dotnet run passes -e to no build, so the SDK cannot name the variables to docker (it can from SDK 10.0.300 on)");
         }
 
-        CommandResult run = sdk.DotnetRun(EchoProgram, ["-c", "Release", "-r", LinuxRidOfThisCpu, "-p:AsmRunIn=Docker", "--no-launch-profile", "-e", "ASM_PROBE=from-e"], "w");
+        CommandResult run = sdk.DotnetRun(EchoBare, ["-c", "Release", "-r", LinuxRidOfThisCpu, "-p:AsmRunIn=Docker", "-e", "ASM_PROBE=from-e"], "w");
         Assert.True(run.ExitCode == 1, $"exit {run.ExitCode}, want 1 (one argument): {run.Tail()}");
-        Assert.Contains("from-e", run.StdOut, StringComparison.Ordinal);
+        Assert.Contains("from-e", Lines(run));
     }
 
     /// <summary>The Linux builds Docker runs, with Docker's platform for each CPU.</summary>

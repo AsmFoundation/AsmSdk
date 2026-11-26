@@ -43,8 +43,10 @@ Each SDK release names the one it was tested with.
 - **Environment variables reach a program `dotnet run` starts through wasmtime, WSL or Docker.**
   None of the three passes its own environment on, so `-e` and launch profile variables never
   reached the program. An asm program now declares the `RuntimeEnvironmentVariableSupport`
-  capability, through which the .NET 11 SDK's `dotnet run` hands the build its `-e` variables,
-  and the SDK names them to the runtime, never their values: `wasmtime run --env NAME`,
+  capability, through which `dotnet run` hands the build its `-e` variables (SDK 10.0.300 and
+  later; through WSL they go through the launcher below, because only the .NET 11 SDK's CLI
+  applies the `WSLENV` a build asks for), and the SDK names them to the runtime, never their
+  values: `wasmtime run --env NAME`,
   `docker run -e NAME`, and `NAME/u` entries added to `WSLENV` (after the user's own). A launch
   profile's variables, read from `Properties/launchSettings.json` (comments and trailing commas
   allowed, as the CLI allows them), reach wasmtime and Docker with any SDK, and WSL through the
@@ -54,9 +56,10 @@ Each SDK release names the one it was tested with.
 - **A launch profile's `commandLineArgs` reach a program `dotnet run` starts through wasmtime,
   WSL or Docker** (the owner's choice, "Build the launcher"). The CLI applies a profile's
   arguments only to a run command without arguments of its own, and those three always have
-  some, so the arguments never arrived. When the project has launch settings, `dotnet run` now
-  starts a launcher in `obj/<Configuration>/<tfm>/[<rid>/]asm-run/`, with only the project's own
-  `RunArguments`, and the launcher starts the runtime with what the CLI hands it: on Windows a
+  some, so the arguments never arrived. When the project has launch settings (and through WSL
+  when `-e` names variables), `dotnet run` now starts a launcher in
+  `obj/<Configuration>/<tfm>/[<rid>/]asm-run/`, with only the project's own `RunArguments`, and
+  the launcher starts the runtime with what the CLI hands it: on Windows a
   small x64 program (`stubs/run-launcher-x64.asm`) the SDK assembles and links with the bundled
   toolchain on first use, which also lists in `WSLENV` the `-e` and profile variables that are
   set when it starts (a name another profile sets stays out: WSL would pass it as an empty

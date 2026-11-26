@@ -240,26 +240,43 @@ public sealed class SdkUnderTest : IAsyncLifetime
         Once($"build {name}", () => Dotnet("build", Repo.TestProject(name), "-c", "Release"));
 
     /// <summary>
-    /// The major version of the .NET SDK the tests run (dotnet --version at the repository root,
-    /// once): what the CLI does differs between the SDK lines CI runs. The hosted Windows images
-    /// bring the .NET 11 SDK, which outranks setup-dotnet's 10.0.x where both share a folder; the
-    /// other runners have 10.0.x alone. The .NET 11 SDK's dotnet run passes -e to the build, for
-    /// one; the .NET 10 SDK's passes it to none.
+    /// The version of the .NET SDK the tests run (dotnet --version at the repository root, once),
+    /// without a prerelease label: what the CLI does differs between the SDK bands CI runs, and
+    /// within a major version too. The arm64 runners' images bring the .NET 11 SDK, which
+    /// outranks setup-dotnet's 10.0.x in the folder both share; the x64 runners have that 10.0.x
+    /// alone (10.0.404 on 2026-11-26).
     /// </summary>
-    /// <returns>The major version, such as 10 or 11.</returns>
+    /// <returns>The version, such as 10.0.404 or 11.0.100 (11.0.100-preview.2 gives 11.0.100).</returns>
     /// <exception cref="InvalidOperationException">dotnet --version failed or printed no version.</exception>
-    public int SdkMajorVersion()
+    /// <remarks>
+    /// System.Version spelled out: this class's own <see cref="Version"/> property (the
+    /// AsmFoundation.Sdk package's version) hides the type's short name inside it.
+    /// </remarks>
+    public System.Version SdkVersion()
     {
         CommandResult version = Once("dotnet --version", () => DotnetCommand("--version"));
         string text = version.StdOut.Trim();
-        int dot = text.IndexOf('.');
-        if (version.ExitCode != 0 || dot <= 0 || !int.TryParse(text[..dot], out int major))
+        // A preview SDK prints "11.0.100-preview.2.26159.112": the band is what comes before the label.
+        int label = text.IndexOf('-');
+        string numbers = label < 0 ? text : text[..label];
+        if (version.ExitCode != 0 || !System.Version.TryParse(numbers, out System.Version? parsed))
         {
             throw new InvalidOperationException($"dotnet --version did not say which SDK runs: {version.Tail()}");
         }
 
-        return major;
+        return parsed;
     }
+
+    /// <summary>
+    /// Whether this SDK's dotnet run passes -e to the build, as RuntimeEnvironmentVariable items of
+    /// a project with the RuntimeEnvironmentVariableSupport capability: from SDK 10.0.300 on
+    /// (the 10.0.3xx and 10.0.4xx bands and 11; their RunCommand.cs and
+    /// EnvironmentVariablesToMSBuild.cs), never with 10.0.1xx and 10.0.2xx. Only then does
+    /// AsmSdk know -e's names, which wasmtime, Docker and WSL must be told.
+    /// </summary>
+    /// <returns>True from SDK 10.0.300 on.</returns>
+    /// <exception cref="InvalidOperationException">dotnet --version failed or printed no version.</exception>
+    public bool DotnetRunPassesEnvironmentToBuild() => SdkVersion() >= new System.Version(10, 0, 300);
 
     /// <summary>GNU readelf-style output of the bundled llvm-readobj.</summary>
     /// <param name="path">The ELF file or archive to inspect.</param>

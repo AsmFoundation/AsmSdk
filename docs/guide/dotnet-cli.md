@@ -51,8 +51,10 @@ line are at the end.
   only through the SDK's launcher, because the CLI applies a profile's arguments only to a command
   that has none of its own ([Programs](programs.md#dotnet-run)). On Windows the launcher is built
   with the bundled toolchain: with `AsmToolchain=System` there is none, so pass the arguments
-  after `--` there. `-e` reaches all three with the .NET 11 SDK only, which is the first to tell a
-  build its `-e` variables.
+  after `--` there. `-e` reaches all three from SDK 10.0.300 on, the first band to tell a build
+  its `-e` variables (WSL through the launcher: only the .NET 11 SDK's CLI applies the `WSLENV`
+  a build asks for). With the .NET 10.0.4xx SDKs, a comment or trailing comma inside the profile
+  that runs drops it ([Programs](programs.md#dotnet-run)).
 - **llvm-mc's warnings** (GNU-syntax `.s` sources: ARM64, WebAssembly) have no names, so they
   reach MSBuild without a code, and `-nowarn:` or `-warnaserror:` cannot pick one out; a plain
   `-warnaserror` covers them. NASM's warnings carry their names as codes

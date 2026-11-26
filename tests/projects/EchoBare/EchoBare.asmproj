@@ -1,0 +1,20 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    EchoProgram's program (its echo.asm for x64 and echo.s for ARM64: prints each argument, then
+    ASM_PROBE, "(unset)" without it, and exits with the number of arguments) in a project WITHOUT
+    launch settings (ProgramTests). No launch profile names ASM_PROBE here, so a dotnet run -e
+    ASM_PROBE=... reaches a program run through WSL or Docker only through -e's own path: the CLI
+    tells the build the -e names (SDK 10.0.300 and later), the SDK names them to docker, and for
+    WSL the SDK's launcher lists them in WSLENV (the .NET 10 SDKs' CLIs never apply a WSLENV
+    item the build returns). Without -e there is nothing for the launcher to do, and none starts.
+  -->
+  <PropertyGroup>
+    <TargetFramework>libc</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>echo-bare</AssemblyName>
+    <RuntimeIdentifiers>linux-x64;linux-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../EchoProgram/echo.asm;../EchoProgram/echo.s" />
+  </ItemGroup>
+</Project>

@@ -391,23 +391,25 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
     }
 
     /// <summary>
-    /// dotnet run -e reaches a WASI program in wasmtime: the .NET 11 SDK's CLI passes -e to the
-    /// build as RuntimeEnvironmentVariable items, which the SDK names to wasmtime (--env NAME).
-    /// Skipped on the .NET 10 SDK, whose dotnet run passes -e to no build: there no SDK can know
+    /// dotnet run -e reaches a WASI program in wasmtime: from SDK 10.0.300 on, the CLI passes -e
+    /// to the build as RuntimeEnvironmentVariable items, which the SDK names to wasmtime
+    /// (--env NAME). ASM_E_ONLY, because no WasiEcho profile names it: a name the launch settings
+    /// file lists (ASM_PROBE) reaches wasmtime even without -e's path, and would hide a broken one.
+    /// Skipped before SDK 10.0.300, whose dotnet run passes -e to no build: there no SDK can know
     /// the names.
     /// </summary>
     [Fact]
     public void Dotnet_run_passes_e_variables_to_a_wasi_program()
     {
         RequireWasmtime();
-        if (sdk.SdkMajorVersion() < 11)
+        if (!sdk.DotnetRunPassesEnvironmentToBuild())
         {
-            Assert.Skip($"The .NET {sdk.SdkMajorVersion()} SDK's dotnet run passes -e to no build, so the SDK cannot name the variables to wasmtime (it can from the .NET 11 SDK on)");
+            Assert.Skip($"SDK {sdk.SdkVersion()}'s dotnet run passes -e to no build, so the SDK cannot name the variables to wasmtime (it can from SDK 10.0.300 on)");
         }
 
-        CommandResult run = sdk.DotnetRun(Repo.TestProject("WasiEcho"), ["-c", "Release", "--no-launch-profile", "-e", "ASM_PROBE=from-e"], "z");
+        CommandResult run = sdk.DotnetRun(Repo.TestProject("WasiEcho"), ["-c", "Release", "--no-launch-profile", "-e", "ASM_E_ONLY=from-e"], "z");
         Assert.True(run.ExitCode == 0, $"exit {run.ExitCode}: {run.Tail()}");
-        Assert.Contains("ASM_PROBE=from-e", run.StdOut, StringComparison.Ordinal);
+        Assert.Contains("ASM_E_ONLY=from-e", Lines(run));
     }
 
     /// <summary>The lines a WasiEcho run printed (its arguments, then its environment), without line ends.</summary>

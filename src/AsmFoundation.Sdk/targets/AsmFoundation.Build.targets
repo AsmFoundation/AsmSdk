@@ -1804,13 +1804,14 @@
   <Target Name="ComputeRunArguments" DependsOnTargets="_AsmComputeRunArguments" />
 
   <!--
-    RuntimeEnvironmentVariableSupport: the .NET 11 SDK's dotnet run then passes -e NAME=VALUE to
-    this project as RuntimeEnvironmentVariable items, and after ComputeRunArguments sets what those
-    items say on the process it starts. A program needs both when it runs through wasmtime, WSL or
-    Docker, which pass none of their own environment on (AsmSelectRunTarget names the variables to
-    them, and sets WSLENV for WSL). Programs only: nothing else runs. The CLI also writes the -e
-    values into a props file of its own for the build, which nothing here reads as an input, so
-    -e never makes the program build again.
+    RuntimeEnvironmentVariableSupport: dotnet run then passes -e NAME=VALUE to this project as
+    RuntimeEnvironmentVariable items (SDK 10.0.300 and later), and the .NET 11 SDK's CLI also
+    sets what those items say after ComputeRunArguments on the process it starts (the .NET 10
+    SDKs' CLIs do not). A program needs the names when it runs through wasmtime, WSL or Docker,
+    which pass none of their own environment on (AsmSelectRunTarget names the variables to them;
+    for WSL the launcher, or else the CLI, sets WSLENV). Programs only: nothing else runs. The
+    CLI also writes the -e values into a props file of its own for the build, which nothing here
+    reads as an input, so -e never makes the program build again.
   -->
   <ItemGroup Condition="'$(_AsmOutputKind)' == 'Executable'">
     <ProjectCapability Include="RuntimeEnvironmentVariableSupport" />
@@ -1824,15 +1825,17 @@
     <PropertyGroup>
       <_AsmLaunchSettingsFile Condition="Exists('$(MSBuildProjectDirectory)/Properties/launchSettings.json')">$(MSBuildProjectDirectory)/Properties/launchSettings.json</_AsmLaunchSettingsFile>
       <_AsmLaunchSettingsFile Condition="'$(_AsmLaunchSettingsFile)' == '' and Exists('$(MSBuildProjectDirectory)/$(MSBuildProjectName).run.json')">$(MSBuildProjectDirectory)/$(MSBuildProjectName).run.json</_AsmLaunchSettingsFile>
-      <!-- The launcher (AsmSelectRunTarget.UseLauncher), only for a project with launch settings,
-           which are what hold a profile's arguments: on Windows a program built with the bundled
-           toolchain (_AsmBuildRunLauncher; AsmToolchain=System gets none), on Linux and macOS a
-           shell script the task writes. In this build's own intermediate folder, so dotnet run of
-           another configuration, framework or RID, at the same time, never rewrites the one this
-           run starts. -->
+      <!-- Where the launcher goes (AsmSelectRunTarget.UseLauncher, which decides whether it is
+           used: for a project with launch settings, which are what hold a profile's arguments,
+           and through WSL for dotnet run -e's variables, which the .NET 10 SDKs' CLIs would
+           otherwise never put into WSLENV): on Windows a program built with the bundled
+           toolchain (_AsmBuildRunLauncher, only once the task used it; AsmToolchain=System gets
+           none), on Linux and macOS a shell script the task writes. In this build's own
+           intermediate folder, so dotnet run of another configuration, framework or RID, at the
+           same time, never rewrites the one this run starts. -->
       <_AsmRunLauncherDirectory>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'asm-run'))</_AsmRunLauncherDirectory>
-      <_AsmRunLauncherFile Condition="'$(_AsmLaunchSettingsFile)' != '' and $([MSBuild]::IsOSPlatform('Windows')) and '$(AsmToolchain)' == 'Bundled'">$(_AsmRunLauncherDirectory)$(MSBuildProjectName)-run.exe</_AsmRunLauncherFile>
-      <_AsmRunLauncherFile Condition="'$(_AsmLaunchSettingsFile)' != '' and !$([MSBuild]::IsOSPlatform('Windows'))">$(_AsmRunLauncherDirectory)$(MSBuildProjectName)-run.sh</_AsmRunLauncherFile>
+      <_AsmRunLauncherFile Condition="$([MSBuild]::IsOSPlatform('Windows')) and '$(AsmToolchain)' == 'Bundled'">$(_AsmRunLauncherDirectory)$(MSBuildProjectName)-run.exe</_AsmRunLauncherFile>
+      <_AsmRunLauncherFile Condition="!$([MSBuild]::IsOSPlatform('Windows'))">$(_AsmRunLauncherDirectory)$(MSBuildProjectName)-run.sh</_AsmRunLauncherFile>
     </PropertyGroup>
     <AsmSelectRunTarget Programs="@(_AsmRunCandidate)"
                         RunIn="$(AsmRunIn)"
@@ -1857,7 +1860,8 @@
     _AsmBuildRunLauncher: the Windows launcher that dotnet run starts for a program run through
     wasmtime, WSL or Docker when the project has launch settings (AsmSelectRunTarget.UseLauncher;
     the owner's choice of 2026-11-26), so that the CLI hands a launch profile's commandLineArgs to
-    a command without arguments of its own. stubs/run-launcher-x64.asm, assembled and linked with
+    a command without arguments of its own; and through WSL when dotnet run -e names variables,
+    which the launcher lists in WSLENV. stubs/run-launcher-x64.asm, assembled and linked with
     the bundled NASM and lld-link against kernel32 alone, the first time it is needed and again
     only when the SDK's source or tools change (the stamp file below). Runs right after
     _AsmComputeRunArguments, inside ComputeRunArguments, so dotnet run builds it even with its
