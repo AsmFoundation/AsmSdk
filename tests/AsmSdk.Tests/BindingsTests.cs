@@ -23,7 +23,7 @@ public sealed class BindingsTests(SdkUnderTest sdk)
     /// <summary>
     /// tests/projects/NetBindings calls all six ApiProto functions through the library's baseline
     /// (the namespace Apiproto, a class per file): two integers, a function named like its file
-    /// (Invoke), a double, a UTF-8 string, a span (the pointer and length pair), and a callback.
+    /// (its class takes the suffix Asm: AnswerAsm.Answer), a double, a UTF-8 string, a span (the pointer and length pair), and a callback.
     /// Every line must come out right on this machine. The project never mentions the attribute,
     /// so no generator ran: the attribute's type is not in the assembly (the switch).
     /// </summary>
@@ -81,7 +81,9 @@ public sealed class BindingsTests(SdkUnderTest sdk)
         Assert.Contains("__s0.FromManaged(name, stackalloc byte[global::System.Runtime.InteropServices.Marshalling.Utf8StringMarshaller.ManagedToUnmanagedIn.BufferSize]);", source);
         Assert.Contains("__s0.Free();", source);
         Assert.Contains("internal static unsafe extern int Apply(delegate* unmanaged<int, int, int> op, int a, int b);", source);
-        Assert.Contains("internal static extern int Invoke();", source);
+        // answer() in answer.asm: its file's class takes the suffix, and the method keeps its name.
+        Assert.Contains("internal static partial class AnswerAsm", source);
+        Assert.Contains("internal static extern int Answer();", source);
         Assert.Contains("/// <summary><c>fast uint32_t sum_bytes(const uint8_t* data, size_t len)</c></summary>", source);
     }
 

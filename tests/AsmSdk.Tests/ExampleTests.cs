@@ -104,7 +104,10 @@ public sealed class ExampleTests(SdkUnderTest sdk)
     /// archive (what a .NET WebAssembly app links, through the props) and module (for JavaScript
     /// and WASI hosts) under native/ and never runtimes/, the public include file,
     /// netstandard1.0's lib/ marker and props, and the .NET consumer targets that give a
-    /// PackageReference BinariesCopyPath (a shared library is packed, so they are there).
+    /// PackageReference BinariesCopyPath (a shared library is packed, so they are there); and, the
+    /// library having PROTO lines, its C# bindings: the baseline its C# consumers compile
+    /// (contentFiles), the API file and the bindings generator (build/bindings/); and its C header
+    /// (include/crc32c.h), from the same lines.
     /// </summary>
     [Fact]
     public void Crc32C_packs_its_library_where_dotnet_finds_it()
@@ -124,6 +127,8 @@ public sealed class ExampleTests(SdkUnderTest sdk)
                 "native/win-x64/freestanding/crc32c.dll.lib", "native/win-arm64/freestanding/crc32c.dll.lib",
                 "native/browser-wasm/freestanding/crc32c.a", "native/browser-wasm/freestanding/crc32c.wasm",
                 "native/wasi-wasm/freestanding/crc32c.a", "native/wasi-wasm/freestanding/crc32c.wasm",
+                "include/crc32c.h", "contentFiles/cs/net7.0/AsmBindings/crc32c.cs.pp",
+                "build/bindings/crc32c.api.json", "build/bindings/AsmFoundation.Sdk.Bindings.dll",
             },
             SdkUnderTest.PackageEntries(Path.Combine(Repo.Artifacts, "packages", "Samples.Crc32C.1.0.0.nupkg")));
     }

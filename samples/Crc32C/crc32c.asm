@@ -179,6 +179,7 @@ section .text
 ; @param  ARG3   length in bytes
 ; @returns eax = the checksum
 ; -----------------------------------------------------------------------------
+PROTO uint32_t crc32c_append(uint32_t crc, const uint8_t* data, size_t length)
 FUNCTION crc32c_append, 3
     mov     eax, ARG1d
     mov     r10, ARG2
@@ -204,6 +205,7 @@ resolve:
 ; Picks it first if no call has yet, so the answer never changes afterwards.
 ; @returns eax = CRC32C_PORTABLE, CRC32C_HARDWARE or CRC32C_HARDWARE_3WAY
 ; -----------------------------------------------------------------------------
+PROTO int32_t crc32c_implementation(void)
 FUNCTION crc32c_implementation
     mov     rax, [rel dispatch]
     lea     rcx, [rel resolve]
@@ -264,6 +266,7 @@ select:
 ; @param  ARG3   length in bytes
 ; @returns eax = the checksum
 ; -----------------------------------------------------------------------------
+PROTO uint32_t crc32c_append_portable(uint32_t crc, const uint8_t* data, size_t length)
 FUNCTION crc32c_append_portable, 3
     mov     eax, ARG1d
     mov     r10, ARG2
@@ -297,6 +300,7 @@ impl_portable:
 ; @param  ARG3   length in bytes
 ; @returns eax = the checksum
 ; -----------------------------------------------------------------------------
+PROTO uint32_t crc32c_append_hardware(uint32_t crc, const uint8_t* data, size_t length)
 FUNCTION crc32c_append_hardware, 3
     mov     eax, ARG1d
     mov     r10, ARG2
@@ -340,6 +344,7 @@ hardware_rest:
 ; @param  ARG3   length in bytes
 ; @returns eax = the checksum
 ; -----------------------------------------------------------------------------
+PROTO uint32_t crc32c_append_hardware_3way(uint32_t crc, const uint8_t* data, size_t length)
 FUNCTION crc32c_append_hardware_3way, 3
     mov     eax, ARG1d
     mov     r10, ARG2

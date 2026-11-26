@@ -134,6 +134,14 @@ public class Crc32CBenchmarks
             {
                 return $"the dispatcher at {size} bytes disagrees";
             }
+
+            // The generated binding of crc32c_append (its span overload), which the SDK writes from
+            // crc32c.asm's PROTO line: the same function, reached without Crc32C.Net.
+            uint generated = Crc32c.Crc32c.Crc32cAppend(0, data);
+            if (generated != expected)
+            {
+                return $"the generated binding at {size} bytes: 0x{generated:X8}, managed 0x{expected:X8}";
+            }
         }
 
         return null;
@@ -175,12 +183,15 @@ public class Crc32CBenchmarks
 
 /// <summary>
 /// The price of one call into libcrc32c with nothing to checksum, with and without the GC
-/// transition: what Crc32C.Net's 4 KiB SuppressGCTransition limit saves on every short input.
+/// transition: what Crc32C.Net's 4 KiB SuppressGCTransition limit saves on every short input;
+/// and the same ordinary call through the generated binding, which should cost what the
+/// hand-written import costs.
 /// </summary>
 /// <remarks>
 /// The benchmark declares its own imports of crc32c_append, so the wrapper needs no public API
 /// that exists only to be measured. libcrc32c is in this program's output, under runtimes/ for
-/// every platform: the reference to Crc32C.Net brings it along.
+/// every platform: the reference to Crc32C.Net brings it along, and with it the library's
+/// generated bindings (the namespace Crc32c), which the SDK writes from its PROTO lines.
 /// </remarks>
 public unsafe partial class CallBenchmarks
 {
@@ -193,6 +204,15 @@ public unsafe partial class CallBenchmarks
     /// <returns>The checksum of nothing: 0.</returns>
     [Benchmark(Description = "call, SuppressGCTransition")]
     public uint WithoutTransition() => AppendWithoutTransition(0, null, 0);
+
+    /// <summary>
+    /// The ordinary call through the generated binding, Crc32c.Crc32c.Crc32cAppend: a blittable
+    /// [DllImport] extern (PROTO without "fast", so with the GC transition), which is what
+    /// LibraryImport emits for this signature. Compared with <see cref="WithTransition"/>.
+    /// </summary>
+    /// <returns>The checksum of nothing: 0.</returns>
+    [Benchmark(Description = "call, generated binding")]
+    public uint Generated() => Crc32c.Crc32c.Crc32cAppend(0, null, 0);
 
     /// <summary>crc32c_append through an ordinary P/Invoke.</summary>
     /// <param name="crc">The checksum to continue.</param>

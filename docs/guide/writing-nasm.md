@@ -220,6 +220,10 @@ On ELF (Linux-only files), the directives also give sizes and data types:
 >   the RID outer build checks that every RID agrees and writes the library's file in
 >   `bin/<Configuration>/<tfm>/`. The section never reaches a Windows or macOS image, and is not
 >   loaded from a Linux `.so`.
+> - **What the lines give:** C# bindings to every C# project that references the library (see
+>   [Generated bindings](interop.md#generated-bindings)), and a C header, `<AssemblyName>.h`,
+>   beside the API file and in the package's `include/` (see
+>   [C and other languages](interop.md#c-and-other-languages)).
 > - **The checks:** `ASM0130` (a line that does not parse, or a type it cannot bind),
 >   `ASM0131` (no exported `FUNCTION` of that name; a static library may describe a
 >   `HIDDEN_FUNCTION`), `ASM0132` (the integer and pointer parameters differ from `FUNCTION`'s

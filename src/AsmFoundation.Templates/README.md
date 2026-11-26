@@ -30,7 +30,7 @@ dotnet test
 - **C# bindings from `PROTO` lines.** `PROTO int32_t add_ints(int32_t a, int32_t b)` beside a
   `FUNCTION` gives every C# project that references the library a binding, written by the SDK:
   `Demo.Native.Add.AddInts(40, 2)` (the library's namespace, the class of `add.asm`). `asmnet`
-  calls its library so, with no `[LibraryImport]`.
+  and `asmwasmapp` call their libraries so, with no `[LibraryImport]`.
 - **`dotnet sln add`** adds an `.asmproj` like any project. `dotnet add reference` does not accept
   one yet (a .NET CLI limitation with target framework aliases); write the line instead:
   `<ProjectReference Include="../Native/Native.asmproj" />`.

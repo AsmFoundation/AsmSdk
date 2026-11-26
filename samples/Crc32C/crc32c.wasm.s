@@ -141,6 +141,7 @@ ENDFUNCTION crc32c_init
 // The running value is the complement of the checksum, as zlib's convention
 // has it: complemented on entry and on exit.
 // -----------------------------------------------------------------------------
+PROTO uint32_t crc32c_append_portable(uint32_t crc, const uint8_t* data, size_t length)
 FUNCTION crc32c_append_portable, (i32, i32, i32) -> (i32)
     .local i32, i32             // 3: the first word ^ crc, 4: the second word
     ADDRESS tables_ready
@@ -298,6 +299,7 @@ ENDFUNCTION crc32c_append_portable
 // crc32c_append(crc, data, length) - the checksum on the fastest path, which
 // on WebAssembly is the table one: no choice to make, so no dispatch either.
 // -----------------------------------------------------------------------------
+PROTO uint32_t crc32c_append(uint32_t crc, const uint8_t* data, size_t length)
 FUNCTION crc32c_append, (i32, i32, i32) -> (i32)
     local.get 0
     local.get 1
@@ -309,6 +311,7 @@ ENDFUNCTION crc32c_append
 // crc32c_implementation() - which path crc32c_append runs: CRC32C_PORTABLE (1),
 // always, on WebAssembly.
 // -----------------------------------------------------------------------------
+PROTO int32_t crc32c_implementation(void)
 FUNCTION crc32c_implementation, () -> (i32)
     i32.const 1                 // CRC32C_PORTABLE
 ENDFUNCTION crc32c_implementation
@@ -319,10 +322,12 @@ ENDFUNCTION crc32c_implementation
 // Exported all the same: crc32c.map names them for every RID, and a caller that
 // checks crc32c_implementation (or Crc32C.IsSupported) never reaches them.
 // -----------------------------------------------------------------------------
+PROTO uint32_t crc32c_append_hardware(uint32_t crc, const uint8_t* data, size_t length)
 FUNCTION crc32c_append_hardware, (i32, i32, i32) -> (i32)
     unreachable
 ENDFUNCTION crc32c_append_hardware
 
+PROTO uint32_t crc32c_append_hardware_3way(uint32_t crc, const uint8_t* data, size_t length)
 FUNCTION crc32c_append_hardware_3way, (i32, i32, i32) -> (i32)
     unreachable
 ENDFUNCTION crc32c_append_hardware_3way

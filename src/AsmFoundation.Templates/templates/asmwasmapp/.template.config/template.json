@@ -6,7 +6,7 @@
   "groupIdentity": "AsmFoundation.Templates.AsmWasmAppSolution",
   "name": "Assembly + .NET WebAssembly Solution",
   "shortName": "asmwasmapp",
-  "description": "A solution with a .NET WebAssembly app (browser-wasm, run by Node or a browser) and the WebAssembly assembly library it calls through [LibraryImport], linked into the app's runtime. Built by AsmFoundation.Sdk and the .NET SDK with the wasm-tools workload.",
+  "description": "A solution with a .NET WebAssembly app (browser-wasm, run by Node or a browser) and the WebAssembly assembly library it calls through the C# bindings the SDK writes from the library's PROTO lines, linked into the app's runtime. Built by AsmFoundation.Sdk and the .NET SDK with the wasm-tools workload.",
   "tags": {
     "language": "C#",
     "type": "solution"

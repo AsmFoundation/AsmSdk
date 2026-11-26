@@ -407,14 +407,27 @@ Each SDK release names the one it was tested with.
   - **The tests check it on every machine they run on:** the asm code reads back each field C#
     wrote, and its size constants equal C#'s `sizeof`.
   - **Not yet in WebAssembly sources** (an error, as `PROTO` is).
+- **The C header from `PROTO` and `STRUCT` lines** (the owner's choice of 2026-11-26, after
+  seeing the real files: "Build it for 0.4.0", on by default, with an opt-out). A library or
+  program with such lines gets `<AssemblyName>.h` beside each API file
+  (`bin/<Configuration>/<tfm>/` and each RID's folder: `AsmWriteCHeader`), and `dotnet pack`
+  puts it under `include/`. It holds the functions' declarations (rendered from the API file,
+  not the `PROTO` text, which keeps `fast`) and each `STRUCT` as a C struct, with checks of its
+  size and offsets against the SDK's layout: `_Static_assert` in C11, `static_assert` in C++11,
+  a negative array size in older C and C++. `AsmGenerateCHeader=false` turns it off; a project's
+  own `include/<AssemblyName>.h` wins, and `dotnet pack` says so (**ASM0149**). Tested where a C
+  compiler is on PATH (Linux, macOS): a C program, compiled as C11 and C99 against
+  `apistruct.h`, reads every kind of struct field back right through the real library; the header
+  also compiles as C++11.
 - **Generated C# bindings** (phases 2 and 4 of the design; the owner's spec of 2026-11-25,
   catalog `asmsdk/plans/csharp-bindings.md`). A C# project (.NET 7 or later) that references an
   asm library with `PROTO` or `STRUCT` lines, as a project or as its package, calls it with
   nothing written by hand.
   - **The baseline:** a namespace named after the library (its `AssemblyName`, each dotted part
     in PascalCase: `Demo.Native.Add.AddInts`), one internal static class per `.asm` file,
-    folders as namespaces, the `STRUCT`s at the namespace's root; a function named like its file
-    is `Invoke`; functions with no file class (`Folders`, `Flat`) go into `<Namespace>.Api`.
+    folders as namespaces, the `STRUCT`s at the namespace's root; a file that has a function of
+    its own name gives its class the suffix `Asm` (`answer()` in `answer.asm` is
+    `AnswerAsm.Answer()`: C# forbids a member named like its class); functions with no file class (`Folders`, `Flat`) go into `<Namespace>.Api`.
     Every function is there, whatever else the project binds.
   - **Written by the SDK, no generator:** for a project reference at build time
     (`AsmWriteBindings`, `obj/<Configuration>/<tfm>/AsmBindings/<Namespace>.g.cs`, rewritten only
@@ -464,9 +477,19 @@ Each SDK release names the one it was tested with.
     struct the internal baseline holds), **ASM0146** (a shaping value or combination C# cannot
     follow), **ASM0147** (warning: C# older than 11), **ASM0148** (warning at pack time: a layout
     of the package's baseline in which two names meet; it keeps ASM0143 as an `#error`).
-  - **The templates:** `asmnet`'s app and tests call their library through the baseline (the
-    template names the namespace in an `AsmBindings` item, so that `-n my-app` gives the
-    `my_app.Native` its code says), and `asmlib`'s `add.asm` has its `PROTO` line.
+  - **The templates:** `asmnet`'s app and tests, and `asmwasmapp`'s app, call their libraries
+    through the baseline (each names the namespace in an `AsmBindings` item, so that `-n my-app`
+    gives the `my_app.Native` its code says); `asmlib`'s and both wasm templates' sources have
+    their `PROTO` lines.
+  - **Measured on a real library:** `samples/Crc32C` declares its five exports with `PROTO` lines
+    in all three sources. `Crc32C.Bench` times the generated binding of `crc32c_append` against the
+    hand-written `[LibraryImport]`: medians of 7.38 ns and 7.36 ns per empty call (three runs,
+    native Windows, pinned to one performance core of an i9-13900K;
+    `samples/Crc32C.Bench/results/2026-11-26-i9-13900K`); `Crc32C.Net` keeps its two hand-written
+    imports (with and without the GC transition), and its bindings are off.
+  - **In an IDE:** a design-time build hands the compiler the written baseline (from the asm
+    library's first build on), the generator and the API file (with the attribute), or a
+    package's baseline (from the restore on), as `IdeIntegrationTests` check.
   - Also fixed: `GetAsmApiFile` returns absolute paths (a referencing project read relative ones
     against its own folder); the generator read the array argument `Files` as a scalar and
     failed (CS8785).

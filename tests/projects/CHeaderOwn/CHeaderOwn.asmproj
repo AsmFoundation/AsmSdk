@@ -1,0 +1,16 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!--
+    A library with a PROTO line that ships its own include/cheaderown.h (CHeaderTests): the
+    project's header wins. The build writes no C header of its own (none beside the API file), and
+    dotnet pack, which carries the project's file under include/, says so with ASM0149. One RID,
+    linux-x64, which every build machine builds (NASM and lld), so the test runs everywhere.
+  -->
+  <PropertyGroup>
+    <AssemblyName>cheaderown</AssemblyName>
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+    <PackageId>Test.CHeaderOwn</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>AsmFoundation tests</Authors>
+    <Description>Test package: a library whose own C header wins over the SDK's.</Description>
+  </PropertyGroup>
+</Project>

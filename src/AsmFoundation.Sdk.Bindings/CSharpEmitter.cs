@@ -160,7 +160,11 @@ internal static class CSharpEmitter
     /// <param name="nesting">The layout.</param>
     /// <param name="spanOverloads">Whether pointer-and-length pairs get span overloads.</param>
     /// <param name="shape">How the members (and the nested classes, which take its accessibility and static-ness) are declared.</param>
-    /// <param name="className">The bound class's own name: a function named like the class it lands in becomes Invoke (C# forbids a member named like its type, CS0542).</param>
+    /// <param name="className">
+    /// The bound class's own name. A function named like it cannot be bound in it (C# forbids a
+    /// member named like its type, CS0542): reported as a collision. The nested file and folder
+    /// classes take the suffix <see cref="ClassSuffix"/> instead (see <see cref="ClassName"/>).
+    /// </param>
     /// <param name="collisions">Receives a description of each name generated twice in one scope.</param>
     /// <param name="structs">The library's STRUCTs: each C name with its generated C# type, fully qualified (global::Demo.Native.Rect), which a signature naming the struct uses.</param>
     /// <param name="reserved">
@@ -208,12 +212,30 @@ internal static class CSharpEmitter
     private static void WriteNode(StringBuilder output, int indent, string library, Node node, string scopeName, bool spanOverloads, MemberShape shape,
         List<string> collisions, string scope, IReadOnlyDictionary<string, string> structs, ISet<string>? reserved)
     {
+        // Each nested class's name: a file's or folder's class that holds a function of its own
+        // name takes the suffix (see ClassName). A suffixed name another class already has would
+        // be a duplicate member: reported, and the suffixed class left out.
+        var childNames = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (KeyValuePair<string, Node> child in node.Children.ToList())
+        {
+            string name = ClassName(child.Key, child.Value.Functions);
+            if (name != child.Key && node.Children.ContainsKey(name))
+            {
+                collisions.Add($"the file or folder {child.Value.Source} becomes the class {scope}{name}, and so does {node.Children[name].Source}");
+                node.Children.Remove(child.Key);
+                continue;
+            }
+
+            childNames[child.Key] = name;
+        }
+
         // A struct of the default class named like one of its nested classes (STRUCT add and
         // add.asm both make Add) would be a duplicate member: reported, and the class left out.
-        foreach (string child in node.Children.Keys.Where(k => reserved?.Contains(k) == true).ToList())
+        foreach (string child in node.Children.Keys.Where(k => reserved?.Contains(childNames[k]) == true).ToList())
         {
-            collisions.Add($"the file or folder {node.Children[child].Source} becomes the class {scope}{child}, the name of a struct");
+            collisions.Add($"the file or folder {node.Children[child].Source} becomes the class {scope}{childNames[child]}, the name of a struct");
             node.Children.Remove(child);
+            childNames.Remove(child);
         }
 
         // Two functions whose PascalCase names meet, or a function named like a nested class,
@@ -222,13 +244,13 @@ internal static class CSharpEmitter
         foreach (ApiFunctionModel function in node.Functions)
         {
             string method = Pascal(function.Name);
-            // A function named like the class it lands in (answer in answer.asm, nested by
-            // file) cannot keep its name: C# forbids a member named like its type (CS0542). It
-            // becomes Invoke, which reads as calling the file's function and stays put when the
-            // file gains functions; its summary keeps the C prototype.
+            // A function named like the class that holds it would be CS0542 (C# forbids a member
+            // named like its type). A file's or folder's class has taken the suffix for that
+            // already, so this is the app's own class, which the generator cannot rename.
             if (method == scopeName)
             {
-                method = "Invoke";
+                collisions.Add($"{function.Name} becomes {scope}{method}, the name of the class that holds it");
+                continue;
             }
 
             if (methodNames.TryGetValue(method, out string? other))
@@ -237,7 +259,7 @@ internal static class CSharpEmitter
                 continue;
             }
 
-            if (node.Children.ContainsKey(method))
+            if (childNames.ContainsValue(method))
             {
                 collisions.Add($"{function.Name} becomes {scope}{method}, the name of a nested class");
                 continue;
@@ -257,16 +279,39 @@ internal static class CSharpEmitter
         {
             // A nested class takes the scope's kind: static members live in static classes, an
             // instance class's file classes are instance classes too (each instantiated alone).
+            string name = childNames[child.Key];
             Indent(output, indent).Append("/// <summary>The functions of ").Append(child.Value.Source).Append(".</summary>\n");
-            Indent(output, indent).Append(shape.Access).Append(shape.Static ? " static partial class " : " partial class ").Append(child.Key).Append('\n');
+            Indent(output, indent).Append(shape.Access).Append(shape.Static ? " static partial class " : " partial class ").Append(name).Append('\n');
             Indent(output, indent).Append("{\n");
-            WriteNode(output, indent + 1, library, child.Value, child.Key, spanOverloads, shape, collisions, scope + child.Key + ".", structs, null);
+            WriteNode(output, indent + 1, library, child.Value, name, spanOverloads, shape, collisions, scope + name + ".", structs, null);
             Indent(output, indent).Append("}\n");
         }
     }
 
     /// <summary>The name of the baseline's class for functions that have no file class (Flat, or a root file under Folders): a namespace cannot hold methods.</summary>
     internal const string RootClassName = "Api";
+
+    /// <summary>
+    /// The suffix a generated class takes when it holds a function of its own name: answer() in
+    /// answer.asm is AnswerAsm.Answer (the owner's choice of 2026-11-26, over the method Invoke
+    /// the first builds wrote). C# forbids a member named like its type (CS0542), and the
+    /// function keeps its name this way.
+    /// </summary>
+    internal const string ClassSuffix = "Asm";
+
+    /// <summary>
+    /// The name a generated class (a file's, a folder's, the baseline's Api) takes: its own, or
+    /// with <see cref="ClassSuffix"/> when one of its functions has that name in PascalCase.
+    /// </summary>
+    /// <param name="name">The class's name from its file or folder (Answer for answer.asm).</param>
+    /// <param name="functions">The functions it holds directly.</param>
+    /// <returns>"AnswerAsm" when answer() is among them; the name otherwise.</returns>
+    /// <remarks>
+    /// Only the class that would hold such a member changes; its neighbours keep their names, and
+    /// a clash of the suffixed name with another class is reported by the caller as a collision.
+    /// </remarks>
+    internal static string ClassName(string name, IEnumerable<ApiFunctionModel> functions) =>
+        functions.Any(f => Pascal(f.Name) == name) ? name + ClassSuffix : name;
 
     /// <summary>
     /// The namespace of a library's baseline by default: its import name, each dotted part in
@@ -330,6 +375,31 @@ internal static class CSharpEmitter
                 }
 
                 entry.Functions.Add(function);
+            }
+        }
+
+        // A class that holds a function of its own name takes the suffix (answer.asm's class is
+        // AnswerAsm, api() under Flat makes ApiAsm), before the checks below, which then see the
+        // names the classes really get. A suffixed name another class has is a collision.
+        foreach (KeyValuePair<string, SortedDictionary<string, (string Source, List<ApiFunctionModel> Functions)>> ns in namespaces)
+        {
+            foreach (string cls in ns.Value.Keys.ToList())
+            {
+                (string Source, List<ApiFunctionModel> Functions) entry = ns.Value[cls];
+                string name = ClassName(cls, entry.Functions);
+                if (name == cls)
+                {
+                    continue;
+                }
+
+                ns.Value.Remove(cls);
+                if (ns.Value.TryGetValue(name, out var taken))
+                {
+                    collisions.Add($"{entry.Source} becomes the class {ns.Key}.{name}, and so does {taken.Source}");
+                    continue;
+                }
+
+                ns.Value[name] = entry;
             }
         }
 

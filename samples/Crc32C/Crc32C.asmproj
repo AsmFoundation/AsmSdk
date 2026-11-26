@@ -18,6 +18,11 @@
         CRC instruction nor a carry-less multiply;
       - ExportsFile (crc32c.map): five names leave the library on every OS (versioned
         CRC32C_1.0 on Linux), and every other label stays local;
+      - PROTO lines: each export's C prototype, above its FUNCTION in all three sources. The SDK
+        checks them against the functions on every RID (the wasm RIDs against each function's
+        wasm type), and a C# project that references the library, or its package, gets its
+        bindings with nothing written: Crc32c.Crc32c.Crc32cAppend, with a span overload
+        (Crc32C.Bench times it against Crc32C.Net's hand-written [LibraryImport]);
       - a LinkerArg item for one OS: -z defs fails a Linux link if anything is left undefined;
       - run-time dispatch (cpuid on x64; ID_AA64ISAR0_EL1 on Linux ARM64, kernel32's
         IsProcessorFeaturePresent on Windows ARM64, every Apple silicon Mac has the

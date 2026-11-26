@@ -37,6 +37,7 @@
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmSelectRunTarget" AssemblyFile="$(_AsmTasksAssembly)" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmReadApi" AssemblyFile="$(_AsmTasksAssembly)" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmMergeApi" AssemblyFile="$(_AsmTasksAssembly)" />
+  <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmWriteCHeader" AssemblyFile="$(_AsmTasksAssembly)" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmWriteSourceWrappers" AssemblyFile="$(_AsmTasksAssembly)" />
   <UsingTask TaskName="AsmFoundation.Sdk.Tasks.AsmReadStructs" AssemblyFile="$(_AsmTasksAssembly)" />
 
@@ -1472,6 +1473,40 @@
   </Target>
 
   <!--
+    _AsmComputeCHeader: whether the build writes the C header, <AssemblyName>.h, from the API file
+    (the owner's choice of 2026-11-26: "Build it for 0.4.0", written by default with an opt-out,
+    "like opt-in, allow to opt out. we are opt in by default"). AsmGenerateCHeader=false turns it
+    off. A project that ships its own include/<AssemblyName>.h (an AsmPublicInclude item at the
+    include folder's root) keeps it: the SDK writes none, and dotnet pack says so (ASM0149).
+  -->
+  <Target Name="_AsmComputeCHeader">
+    <ItemGroup>
+      <_AsmOwnCHeader Include="@(AsmPublicInclude)" Condition="'%(RecursiveDir)%(Filename)%(Extension)' == '$(AssemblyName).h'" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_AsmWritesCHeader Condition="'$(AsmGenerateCHeader)' != 'false' and '@(_AsmOwnCHeader)' == ''">true</_AsmWritesCHeader>
+    </PropertyGroup>
+  </Target>
+
+  <!--
+    _AsmWriteRidCHeader (each RID, after _AsmReadApi): the C header beside the RID's API file,
+    bin/<Configuration>/<tfm>/<rid>/<AssemblyName>.h (AsmWriteCHeader: the functions, the structs
+    and their layout checks); deleted with the API file, or when the header is off. A target of
+    its own, run after _AsmReadApi (AfterTargets: a CallTarget would not see the property
+    _AsmApiWritten its caller set), in an inner build only, as _AsmReadApi.
+  -->
+  <Target Name="_AsmWriteRidCHeader" AfterTargets="_AsmReadApi" DependsOnTargets="_AsmComputeCHeader" Condition="'$(_AsmRid)' != ''">
+    <AsmWriteCHeader Condition="'$(_AsmApiWritten)' != '' and '$(_AsmWritesCHeader)' == 'true'"
+                     ApiFile="$(_AsmApiIntermediateFile)"
+                     HeaderFile="$(TargetDir)$(AssemblyName).h"
+                     Origin="AsmFoundation.Sdk $(AsmFoundationSdkVersion)" />
+    <Delete Condition="'$(_AsmApiWritten)' == '' or '$(_AsmWritesCHeader)' != 'true'" Files="$(TargetDir)$(AssemblyName).h" />
+    <ItemGroup Condition="'$(_AsmApiWritten)' != '' and '$(_AsmWritesCHeader)' == 'true'">
+      <FileWrites Include="$(TargetDir)$(AssemblyName).h" />
+    </ItemGroup>
+  </Target>
+
+  <!--
     _AsmMergeApi (the RID outer build): asks each inner build for its API file (the same global
     properties as the Build call, so MSBuild answers from the builds that ran), checks that every
     RID declares the same functions the same way (AsmMergeApi: ASM0133), and writes the
@@ -1500,6 +1535,23 @@
     </ItemGroup>
     <ItemGroup>
       <_AsmApiInnerProject Remove="@(_AsmApiInnerProject)" />
+    </ItemGroup>
+  </Target>
+
+  <!--
+    _AsmWriteMergedCHeader (the RID outer build, after _AsmMergeApi): the library's C header
+    beside its merged API file, bin/<Configuration>/<tfm>/<AssemblyName>.h, the one dotnet pack
+    carries under include/; deleted with the API file, or when the header is off. After
+    _AsmMergeApi, under its condition (an outer build with inner builds).
+  -->
+  <Target Name="_AsmWriteMergedCHeader" AfterTargets="_AsmMergeApi" DependsOnTargets="_AsmComputeCHeader" Condition="'$(_AsmRid)' == '' and '@(_AsmInnerBuild)' != ''">
+    <AsmWriteCHeader Condition="'$(_AsmApiMerged)' != '' and '$(_AsmWritesCHeader)' == 'true'"
+                     ApiFile="$(OutDir)$(AssemblyName).api.json"
+                     HeaderFile="$(OutDir)$(AssemblyName).h"
+                     Origin="AsmFoundation.Sdk $(AsmFoundationSdkVersion)" />
+    <Delete Condition="'$(_AsmApiMerged)' == '' or '$(_AsmWritesCHeader)' != 'true'" Files="$(OutDir)$(AssemblyName).h" />
+    <ItemGroup Condition="'$(_AsmApiMerged)' != '' and '$(_AsmWritesCHeader)' == 'true'">
+      <FileWrites Include="$(OutDir)$(AssemblyName).h" />
     </ItemGroup>
   </Target>
 

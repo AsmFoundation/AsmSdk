@@ -9,8 +9,6 @@
     <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <!-- [LibraryImport] generates its marshalling code as unsafe code. -->
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- main.mjs starts the .NET runtime and runs Main: "dotnet run" runs it in Node (the host
          runtimeconfig.template.json names; without it .NET's WasmAppHost stops with "no
          perHostConfigs found", measured), and so does "node main.mjs" from
@@ -19,8 +17,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Builds the assembly library for browser-wasm and links its archive into this app. -->
+    <!-- Builds the assembly library for browser-wasm and links its archive into this app. Its
+         PROTO lines give this project C# bindings, written by the SDK at build time
+         (obj/.../AsmBindings/): nothing to declare by hand, and the SDK turns on the unsafe code
+         they need. -->
     <ProjectReference Include="../AsmWasmApp.1.Native/AsmWasmApp.1.Native.asmproj" />
+    <!-- The bindings' namespace. Without it, the library's name in PascalCase; named here so
+         that it is exactly the one Program.cs uses, whatever the solution is called.
+         https://asmfoundation.github.io/AsmSdk/guide/interop.html#generated-bindings -->
+    <AsmBindings Include="AsmWasmApp.1.Native" Namespace="AsmWasmApp._1.Native" />
   </ItemGroup>
 
 </Project>

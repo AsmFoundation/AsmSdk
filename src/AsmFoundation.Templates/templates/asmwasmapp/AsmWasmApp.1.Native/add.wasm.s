@@ -4,10 +4,12 @@
 // default): FUNCTION name, (params) -> (results) starts an exported function of that type, and
 // ENDFUNCTION name ends it. WebAssembly is a stack machine: the parameters are locals 0, 1, ...,
 // each instruction takes its operands from the operand stack, and the function returns what is
-// left there.
+// left there. PROTO is the function's C prototype: the SDK checks that it lowers to the
+// FUNCTION's wasm type, and writes AsmWasmApp.1.App's C# binding from it.
 // https://asmfoundation.github.io/AsmSdk/guide/webassembly.html
 
-// int32_t add_ints(int32_t a, int32_t b): a + b, wrapping like C#'s unchecked addition.
+// a + b, wrapping like C#'s unchecked addition.
+PROTO int32_t add_ints(int32_t a, int32_t b)
 FUNCTION add_ints, (i32, i32) -> (i32)
     local.get 0
     local.get 1

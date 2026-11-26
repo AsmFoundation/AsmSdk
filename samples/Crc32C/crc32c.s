@@ -132,6 +132,7 @@
 // One indirect branch through `dispatch` (x16, the intra-procedure scratch
 // register): before the first call it points at `resolve`, afterwards at the
 // chosen path, with the caller's arguments untouched in w0, x1, x2.
+PROTO uint32_t crc32c_append(uint32_t crc, const uint8_t* data, size_t length)
 FUNCTION crc32c_append
     ADDRESS x16, dispatch
     ldr     x16, [x16]
@@ -153,6 +154,7 @@ resolve:
     br      x16
 
 // ---- crc32c_implementation -------------------------------------------------------
+PROTO int32_t crc32c_implementation(void)
 FUNCTION crc32c_implementation
     stp     x29, x30, [sp, #-16]!
     mov     x29, sp
@@ -220,6 +222,7 @@ LOCAL_FUNCTION crc32c_select
 ENDFUNCTION crc32c_select
 
 // ---- the portable path ---------------------------------------------------------------
+PROTO uint32_t crc32c_append_portable(uint32_t crc, const uint8_t* data, size_t length)
 FUNCTION crc32c_append_portable
     b       impl_portable
 ENDFUNCTION crc32c_append_portable
@@ -239,6 +242,7 @@ impl_portable:
     ret
 
 // ---- the one-chain path ----------------------------------------------------------------
+PROTO uint32_t crc32c_append_hardware(uint32_t crc, const uint8_t* data, size_t length)
 FUNCTION crc32c_append_hardware
     b       impl_hardware
 ENDFUNCTION crc32c_append_hardware
@@ -264,6 +268,7 @@ hardware_rest:
     ret
 
 // ---- the 3-way path ----------------------------------------------------------------------
+PROTO uint32_t crc32c_append_hardware_3way(uint32_t crc, const uint8_t* data, size_t length)
 FUNCTION crc32c_append_hardware_3way
     b       impl_hardware_3way
 ENDFUNCTION crc32c_append_hardware_3way

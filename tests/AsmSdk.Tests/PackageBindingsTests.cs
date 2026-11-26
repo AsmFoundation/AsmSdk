@@ -46,6 +46,9 @@ public sealed class PackageBindingsTests(SdkUnderTest sdk)
         Assert.Contains("build/bindings/AsmFoundation.Sdk.Bindings.dll", entries);
         Assert.Contains("build/netstandard1.0/Test.BindingsPackage.targets", entries);
         Assert.Contains("buildTransitive/netstandard1.0/Test.BindingsPackage.targets", entries);
+        // The C header the SDK writes from the same lines, under include/ (CHeaderTests has its rules).
+        Assert.Contains("include/bindpkg.h", entries);
+        Assert.Contains("int32_t point_sum(const point* p);", EntryText(PackageA, "include/bindpkg.h"));
 
         string nuspec = EntryText(PackageA, "Test.BindingsPackage.nuspec");
         Assert.Contains("<files include=\"cs/net7.0/AsmBindings/bindpkg.cs.pp\" buildAction=\"Compile\" />", nuspec);
@@ -186,7 +189,16 @@ public sealed class PackageBindingsTests(SdkUnderTest sdk)
     }
 
     /// <summary>Packs both test packages into the local feed, once per run (B claiming the generator version 9.9.9).</summary>
-    private void PackPackages()
+    private void PackPackages() => PackPackages(sdk);
+
+    /// <summary>
+    /// Packs both test packages into the local feed, once per run (B claiming the generator version
+    /// 9.9.9), for any test class that needs them (IdeIntegrationTests too): the steps are keyed in
+    /// the shared fixture, so the second caller reuses the first one's packages.
+    /// </summary>
+    /// <param name="sdk">The SDK under test.</param>
+    /// <exception cref="Xunit.Sdk.XunitException">A pack failed (the assertion carries its output).</exception>
+    internal static void PackPackages(SdkUnderTest sdk)
     {
         CommandResult a = sdk.Once("pack BindingsPackage into the feed", () => sdk.Dotnet("pack", Repo.TestProject("BindingsPackage"), "-c", "Release"));
         Assert.True(a.ExitCode == 0, a.Tail());

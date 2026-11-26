@@ -25,6 +25,11 @@
     <Version>1.0.0</Version>
     <Authors>AsmFoundation samples</Authors>
     <Description>Sample: CRC-32C for .NET, computed by an x86-64 assembly library (Samples.Crc32C).</Description>
+    <!-- This wrapper declares its imports itself: it calls crc32c_append two ways, without the GC
+         transition up to 4 KiB and with it above, which one PROTO line per function cannot say.
+         So the generated bindings, which the library's PROTO lines give every C# project that
+         references it (the benchmark times them), are off here. -->
+    <AsmGenerateBindings>false</AsmGenerateBindings>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Crc32C/Crc32C.asmproj" />

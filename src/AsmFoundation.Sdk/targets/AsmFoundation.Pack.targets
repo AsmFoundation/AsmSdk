@@ -9,7 +9,11 @@
     the folders it does not know, and treats lib/ as managed assemblies, so the static libraries
     live under native/ instead:
       include/**                               public include files (.inc, .h), shared by
-                                               every target framework and RID
+                                               every target framework and RID; and the C header
+                                               the SDK writes from the PROTO and STRUCT lines,
+                                               include/<AssemblyName>.h (AsmGenerateCHeader, on by
+                                               default; a project's own file of that name wins:
+                                               ASM0149)
       src/**                                   sources, when AsmPackSources=true
       lib/<nuget-tfm>/_._                      empty marker, one per target framework (below)
       build/<nuget-tfm>/<id>.props, buildTransitive/<nuget-tfm>/<id>.props
@@ -326,7 +330,7 @@
     files, writes the framework's consumer props, and returns TfmSpecificPackageFile items
     whose PackagePath is the layout above.
   -->
-  <Target Name="_AsmPackNativeContent" DependsOnTargets="_AsmComputePackLayout">
+  <Target Name="_AsmPackNativeContent" DependsOnTargets="_AsmComputePackLayout;_AsmComputeCHeader">
     <!-- The inner builds with the dispatch's global properties: MSBuild reuses them. -->
     <ItemGroup>
       <_AsmRidToPack Include="$(_AsmBuildRuntimeIdentifiers)" />
@@ -346,8 +350,16 @@
       <_AsmSupportedRidItem Include="$(_AsmSupportedRuntimeIdentifiers)" />
     </ItemGroup>
     <PropertyGroup>
-      <_AsmPackHasIncludes Condition="'@(AsmPublicInclude)' != ''">true</_AsmPackHasIncludes>
+      <_AsmPackHasIncludes Condition="'@(AsmPublicInclude)' != '' or ('$(_AsmWritesCHeader)' == 'true' and Exists('$(_AsmApiMergedFullPath)'))">true</_AsmPackHasIncludes>
+      <!-- The C header beside the merged API file of this target framework's build. -->
+      <_AsmPackCHeader>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(OutDir)', '$(AssemblyName).h'))</_AsmPackCHeader>
     </PropertyGroup>
+    <!-- ASM0149: the project ships its own include/<AssemblyName>.h, so the package holds that one,
+         and the SDK wrote no header of its own (_AsmComputeCHeader). Said where it matters, when
+         the package is made, and only for a library with PROTO or STRUCT lines. -->
+    <Warning Code="ASM0149"
+             Condition="'$(_AsmPackIsFirstTargetFramework)' == 'true' and '$(AsmGenerateCHeader)' != 'false' and '@(_AsmOwnCHeader)' != '' and Exists('$(_AsmApiMergedFullPath)')"
+             Text="include/$(AssemblyName).h is the project's own, so the package carries it and the SDK writes no C header from the PROTO and STRUCT lines. Rename one of them, or set AsmGenerateCHeader to false to keep yours without this warning." />
     <AsmWritePackageProps PackageId="$(PackageId)"
                           PackageVersion="$(PackageVersion)"
                           TargetFrameworkName="$(_AsmTargetFrameworkName)"
@@ -417,6 +429,10 @@
 
     <ItemGroup>
       <TfmSpecificPackageFile Include="@(AsmPublicInclude)" Condition="'$(_AsmPackIsFirstTargetFramework)' == 'true'" PackagePath="include/%(RecursiveDir)%(Filename)%(Extension)" />
+      <!-- The C header the build wrote beside the merged API file (_AsmWriteMergedCHeader), next
+           to the public include files, from the first target framework (the include/ folder is
+           shared by all of them). -->
+      <TfmSpecificPackageFile Include="$(_AsmPackCHeader)" Condition="'$(_AsmPackIsFirstTargetFramework)' == 'true' and '$(_AsmWritesCHeader)' == 'true' and Exists('$(_AsmPackCHeader)')" PackagePath="include/$(AssemblyName).h" />
       <!-- AsmPackSources: the asm sources (Compile items) and include files (None items ending
            in .inc) under src/, for consumers that assemble them themselves. -->
       <TfmSpecificPackageFile Include="@(Compile)" Condition="'$(AsmPackSources)' == 'true' and '$(_AsmPackIsFirstTargetFramework)' == 'true' and ('%(Extension)' == '.asm' or '%(Extension)' == '.s')" PackagePath="src/%(RecursiveDir)%(Filename)%(Extension)" />

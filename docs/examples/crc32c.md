@@ -283,6 +283,41 @@ public static unsafe partial class Crc32C
 - **The library loads at the first call.** On a platform none of the seven builds serves
   (32-bit x86, for one), that call throws `DllNotFoundException`.
 
+## Generated bindings
+
+> [!NOTE]
+> **Not released yet:** the generated C# bindings are on the main branch only (see
+> [Generated bindings](../guide/interop.md#generated-bindings)).
+
+Each export has its C prototype above its `FUNCTION`, in all three sources:
+
+```nasm
+PROTO uint32_t crc32c_append(uint32_t crc, const uint8_t* data, size_t length)
+FUNCTION crc32c_append, 3
+```
+
+- **The SDK checks them on every RID**, the wasm ones against each function's wasm type, and
+  writes `crc32c.api.json`.
+- **Any C# project that references the library, or its package, can call it with nothing
+  declared.** The namespace is `Crc32c`, the class `Crc32c` (for `crc32c.asm`), and
+  `crc32c_append` has a span overload:
+
+  ```csharp
+  uint crc = Crc32c.Crc32c.Crc32cAppend(0, bytes);
+  ```
+
+- **`Crc32C.Net` keeps its hand-written imports and turns the generated ones off**
+  (`<AsmGenerateBindings>false</AsmGenerateBindings>`). It calls `crc32c_append` two ways,
+  without the GC transition up to 4 KiB and with it above, and one `PROTO` line declares one way
+  per function. `PROTO fast` gives every call `[SuppressGCTransition]`, which a 1 MiB input must
+  not have.
+- **A generated binding costs what a hand-written import costs.** `Crc32C.Bench` times both,
+  calling `crc32c_append` with an empty input. On 2026-11-26, pinned to one performance core of
+  the i9-13900K, the medians of three runs were 7.38 ns for the generated binding, 7.36 ns for
+  the hand-written `[LibraryImport]` and 4.88 ns with `[SuppressGCTransition]`; the
+  generated-to-hand-written ratio was 0.93-1.05 run by run. Both are the same blittable
+  `[DllImport]` call (`samples/Crc32C.Bench/results/2026-11-26-i9-13900K`).
+
 ## In WebAssembly
 
 > [!NOTE]

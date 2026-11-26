@@ -114,9 +114,10 @@ let .NET's own RID rules choose the library.
 > - **The baseline** is the namespace named after the library (its `AssemblyName`, each dotted
 >   part in PascalCase: `hello` gives `Hello`, `Demo.Native` gives `Demo.Native`), with one
 >   internal static class per `.asm` file, folders as namespaces (`Hello.Simd.Crc` for
->   `simd/crc.asm`), and the library's `STRUCT`s at the namespace's root. A function named like
->   its file (`answer` in `answer.asm`) is `Invoke` in its class, because C# forbids a member
->   named like its type. Every function is there, whatever else the project binds.
+>   `simd/crc.asm`), and the library's `STRUCT`s at the namespace's root. A file that has a function
+>   of its own name gives its class the suffix `Asm`: `answer` in `answer.asm` is
+>   `Hello.AnswerAsm.Answer()`, because C# forbids a member named like its type. Every function is
+>   there, whatever else the project binds.
 > - **Who writes it:** the SDK. For a project reference it writes
 >   `obj/<Configuration>/<tfm>/AsmBindings/<Namespace>.g.cs` at build time; an asm package
 >   carries it, written when the package was packed (see [.NET through a package](#net-through-a-package)).
@@ -227,8 +228,8 @@ let .NET's own RID rules choose the library.
 >   package) sets `AllowUnsafeBlocks` whenever there are bindings.
 > - **Errors:** `ASM0140` (an attribute or an `AsmBindings` item names no library the project has
 >   bindings for), `ASM0141` (no such file or folder), `ASM0142` (bound twice among the app's
->   classes), `ASM0143` (a class that cannot hold bindings: not partial, or generic; or a name
->   generated twice), `ASM0144` (an unreadable API file), `ASM0145` (a public copy of a function
+>   classes), `ASM0143` (a class that cannot hold bindings: not partial, or generic; a function
+>   named like the app's class that binds it; or a name generated twice), `ASM0144` (an unreadable API file), `ASM0145` (a public copy of a function
 >   that takes a struct the internal baseline holds), `ASM0146` (a value that is no option's,
 >   options C# cannot follow together, a `Default*` option on a class, a namespace C# cannot
 >   have), `ASM0147` (warning: C# older than 11).
@@ -555,6 +556,51 @@ Both templates in [Writing NASM for AsmSdk](writing-nasm.md) were called this wa
 and on Alpine (`python:3.12-alpine`, musl).
 
 ## C and other languages
+
+> [!NOTE]
+> **Not released yet: the SDK writes the header.** On the main branch, a library or program with
+> `PROTO` or `STRUCT` lines gets `<AssemblyName>.h` from them at every build, beside its API file
+> (`bin/<Configuration>/<tfm>/hello.h`, and the same file in each RID's folder), and `dotnet pack`
+> puts it under the package's `include/`:
+>
+> ```c
+> /*
+>  * hello.h: the C declarations of hello, written by AsmFoundation.Sdk 0.4.0
+>  * from its PROTO and STRUCT lines (hello.api.json). Do not edit: the next build writes it again.
+>  */
+> #ifndef HELLO_H
+> #define HELLO_H
+>
+> #include <stddef.h>
+> #include <stdint.h>
+>
+> #ifdef __cplusplus
+> extern "C" {
+> #endif
+>
+> /* add */
+> int32_t hello_add(int32_t a, int32_t b);
+>
+> #ifdef __cplusplus
+> }
+> #endif
+>
+> #endif /* HELLO_H */
+> ```
+>
+> - **Structs:** each `STRUCT` becomes a C struct, with a check of its size and of each field's
+>   offset against the layout the SDK gave the asm code: `_Static_assert` in C11, `static_assert`
+>   in C++11, an array of negative size in older C and C++. A compiler that lays a struct out
+>   otherwise (a packing pragma around the `#include`, a 32-bit target) stops at the header
+>   instead of misbehaving at run time.
+> - **Checked:** headers of real libraries compiled as C11, C99 and C++11 with
+>   `-Wall -Wextra -pedantic -Werror`, and C programs linked against the libraries read every
+>   kind of struct field back right (the tests do this on the Linux and macOS machines).
+> - **Your own header wins:** with an `include/<AssemblyName>.h` of the project's own, the SDK
+>   writes none, and `dotnet pack` warns `ASM0149`.
+> - **`<AsmGenerateCHeader>false</AsmGenerateCHeader>`** turns it off.
+>
+> Released 0.3.0 has no such file: write the header yourself, as below.
 
 **Write a header next to the `.inc` file** (`include/hello.h`):
 

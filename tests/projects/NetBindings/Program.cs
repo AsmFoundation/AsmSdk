@@ -5,8 +5,8 @@ using System.Runtime.InteropServices;
 // name), a class per .asm file, written by the SDK from ApiProto's PROTO lines (this project
 // never mentions the attribute, so no generator runs).
 Console.WriteLine($"add_ints {Apiproto.Add.AddInts(40, 2)}");
-Console.WriteLine($"answer {Apiproto.Answer.Invoke()}");
-Console.WriteLine($"halve {Apiproto.Halve.Invoke(5.0).ToString(CultureInfo.InvariantCulture)}");
+Console.WriteLine($"answer {Apiproto.AnswerAsm.Answer()}");
+Console.WriteLine($"halve {Apiproto.HalveAsm.Halve(5.0).ToString(CultureInfo.InvariantCulture)}");
 Console.WriteLine($"name_length {Apiproto.Strings.NameLength("hello")}");
 // The span overload of sum_bytes(const uint8_t* data, size_t len): the array pinned, no copy.
 byte[] bytes = [1, 2, 3, 4];
