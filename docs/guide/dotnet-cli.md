@@ -68,3 +68,8 @@ line are at the end.
   referencing program's `-o` folder.
 - **`dotnet run` has no use-current-runtime switch**: `dotnet run --ucr` passes `--ucr` to the
   program. Use `-r <rid>`.
+- **The .NET SDK bands differ** (measured with 10.0.101, 10.0.404 and 11.0.100): `dotnet run -e`
+  reaches wasmtime, WSL and Docker from SDK 10.0.300 on; `dotnet watch` needs `--no-hot-reload`
+  before 10.0.300; the 10.0.4xx SDKs' `dotnet run` drops a launch profile that holds a comment or
+  a trailing comma inside it ([Programs](programs.md#dotnet-run),
+  [Troubleshooting](troubleshooting.md)).
