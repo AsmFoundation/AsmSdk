@@ -86,13 +86,29 @@ public sealed class WatchTests(SdkUnderTest sdk)
             watch.AssertNotWritten("Ignoring project instance");
         }
 
-        foreach (string include in new[] { "message.inc", "message-gnu.inc" })
+        // The edit is written again every 15 s until the program runs again: dotnet watch's
+        // restart mode on SDK 10.0.101 arms its file watcher only after the program has printed
+        // its line and exited ("Waiting for a file to change before restarting"), and an edit
+        // made before that is never seen (measured: under the whole suite's load the test lost
+        // that race once and waited 180 s for nothing). Each write gives the files a new write
+        // time, which the polling watcher notices once it watches; the content stays "second".
+        bool restarted = false;
+        for (int attempt = 0; attempt < 12 && !restarted; attempt++)
         {
-            string path = Path.Combine(project, include);
-            File.WriteAllText(path, File.ReadAllText(path).Replace("first", "second", StringComparison.Ordinal));
+            foreach (string include in new[] { "message.inc", "message-gnu.inc" })
+            {
+                string path = Path.Combine(project, include);
+                File.WriteAllText(path, File.ReadAllText(path).Replace("first", "second", StringComparison.Ordinal));
+            }
+
+            restarted = watch.TryWaitFor("watch-program: second", TimeSpan.FromSeconds(15));
         }
 
-        watch.WaitFor("watch-program: second", TimeSpan.FromMinutes(3));
+        if (!restarted)
+        {
+            // Fails the test with the output's tail.
+            watch.WaitFor("watch-program: second", TimeSpan.Zero);
+        }
     }
 
     /// <summary>Copies a project folder without its build outputs, which the copy makes itself.</summary>
@@ -193,13 +209,32 @@ public sealed class WatchTests(SdkUnderTest sdk)
         /// </exception>
         public void WaitFor(string text, TimeSpan timeout)
         {
+            if (!TryWaitFor(text, timeout))
+            {
+                Assert.Fail($"\"{text}\" did not appear within {timeout.TotalSeconds:F0} s:{Environment.NewLine}{Tail(Output)}");
+            }
+        }
+
+        /// <summary>
+        /// Waits until the command's output holds a text, and says whether it did; a command that
+        /// ends before printing it still fails the test, since waiting longer cannot help.
+        /// </summary>
+        /// <param name="text">The text to wait for.</param>
+        /// <param name="timeout">How long to wait; zero only checks what has arrived.</param>
+        /// <returns>True when the text appeared in time; false on timeout.</returns>
+        /// <exception cref="Exception">
+        /// Xunit's assertion exception when the command ended before printing the text; the message
+        /// holds the output's tail.
+        /// </exception>
+        public bool TryWaitFor(string text, TimeSpan timeout)
+        {
             var clock = Stopwatch.StartNew();
-            while (clock.Elapsed < timeout)
+            while (true)
             {
                 string output = Output;
                 if (output.Contains(text, StringComparison.Ordinal))
                 {
-                    return;
+                    return true;
                 }
 
                 if (_process.HasExited)
@@ -207,10 +242,13 @@ public sealed class WatchTests(SdkUnderTest sdk)
                     Assert.Fail($"The command ended (exit {_process.ExitCode}) before printing \"{text}\":{Environment.NewLine}{Tail(output)}");
                 }
 
+                if (clock.Elapsed >= timeout)
+                {
+                    return false;
+                }
+
                 Thread.Sleep(250);
             }
-
-            Assert.Fail($"\"{text}\" did not appear within {timeout.TotalSeconds:F0} s:{Environment.NewLine}{Tail(Output)}");
         }
 
         /// <summary>Fails the test when the command's output so far holds a text.</summary>
