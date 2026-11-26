@@ -7,7 +7,7 @@ instruction updates 128 cells at once.
   <canvas width="960" height="540" class="wasm-demo-pixels" aria-label="Conway's Life on a 4096 by 4096 board, running"></canvas>
   <div class="wasm-demo-bar">
     <span class="wasm-demo-numbers">Starting the module...</span>
-    <span class="wasm-demo-buttons">
+    <span class="wasm-demo-controls">
       <button type="button" data-command="1">New board</button>
       <button type="button" data-command="2">Clear</button>
       <button type="button" data-command="3">Pause</button>

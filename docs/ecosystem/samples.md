@@ -41,7 +41,7 @@ languages' tools.
 | Sample | Shows |
 |---|---|
 | [`Crc32C.Browser`](../examples/crc32c.md#in-webassembly) | the Crc32C library in a .NET WebAssembly app, through the unchanged `Crc32C.Net`: checks it against .NET's own CRC-32C, times both in Node and Chrome with the C# interpreted and AOT-compiled, and has a page that checksums a dropped file |
-| [`WasmDemos`](../demos/index.md) (`Life`, `Ray`, `Swarm`) | the [Wasm Demos](../demos/index.md) this site runs: Conway's Life on 16 million cells (bit-sliced, 128 cells per instruction), a ray-marched scene (four rays per `f32x4`, lane masks, progressive passes) and a swarm of 120,000 particles, each a `browser-wasm` module that simulates and draws its own frame; `check.mjs` holds each against a reference |
+| [`WasmDemos`](../demos/index.md) (`Life`, `Ray`, `Swarm`) | the [Wasm Demos](../demos/index.md) this site runs: Conway's Life on 16 million cells (bit-sliced, 128 cells per instruction), a ray-marched scene (four rays per `f32x4`, lane masks, progressive passes) and a swarm of 120,000, 240,000 or 500,000 particles, each a `browser-wasm` module that simulates and draws its own frame; `check.mjs` holds each against a reference |
 
 `Crc32C.Browser` needs the `wasm-tools` workload, so it is outside `Samples.slnx` too. The three
 `WasmDemos` kernels need nothing but the SDK, and are in it.

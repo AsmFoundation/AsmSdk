@@ -11,7 +11,7 @@ AsmSdk built these modules from
 |---|---|---|
 | [Life, 16 million cells](life.md) | Conway's Life on a 4096 by 4096 board, 128 cells per instruction | `life.wasm`, 3.3 KB |
 | [Ray-marched scene](ray.md) | spheres and soft shadows, four rays per instruction, refining as you watch | `ray.wasm`, 4.9 KB |
-| [Particle swarm](swarm.md) | 120,000 particles following your pointer, four per instruction | `swarm.wasm`, 2.5 KB |
+| [Particle swarm](swarm.md) | 120,000, 240,000 or 500,000 particles following your pointer, four per instruction | `swarm.wasm`, 2.8 KB |
 
 ## Only WebAssembly
 
@@ -29,7 +29,7 @@ All three modules share one interface, so the same script starts any of them:
 | `demo_init(width, height)` | sets the demo up and returns the address of its RGBA frame in the module's memory |
 | `demo_theme(dark)` | chooses the light or dark colours (this site follows your system, or its theme switch) |
 | `demo_pointer(x, y, buttons)`, `demo_wheel(x, y, delta)` | the pointer and the wheel, in frame pixels |
-| `demo_command(command)` | the buttons under the demo |
+| `demo_command(command)` | the controls under the demo: a button's number, or a choice's value (the swarm's particle count is the count itself) |
 | `demo_frame()` | one step and one drawn frame; returns the work done, for the figures |
 
 The figures under each demo come from your browser. The script times `demo_frame` alone, on the
@@ -44,7 +44,9 @@ each module under Node and compares it with a reference written in JavaScript:
   edges that wrap around. A glider crosses the corner of the board, and drawing, panning and zoom
   are checked too.
 - **Particle swarm:** one step of all 120,000 particles is compared, in single precision and in
-  the module's order of operations. The two agree bit for bit.
+  the module's order of operations. The two agree bit for bit, and again at 240,000 and 500,000
+  particles, where the check also confirms that the swarm stays, the newcomers start on the ring
+  and each frame adds the density the count calls for.
 - **Ray-marched scene:** the finished picture is compared, pixel by pixel, with a reference
   renderer that repeats every operation in single precision. They agree bit for bit, after a
   camera turn, a zoom, and in both themes as well.

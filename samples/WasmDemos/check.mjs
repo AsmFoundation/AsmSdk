@@ -199,34 +199,58 @@ function swarmReference(x, y, vx, vy, ax, ay, k, w, h) {
 }
 
 /**
+ * The density one particle adds at a count, as swarm.wasm.s's set_count works it out in f32:
+ * 18 * sqrt(120,000 / count), the division, the square root and the product each rounded to f32
+ * (correctly rounded in double, then once to f32, which is the f32 result for / and sqrt).
+ * @param {number} count the particle count.
+ * @returns {number} the f32 value the module stores.
+ */
+function swarmShare(count) {
+  const f = Math.fround;
+  return f(f(Math.sqrt(f(120000 / count))) * 18);
+}
+
+/**
  * The swarm kernel: the scattered start, one step against the f32-exact reference (pointer
  * attractor), the figure of eight (its sine and cosine, to the polynomial's precision), the
- * push, the density and the colours.
+ * push, the density and the colours, then the particle counts the page offers (240,000 and
+ * 500,000 and back), each stepped against the reference, and the commands it must ignore.
  * @param {string} path swarm.wasm.
  */
 async function checkSwarm(path) {
   const m = await load(path);
-  const W = 960, H = 540, N = 120000;
+  const W = 960, H = 540, N = 120000, STRIDE = 2000000;
   const frame = m.demo_init(W, H);
   check(frame > 0 && m.demo_init(962, 540) === 0, 'swarm: demo_init takes 960 x 540, refuses a width that is not a multiple of 4');
   m.demo_init(W, H);
-  // The layout of swarm.wasm.s's BSS: pos_x, pos_y, vel_x, vel_y (480,000 bytes each), density
-  // (1280 x 720 f32), frame, colours (1 KiB), state.
-  const posX = frame - 3686400 - 1920000, density = frame - 3686400, colours = frame + 3686400;
+  // The layout of swarm.wasm.s's BSS: pos_x, pos_y, vel_x, vel_y (2,000,000 bytes each: room for
+  // 500,000 particles), density (1280 x 720 f32), frame, colours (1 KiB), state (+36 the count,
+  // +56 the density a particle adds).
+  const posX = frame - 3686400 - 4 * STRIDE, density = frame - 3686400, colours = frame + 3686400, state = colours + 1024;
   /**
    * The four particle arrays, as views into the module's memory.
+   * @param {number} [n] how many particles to view (the default count unless given).
    * @returns {Float32Array[]} x, y, vx, vy.
    */
-  const arrays = () => [0, 1, 2, 3].map((i) => new Float32Array(m.memory.buffer, posX + i * 480000, N));
-  let [x, y, vx, vy] = arrays();
-  let inside = true, speed = true;
+  const arrays = (n = N) => [0, 1, 2, 3].map((i) => new Float32Array(m.memory.buffer, posX + i * STRIDE, n));
   const R = Math.fround(Math.fround(540) * Math.fround(0.42));
-  for (let i = 0; i < N; i++) {
-    const r = Math.hypot(x[i] - W / 2, y[i] - H / 2);
-    inside = inside && r <= R + 0.01 && r >= R * 0.07 - 0.01;
-    speed = speed && Math.abs(Math.hypot(vx[i], vy[i]) - 1.4) < 1e-4;
-  }
-  check(inside && speed, 'swarm: scattered on the ring around the centre, each moving round it at 1.4 pixels a frame');
+  /**
+   * Whether particles first..end-1 are where scatter_range puts them: on the ring around the
+   * centre, moving round it at 1.4 pixels a frame.
+   * @param {number} first the first particle.
+   * @param {number} end one past the last.
+   * @returns {boolean} true when all of them are.
+   */
+  const onRing = (first, end) => {
+    const [x, y, vx, vy] = arrays(end);
+    for (let i = first; i < end; i++) {
+      const r = Math.hypot(x[i] - W / 2, y[i] - H / 2);
+      if (r > R + 0.01 || r < R * 0.07 - 0.01 || Math.abs(Math.hypot(vx[i], vy[i]) - 1.4) >= 1e-4) return false;
+    }
+    return true;
+  };
+  let [x, y, vx, vy] = arrays();
+  check(onRing(0, N), 'swarm: scattered on the ring around the centre, each moving round it at 1.4 pixels a frame');
 
   // One step towards the pointer, against the reference, bit for bit.
   const rx = Float32Array.from(x), ry = Float32Array.from(y), rvx = Float32Array.from(vx), rvy = Float32Array.from(vy);
@@ -272,6 +296,53 @@ async function checkSwarm(path) {
   check(pal[0] === 0xFF1C1915 && pal[255] === 0xFFF4F5F2 && pal[85] === 0xFF6D7006, 'swarm: the dark ones from #15191c through teal and mint to #f2f5f4');
   m.demo_command(3);
   check(m.demo_frame() === 0, 'swarm: paused, demo_frame moves nothing');
+  m.demo_command(3);
+
+  // The page's particle counts: each one a command of its own (the count itself).
+  const view = () => new DataView(m.memory.buffer);
+  check(view().getInt32(state + 36, true) === N && view().getFloat32(state + 56, true) === 18,
+    'swarm: a page starts at 120,000 particles, each adding 18 to the density');
+  m.demo_pointer(300, 200, 0);
+  for (const count of [240000, 500000]) {
+    const before = view().getInt32(state + 36, true);
+    const kept = arrays(before).map((a) => Float32Array.from(a));
+    m.demo_command(count);
+    const now = arrays(before);
+    const untouched = kept.every((a, k) => a.every((v, i) => Object.is(v, now[k][i])));
+    check(view().getInt32(state + 36, true) === count && view().getFloat32(state + 56, true) === swarmShare(count) && untouched && onRing(before, count),
+      `swarm: ${count.toLocaleString('en-US')} particles: the swarm stays, the newcomers are scattered on the ring, each adds ${swarmShare(count).toFixed(3)}`);
+    // One step of all of them against the reference, and the density they add: with the fade by
+    // 0.78 applied first, the image's total grows by count * share (each particle lands on one
+    // pixel, clamped into the frame).
+    const dens = new Float32Array(m.memory.buffer, density, W * H);
+    let total = 0;
+    for (const d of dens) total += d;
+    const [rx, ry, rvx, rvy] = arrays(count).map((a) => Float32Array.from(a));
+    check(m.demo_frame() === count, `swarm: demo_frame moves ${count.toLocaleString('en-US')} particles`);
+    swarmReference(rx, ry, rvx, rvy, 300, 200, 60, W, H);
+    [x, y, vx, vy] = arrays(count);
+    diff = 0;
+    for (let i = 0; i < count; i++) if (x[i] !== rx[i] || y[i] !== ry[i] || vx[i] !== rvx[i] || vy[i] !== rvy[i]) diff++;
+    check(diff === 0, `swarm: one step of ${count.toLocaleString('en-US')} particles equals the f32 reference, bit for bit (${diff} differ)`);
+    let after = 0;
+    for (const d of new Float32Array(m.memory.buffer, density, W * H)) after += d;
+    const expected = total * Math.fround(0.78) + count * swarmShare(count);
+    check(Math.abs(after - expected) <= expected * 1e-4,
+      `swarm: at ${count.toLocaleString('en-US')} each frame adds count * share to the density (${after.toFixed(0)} against ${expected.toFixed(0)})`);
+  }
+  // Back to 120,000: the particles past it stay where they were, undrawn and unmoved.
+  const rest = arrays(500000).map((a) => Float32Array.from(a.subarray(N)));
+  m.demo_command(N);
+  check(m.demo_frame() === N && view().getFloat32(state + 56, true) === 18, 'swarm: back at 120,000, demo_frame moves 120,000, each adding 18 again');
+  const tail = arrays(500000).map((a) => a.subarray(N));
+  check(rest.every((a, k) => a.every((v, i) => Object.is(v, tail[k][i]))), 'swarm: the particles a smaller count drops are not moved');
+  // Growing again scatters the newcomers anew, wherever the dropped ones had got to.
+  m.demo_command(240000);
+  check(onRing(N, 240000), 'swarm: growing again scatters the particles it adds on the ring afresh');
+  m.demo_command(N);
+  // Commands that are no count: past the arrays' room, not a multiple of 4, too small, negative.
+  for (const command of [500004, 240001, 2, 0, -4, 1000000]) m.demo_command(command);
+  check(view().getInt32(state + 36, true) === N, 'swarm: commands that are no count (500,004, 240,001, 2, 0, -4, 1,000,000) leave it at 120,000');
 }
 
 /**

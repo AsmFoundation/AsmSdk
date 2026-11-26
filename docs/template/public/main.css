@@ -522,26 +522,40 @@ body[data-layout="landing"] { overflow-x: clip; }
 
 /* ---------------------------------------------------------------- Wasm Demos (docs/demos) */
 /* A demo: its canvas at the article's width (the module draws a 960 x 540 frame, which CSS scales),
-   a bar with the live figures and the demo's buttons, and a line on what the pointer does. The
-   colours inside the frame are the module's own, chosen from the theme demo.js passes it. */
+   a control strip joined under it (the owner's pick of 2026-11-26: the frame and the strip read as
+   one box, the controls on the left, the live figures on the right), and a line on what the pointer
+   does. The colours inside the frame are the module's own, chosen from the theme demo.js passes it. */
 .wasm-demo { margin: 1.25rem 0 1.5rem; }
 .wasm-demo canvas {
   display: block; width: 100%; height: auto; aspect-ratio: 16 / 9;
-  border: 1px solid var(--asm-paper-line); border-radius: 4px; background: var(--asm-paper);
+  border: 1px solid var(--asm-paper-line); border-radius: 4px 4px 0 0; background: var(--asm-paper);
   touch-action: none; cursor: grab;   /* the pointer drives the demo, not the page's scrolling */
 }
 .wasm-demo canvas:active { cursor: grabbing; }
 /* Life's cells stay square and sharp when the frame is scaled; the other two are smooth images. */
 .wasm-demo canvas.wasm-demo-pixels { image-rendering: pixelated; }
-.wasm-demo-bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.6rem 1rem; margin-top: 0.6rem; }
-.wasm-demo-numbers { font-family: var(--bs-font-monospace); font-size: 0.8rem; color: var(--asm-heading); }
-.wasm-demo-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-.wasm-demo-buttons button {
+/* The strip: the canvas's border continues round it (no top edge: the canvas's bottom edge divides
+   them). The markup puts the figures first, for readers that follow source order; `order` shows the
+   controls first, and when a narrow window wraps the row, the figures drop to a line of their own,
+   still on the right. */
+.wasm-demo-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; margin: 0;
+  padding: 0.55rem 0.75rem; background: var(--bs-tertiary-bg);
+  border: 1px solid var(--asm-paper-line); border-top: 0; border-radius: 0 0 4px 4px;
+}
+.wasm-demo-bar .wasm-demo-controls { order: -1; }
+.wasm-demo-numbers { margin-left: auto; font-family: var(--bs-font-monospace); font-size: 0.8rem; color: var(--asm-heading); }
+/* The demo's controls: its buttons, and a choice (a labelled select, the swarm's particle count) styled
+   as a button, so the row reads as one set of controls. */
+.wasm-demo-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.wasm-demo-controls button, .wasm-demo-controls select {
   font: 600 0.86rem "Archivo", system-ui, sans-serif; color: var(--asm-heading); background: transparent;
   border: 1.5px solid var(--asm-paper-line); border-radius: 4px; padding: 0.3rem 0.75rem; cursor: pointer;
 }
-.wasm-demo-buttons button:hover { border-color: var(--asm-face); }
-.wasm-demo-buttons button:focus-visible { outline: 2px solid var(--asm-face); outline-offset: 2px; }
+.wasm-demo-controls select option { color: var(--bs-body-color); background: var(--bs-body-bg); }
+.wasm-demo-controls button:hover, .wasm-demo-controls select:hover { border-color: var(--asm-face); }
+.wasm-demo-controls button:focus-visible, .wasm-demo-controls select:focus-visible { outline: 2px solid var(--asm-face); outline-offset: 2px; }
+.wasm-demo-choice { display: inline-flex; align-items: center; gap: 0.4rem; margin: 0; font: 600 0.86rem "Archivo", system-ui, sans-serif; color: var(--asm-heading); }
 .wasm-demo-help { margin: 0.5rem 0 0; font-size: 0.9rem; color: var(--bs-secondary-color); }
 
 @media (prefers-reduced-motion: reduce) {

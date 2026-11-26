@@ -519,10 +519,11 @@ public sealed class ExampleTests(SdkUnderTest sdk)
     /// steps the whole 4096 x 4096 torus exactly as a cell-by-cell reference does (three
     /// generations of a random board, a glider across the wrapped corner, a blinker), and draws,
     /// pans and zooms; the swarm's step equals a single-precision reference bit for bit for all
-    /// 120,000 particles, pulled and pushed, and its hand-written sine follows Math.sin; the ray
-    /// marcher's finished picture equals a reference renderer that repeats its every f32
-    /// operation, bit for bit, also after a turn, a zoom and in the dark colours. Every machine:
-    /// the modules are built by the bundled tools, and Node runs them.
+    /// 120,000 particles, pulled and pushed, and for the page's other counts (240,000 and
+    /// 500,000, the swarm kept and the newcomers on the ring), and its hand-written sine follows
+    /// Math.sin; the ray marcher's finished picture equals a reference renderer that repeats its
+    /// every f32 operation, bit for bit, also after a turn, a zoom and in the dark colours. Every
+    /// machine: the modules are built by the bundled tools, and Node runs them.
     /// </summary>
     [Fact]
     public void Wasm_demo_kernels_pass_their_checks()

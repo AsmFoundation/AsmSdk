@@ -7,7 +7,7 @@ marched through the scene four rays at a time, and the picture sharpens while yo
   <canvas width="960" height="540" aria-label="Three spheres on a checkered floor, ray-marched"></canvas>
   <div class="wasm-demo-bar">
     <span class="wasm-demo-numbers">Starting the module...</span>
-    <span class="wasm-demo-buttons">
+    <span class="wasm-demo-controls">
       <button type="button" data-command="1">First view</button>
     </span>
   </div>

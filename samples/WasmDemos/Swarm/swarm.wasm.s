@@ -1,7 +1,7 @@
 // =============================================================================
-// swarm.wasm.s - the "Particle swarm" Wasm Demo: 120,000 particles pulled
-// towards the pointer, in WebAssembly written by hand, drawing itself into an
-// RGBA frame.
+// swarm.wasm.s - the "Particle swarm" Wasm Demo: 120,000 particles (or 240,000
+// or 500,000, the page's choice) pulled towards the pointer, in WebAssembly
+// written by hand, drawing itself into an RGBA frame.
 //
 // The particles are stored as four arrays (x, y and the two velocities, f32),
 // so one v128 load brings the same field of four particles and every step of
@@ -12,6 +12,10 @@
 // image (one f32 per pixel) that fades by 0.78 a frame, four pixels per
 // f32x4.mul, and the density, capped at 255, picks the pixel's colour from a
 // 256-entry table that runs from the background through the theme's inks.
+// A particle adds 18 * sqrt(120,000 / count): 18 at 120,000, 12.7 at 240,000,
+// 8.8 at 500,000, so a larger swarm draws denser (its total grows as the
+// square root of the count) without its core saturating into solid ink, the
+// owner's pick of 2026-11-26 between keeping the brightness and adding 18 each.
 //
 // Without a pointer over the frame the attractor follows a slow figure of
 // eight, cos(0.011 t) across and sin(0.022 t) down: WebAssembly has no sine or
@@ -20,23 +24,24 @@
 //
 // Exports (demo.map): demo_init, demo_theme, demo_pointer (x < 0: the pointer
 // left the frame), demo_wheel (unused), demo_command (1: scatter the swarm
-// again, 3: pause or resume) and demo_frame, which returns the particles moved
-// (120,000, or 0 when paused) for the page's figures.
+// again, 3: pause or resume, and a multiple of 4 from 4 to 500,000: that many
+// particles from now on) and demo_frame, which returns the particles moved
+// (the count, or 0 when paused) for the page's figures.
 // =============================================================================
 
 BSS
 .p2align 4
-pos_x:                  // x of each particle (f32); pos_y, vel_x and vel_y follow, each
-    .skip 480000        // 480,000 bytes after the one before, which the loops' load
-ENDDATA pos_x           // offsets rely on
+pos_x:                  // x of each particle (f32), room for 500,000; pos_y, vel_x and
+    .skip 2000000       // vel_y follow, each 2,000,000 bytes after the one before, which
+ENDDATA pos_x           // the loops' load and store offsets rely on
 pos_y:
-    .skip 480000
+    .skip 2000000
 ENDDATA pos_y
 vel_x:
-    .skip 480000
+    .skip 2000000
 ENDDATA vel_x
 vel_y:
-    .skip 480000
+    .skip 2000000
 ENDDATA vel_y
 .p2align 4
 density:                // one f32 per pixel, up to 1280 x 720
@@ -53,7 +58,8 @@ ENDDATA colours
 .p2align 4
 state:                  // +0 width, +4 height (i32), +8 x and +12 y of the pointer (f32; x < 0:
     .skip 64            // none), +16 its buttons, +20 the frame count, +24 the random state,
-ENDDATA state           // +28 paused, +32 dark, +40..+52 the four colour stops
+ENDDATA state           // +28 paused, +32 dark, +36 the particle count, +40..+52 the four
+                        // colour stops, +56 the density a particle adds (f32)
 
 // -----------------------------------------------------------------------------
 // sin_poly(x) -> sin x, to about 2e-4: x is brought into [-pi, pi] (minus the
@@ -151,15 +157,27 @@ LOCAL_FUNCTION rand_signed, () -> (f32)
 ENDFUNCTION rand_signed
 
 // -----------------------------------------------------------------------------
-// scatter(): every particle at a random point of a disc around the frame's
-// centre (radius 0.42 of the frame's smaller side, the middle 7% left empty),
-// moving round it at 1.4 pixels a frame. Points are drawn in the square and
-// kept when inside the ring: no trigonometry needed.
-// Locals: 0 the particle's byte offset, 1 u, 2 v, 3 u^2 + v^2, 4 the radius,
-// 5 the length of (u, v).
+// scatter_range(first, end): the particles from byte offset first up to end
+// (four bytes a particle; nothing when end is not past first), each at a
+// random point of a disc around the frame's centre (radius 0.42 of the frame's
+// smaller side, the middle 7% left empty), moving round it at 1.4 pixels a
+// frame. Points are drawn in the square and kept when inside the ring: no
+// trigonometry needed. The random state carries on from call to call, so the
+// particles a larger count adds differ from the ones already there.
+// Locals: 0 the particle's byte offset (from first), 1 end, 2 u, 3 v,
+// 4 u^2 + v^2, 5 the radius, 6 the length of (u, v).
 // -----------------------------------------------------------------------------
-LOCAL_FUNCTION scatter, () -> ()
-    .local i32, f32, f32, f32, f32, f32
+LOCAL_FUNCTION scatter_range, (i32, i32) -> ()
+    .local f32, f32, f32, f32, f32
+    // The loop below runs at least once, so an empty range must not reach it: it
+    // would write one particle past the end (for a smaller count, into the ones
+    // that count drops, which is harmless; at the capacity, into pos_y).
+    local.get 0
+    local.get 1
+    i32.ge_u
+    if
+        return
+    end_if
     ADDRESS state
     i32.load 0
     ADDRESS state
@@ -176,32 +194,30 @@ LOCAL_FUNCTION scatter, () -> ()
     end_if
     f32.const 0x1.ae147ap-2      // 0.42
     f32.mul
-    local.set 4
-    i32.const 0
-    local.set 0
+    local.set 5
     loop                        // each particle
         loop                    // until (u, v) falls inside the ring
-            CALL rand_signed
-            local.tee 1
-            local.get 1
-            f32.mul
             CALL rand_signed
             local.tee 2
             local.get 2
             f32.mul
-            f32.add
+            CALL rand_signed
             local.tee 3
+            local.get 3
+            f32.mul
+            f32.add
+            local.tee 4
             f32.const 1.0
             f32.ge
-            local.get 3
+            local.get 4
             f32.const 0x1.41205cp-8      // 0.0049: the middle 7% (0.07^2) stays empty
             f32.le
             i32.or
             br_if 0
         end_loop
-        local.get 3
+        local.get 4
         f32.sqrt
-        local.set 5
+        local.set 6
         ADDRESS pos_x
         local.get 0
         i32.add
@@ -210,8 +226,8 @@ LOCAL_FUNCTION scatter, () -> ()
         f32.convert_i32_s
         f32.const 0.5
         f32.mul
-        local.get 1
-        local.get 4
+        local.get 2
+        local.get 5
         f32.mul
         f32.add
         f32.store 0             // x
@@ -223,43 +239,84 @@ LOCAL_FUNCTION scatter, () -> ()
         f32.convert_i32_s
         f32.const 0.5
         f32.mul
-        local.get 2
-        local.get 4
+        local.get 3
+        local.get 5
         f32.mul
         f32.add
-        f32.store 480000        // y
+        f32.store 2000000       // y
+        ADDRESS pos_x
+        local.get 0
+        i32.add
+        local.get 3
+        f32.neg
+        local.get 6
+        f32.div
+        f32.const 0x1.666666p0       // 1.4
+        f32.mul
+        f32.store 4000000       // vx: along the tangent (-v, u)
         ADDRESS pos_x
         local.get 0
         i32.add
         local.get 2
-        f32.neg
-        local.get 5
+        local.get 6
         f32.div
         f32.const 0x1.666666p0       // 1.4
         f32.mul
-        f32.store 960000        // vx: along the tangent (-v, u)
-        ADDRESS pos_x
-        local.get 0
-        i32.add
-        local.get 1
-        local.get 5
-        f32.div
-        f32.const 0x1.666666p0       // 1.4
-        f32.mul
-        f32.store 1440000       // vy
+        f32.store 6000000       // vy
         local.get 0
         i32.const 4
         i32.add
         local.tee 0
-        i32.const 480000
+        local.get 1
         i32.lt_u
         br_if 0
     end_loop
+ENDFUNCTION scatter_range
+
+// scatter(): the whole swarm (the current count) anew, and an empty density
+// image, so the old swarm leaves no trail.
+LOCAL_FUNCTION scatter, () -> ()
+    i32.const 0
+    ADDRESS state
+    i32.load 36
+    i32.const 2
+    i32.shl
+    CALL scatter_range
     ADDRESS density
     i32.const 0
     i32.const 3686400
     memory.fill 0
 ENDFUNCTION scatter
+
+// set_count(n): n particles from now on (a multiple of 4 from 4 to 500,000:
+// demo_command checks). A larger count scatters only the particles it adds, on
+// the ring, so the swarm on screen carries on and the newcomers stream into
+// it; a smaller one leaves the particles it drops in memory, unmoved and
+// undrawn. Each particle's share of the density becomes
+// 18 * sqrt(120,000 / n), in this order of f32 operations (check.mjs repeats
+// it): exactly 18 at 120,000, so the default looks as it always did.
+LOCAL_FUNCTION set_count, (i32) -> ()
+    ADDRESS state
+    i32.load 36
+    i32.const 2
+    i32.shl                     // from the first particle the old count lacks...
+    local.get 0
+    i32.const 2
+    i32.shl                     // ...to the new count's end (nothing when n is smaller)
+    CALL scatter_range
+    ADDRESS state
+    local.get 0
+    i32.store 36
+    ADDRESS state
+    f32.const 120000.0
+    local.get 0
+    f32.convert_i32_s
+    f32.div
+    f32.sqrt
+    f32.const 18.0
+    f32.mul
+    f32.store 56
+ENDFUNCTION set_count
 
 // -----------------------------------------------------------------------------
 // build_colours(dark): the 256 colours, in three equal runs between four stops,
@@ -389,7 +446,8 @@ ENDFUNCTION build_colours
 // -----------------------------------------------------------------------------
 // demo_init(width, height) -> the frame's address, or 0 when the frame would be
 // larger than 1280 x 720, empty, or not a multiple of 4 pixels wide (the
-// density loops go four pixels at a time). Scatters the swarm.
+// density loops go four pixels at a time). Scatters a swarm of 120,000, the
+// count a page starts with (a second call starts over at 120,000 too).
 // -----------------------------------------------------------------------------
 FUNCTION demo_init, (i32, i32) -> (i32)
     local.get 0
@@ -434,6 +492,12 @@ FUNCTION demo_init, (i32, i32) -> (i32)
     ADDRESS state
     i32.const 0
     i32.store 28
+    ADDRESS state
+    i32.const 120000
+    i32.store 36
+    ADDRESS state
+    f32.const 18.0              // 18 * sqrt(120,000 / 120,000), as set_count would make it
+    f32.store 56
     CALL scatter
     i32.const 0
     CALL build_colours
@@ -467,7 +531,10 @@ ENDFUNCTION demo_pointer
 FUNCTION demo_wheel, (f32, f32, f32) -> ()
 ENDFUNCTION demo_wheel
 
-// demo_command(command): 1 scatters the swarm again, 3 pauses or resumes it.
+// demo_command(command): 1 scatters the swarm again, 3 pauses or resumes it, and
+// a multiple of 4 from 4 to 500,000 makes that the particle count (the page's
+// choices send 120000, 240000 and 500000). Any other command is ignored: a
+// count past the arrays' room, or one the four-wide physics loop cannot step.
 FUNCTION demo_command, (i32) -> ()
     local.get 0
     i32.const 1
@@ -486,6 +553,22 @@ FUNCTION demo_command, (i32) -> ()
         i32.xor
         i32.store 28
     end_if
+    local.get 0
+    i32.const 4
+    i32.ge_s
+    local.get 0
+    i32.const 500000
+    i32.le_s
+    i32.and
+    local.get 0
+    i32.const 3
+    i32.and
+    i32.eqz
+    i32.and
+    if
+        local.get 0
+        CALL set_count
+    end_if
 ENDFUNCTION demo_command
 
 // -----------------------------------------------------------------------------
@@ -494,7 +577,8 @@ ENDFUNCTION demo_command
 // Locals: 0 the byte offset, 1 the end, 2 a pixel's address; v128 3 the
 // attractor's x, 4 its y, 5 k, 6 0.993, 7 900, 8 zero, 9 width - 1,
 // 10 height - 1, 11 width, 12 height, 13 x, 14 y, 15 vx, 16 vy, 17 dx, 18 dy,
-// 19 f; f32 20 the attractor's x, 21 its y; i32 22 the frame count, 23 width.
+// 19 f; f32 20 the attractor's x, 21 its y (then a particle's density);
+// i32 22 the frame count, 23 width.
 // -----------------------------------------------------------------------------
 FUNCTION demo_frame, () -> (i32)
     .local i32, i32, i32, v128, v128, v128, v128, v128, v128, v128, v128, v128, v128, v128, v128, v128, v128, v128, v128, v128, f32, f32, i32, i32
@@ -612,11 +696,15 @@ FUNCTION demo_frame, () -> (i32)
         f32x4.splat
         local.set 12
 
-        // The physics, four particles per instruction.
+        // The physics, four particles per instruction, over the current count
+        // (a multiple of 4, so the loop ends on a whole vector).
         ADDRESS pos_x
         local.set 0
         ADDRESS pos_x
-        i32.const 480000
+        ADDRESS state
+        i32.load 36
+        i32.const 2
+        i32.shl
         i32.add
         local.set 1
         loop
@@ -628,7 +716,7 @@ FUNCTION demo_frame, () -> (i32)
             local.set 17            // dx
             local.get 4
             local.get 0
-            v128.load 480000
+            v128.load 2000000
             local.tee 14
             f32x4.sub
             local.set 18            // dy
@@ -645,7 +733,7 @@ FUNCTION demo_frame, () -> (i32)
             f32x4.div
             local.set 19            // f = k / (dx^2 + dy^2 + 900)
             local.get 0
-            v128.load 960000
+            v128.load 4000000
             local.get 17
             local.get 19
             f32x4.mul
@@ -654,7 +742,7 @@ FUNCTION demo_frame, () -> (i32)
             f32x4.mul
             local.set 15            // vx = (vx + dx f) 0.993
             local.get 0
-            v128.load 1440000
+            v128.load 6000000
             local.get 18
             local.get 19
             f32x4.mul
@@ -708,13 +796,13 @@ FUNCTION demo_frame, () -> (i32)
             f32x4.max
             local.get 10
             f32x4.min
-            v128.store 480000
+            v128.store 2000000
             local.get 0
             local.get 15
-            v128.store 960000
+            v128.store 4000000
             local.get 0
             local.get 16
-            v128.store 1440000
+            v128.store 6000000
             local.get 0
             i32.const 16
             i32.add
@@ -753,17 +841,23 @@ FUNCTION demo_frame, () -> (i32)
             i32.lt_u
             br_if 0
         end_loop
-        // ...and each particle adds 18 to its pixel.
+        // ...and each particle adds its share (18 at 120,000) to its pixel.
+        ADDRESS state
+        f32.load 56
+        local.set 21
         ADDRESS pos_x
         local.set 0
         ADDRESS pos_x
-        i32.const 480000
+        ADDRESS state
+        i32.load 36
+        i32.const 2
+        i32.shl
         i32.add
         local.set 1
         loop
             ADDRESS density
             local.get 0
-            f32.load 480000         // y
+            f32.load 2000000        // y
             i32.trunc_sat_f32_s
             local.get 23
             i32.mul
@@ -777,7 +871,7 @@ FUNCTION demo_frame, () -> (i32)
             local.tee 2
             local.get 2
             f32.load 0
-            f32.const 18.0
+            local.get 21
             f32.add
             f32.store 0
             local.get 0
@@ -834,6 +928,7 @@ FUNCTION demo_frame, () -> (i32)
     if i32
         i32.const 0
     else
-        i32.const 120000
+        ADDRESS state
+        i32.load 36             // the count, which every step moved
     end_if
 ENDFUNCTION demo_frame

@@ -8,9 +8,11 @@
 //   demo_pointer(x, y, buttons)                  demo_wheel(x, y, delta)
 //   demo_command(command)                        demo_frame() -> work done
 // Each demo is a <div class="wasm-demo" data-module="life.wasm" data-unit="cells">, holding a
-// canvas (its size is the frame's), buttons with data-command, and a .wasm-demo-numbers element
-// for the live figures: the work per second the module reports, timed around demo_frame alone,
-// on the page's one thread (one core), as AsmFoundation states every speed figure.
+// canvas (its size is the frame's), controls with data-command (a button sends its data-command
+// when pressed; a <select data-command> sends the chosen option's value, as the swarm's particle
+// count does), and a .wasm-demo-numbers element for the live figures: the work per second the
+// module reports, timed around demo_frame alone, on the page's one thread (one core), as
+// AsmFoundation states every speed figure.
 
 /**
  * Formats a rate in words: 13.3 billion, 92 million, 840,000.
@@ -50,7 +52,7 @@ async function load(url) {
 }
 
 /**
- * Starts one demo: instantiates its module, wires the canvas, the buttons and the theme to it,
+ * Starts one demo: instantiates its module, wires the canvas, the controls and the theme to it,
  * and runs it, one demo_frame per animation frame, while the page is visible.
  * @param {HTMLElement} root the demo's .wasm-demo element.
  * @returns {Promise<void>} once it runs; a failure is shown in the numbers line, not thrown.
@@ -103,8 +105,16 @@ async function start(root) {
       m.demo_wheel(x, y, event.deltaY);
     }, { passive: false });
   }
-  for (const button of root.querySelectorAll('[data-command]')) {
-    button.addEventListener('click', () => m.demo_command(Number(button.dataset.command)));
+  for (const control of root.querySelectorAll('[data-command]')) {
+    if (control instanceof HTMLSelectElement) {
+      // A choice: the chosen option's value is the command. It is sent once now as well, because
+      // a browser can restore the last choice on a reload, and the module starts at its default.
+      const choose = () => m.demo_command(Number(control.value));
+      control.addEventListener('change', choose);
+      choose();
+    } else {
+      control.addEventListener('click', () => m.demo_command(Number(control.dataset.command)));
+    }
   }
 
   let work = 0, busy = 0, frames = 0, shown = performance.now(), last = '';

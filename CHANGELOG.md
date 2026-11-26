@@ -41,6 +41,30 @@ Each SDK release names the one it was tested with.
   next version; the toolchain packages only with a new `packageVersion` in
   `toolchain/versions.json`, since a release that keeps 0.2.0 skips them as duplicates.
 
+### Changed
+
+- **Wasm Demos: each demo's controls in a strip joined to its frame, and a particle count for
+  the swarm** (the owner's picks of 2026-11-26). The frame's border continues round a strip under
+  it, with the controls on the left and the live figures on the right. In a narrow window the
+  figures drop to a line of their own. The swarm adds a Particles choice of 120,000, 240,000 or
+  500,000:
+  - **The module:** its arrays have room for 500,000 particles (four arrays of 2,000,000 bytes)
+    and its loops step the chosen count. The count is a `demo_command` of its own, the number
+    itself (a multiple of 4 from 4 to 500,000), so all three modules keep one interface;
+    `demo.js` sends a `<select data-command>`'s value when it changes, and once at start.
+  - **Changing the count:** a larger one keeps the swarm and scatters only the newcomers on the
+    ring; a smaller one drops particles at once.
+  - **The look:** each particle adds 18 × √(120,000 / count) to the density: 18 at 120,000 as
+    before, 12.7 at 240,000, 8.8 at 500,000. This was the owner's pick between keeping the
+    brightness (2,160,000 / count: the same shape, a finer grain) and 18 at any count (at
+    500,000 the core saturated into solid ink).
+  - **Measured** under Node on an i9-13900K: 2.7 ms a frame at 120,000, 3.9 ms at 240,000 and
+    6.3 ms at 500,000, of which colouring the frame is 1.5 ms at any count.
+  - **Checked:** `check.mjs` steps 240,000 and 500,000 particles against the reference, bit for
+    bit. It also checks the kept swarm and the newcomers on the ring, the density each frame
+    adds, the way back to 120,000, and six commands that are no count. `swarm.wasm` is 2.8 KB
+    (it was 2.5).
+
 ## [0.4.0] — 2026-11-26
 
 WebAssembly is AsmSdk's third assembly target: `browser-wasm` and `wasi-wasm` build from LLVM's
