@@ -89,7 +89,7 @@
     },
     {
       "run": "dotnet publish Prog --ucr -o out/ucr",
-      "description": "The use-current-runtime switch publishes this machine's RID as -r would: the program directly in the folder, and no ASM0013 (0.4.0 published a RID folder and warned, which these scenarios' warnings-as-errors makes a failure).",
+      "description": "The use-current-runtime switch publishes this machine's RID as -r would: the program directly in the folder, and no ASM0013 (0.4.0 published a RID folder and warned; TreatWarningsAsErrors does not make that MSBuild warning an error, so the absent check is what catches it).",
       "absent": ["ASM0013"],
       "files": ["out/ucr/{exe:Prog}"],
       "missing": ["out/ucr/{rid}"]

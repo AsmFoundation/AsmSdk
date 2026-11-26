@@ -1824,6 +1824,15 @@
     <PropertyGroup>
       <_AsmLaunchSettingsFile Condition="Exists('$(MSBuildProjectDirectory)/Properties/launchSettings.json')">$(MSBuildProjectDirectory)/Properties/launchSettings.json</_AsmLaunchSettingsFile>
       <_AsmLaunchSettingsFile Condition="'$(_AsmLaunchSettingsFile)' == '' and Exists('$(MSBuildProjectDirectory)/$(MSBuildProjectName).run.json')">$(MSBuildProjectDirectory)/$(MSBuildProjectName).run.json</_AsmLaunchSettingsFile>
+      <!-- The launcher (AsmSelectRunTarget.UseLauncher), only for a project with launch settings,
+           which are what hold a profile's arguments: on Windows a program built with the bundled
+           toolchain (_AsmBuildRunLauncher; AsmToolchain=System gets none), on Linux and macOS a
+           shell script the task writes. In this build's own intermediate folder, so dotnet run of
+           another configuration, framework or RID, at the same time, never rewrites the one this
+           run starts. -->
+      <_AsmRunLauncherDirectory>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'asm-run'))</_AsmRunLauncherDirectory>
+      <_AsmRunLauncherFile Condition="'$(_AsmLaunchSettingsFile)' != '' and $([MSBuild]::IsOSPlatform('Windows')) and '$(AsmToolchain)' == 'Bundled'">$(_AsmRunLauncherDirectory)$(MSBuildProjectName)-run.exe</_AsmRunLauncherFile>
+      <_AsmRunLauncherFile Condition="'$(_AsmLaunchSettingsFile)' != '' and !$([MSBuild]::IsOSPlatform('Windows'))">$(_AsmRunLauncherDirectory)$(MSBuildProjectName)-run.sh</_AsmRunLauncherFile>
     </PropertyGroup>
     <AsmSelectRunTarget Programs="@(_AsmRunCandidate)"
                         RunIn="$(AsmRunIn)"
@@ -1834,12 +1843,85 @@
                         ProjectName="$(MSBuildProjectName)"
                         ProjectFile="$(MSBuildProjectFullPath)"
                         EnvironmentVariables="@(RuntimeEnvironmentVariable)"
-                        LaunchSettingsFile="$(_AsmLaunchSettingsFile)">
+                        LaunchSettingsFile="$(_AsmLaunchSettingsFile)"
+                        LauncherFile="$(_AsmRunLauncherFile)">
       <Output TaskParameter="RunCommand" PropertyName="RunCommand" />
       <Output TaskParameter="RunArguments" PropertyName="RunArguments" />
       <Output TaskParameter="SelectedRuntimeIdentifier" PropertyName="AsmRunRuntimeIdentifier" />
       <Output TaskParameter="EnvironmentVariablesToSet" ItemName="RuntimeEnvironmentVariable" />
+      <Output TaskParameter="LauncherUsed" PropertyName="_AsmRunLauncherUsed" />
     </AsmSelectRunTarget>
+  </Target>
+
+  <!--
+    _AsmBuildRunLauncher: the Windows launcher that dotnet run starts for a program run through
+    wasmtime, WSL or Docker when the project has launch settings (AsmSelectRunTarget.UseLauncher;
+    the owner's choice of 2026-11-26), so that the CLI hands a launch profile's commandLineArgs to
+    a command without arguments of its own. stubs/run-launcher-x64.asm, assembled and linked with
+    the bundled NASM and lld-link against kernel32 alone, the first time it is needed and again
+    only when the SDK's source or tools change (the stamp file below). Runs right after
+    _AsmComputeRunArguments, inside ComputeRunArguments, so dotnet run builds it even with its
+    no-build option: it is part of starting the program, not of the project's build.
+    x64 on every Windows machine: Windows on Arm runs it under its x64 emulation, as it runs a
+    win-x64 program, and the launcher only starts another process and waits.
+    Footgun: Windows cannot overwrite a running program, so the rebuild after an SDK or toolchain
+    update fails (lld-link cannot write the launcher) while a dotnet run started before the update
+    still runs through it; it succeeds once that run ends. Runs of the same SDK share the
+    launcher and never rebuild it.
+  -->
+  <Target Name="_AsmBuildRunLauncher"
+          AfterTargets="_AsmComputeRunArguments"
+          Condition="'$(_AsmRunLauncherUsed)' == 'true' and $([MSBuild]::IsOSPlatform('Windows'))"
+          DependsOnTargets="_AsmWriteRunLauncherStamp"
+          Inputs="$(AsmFoundationSdkDirectory)stubs/run-launcher-x64.asm;$(AsmFoundationSdkDirectory)stubs/kernel32.symbols;$(_AsmRunLauncherDirectory)launcher-tools.txt"
+          Outputs="$(_AsmRunLauncherFile)">
+    <PropertyGroup>
+      <_AsmRunLauncherTools>$(_AsmRunLauncherDirectory.Replace('\','/'))</_AsmRunLauncherTools>
+    </PropertyGroup>
+    <AsmWriteCLibraryStub Format="Def"
+                          SymbolFiles="$(AsmFoundationSdkDirectory)stubs/kernel32.symbols"
+                          LibraryName="kernel32.dll"
+                          OutputPath="$(_AsmRunLauncherDirectory)kernel32.def" />
+    <Exec Command="&quot;$(_AsmLldPath.Replace('\','/'))&quot; -flavor link -lib -def:&quot;$(_AsmRunLauncherTools)kernel32.def&quot; -machine:x64 -out:&quot;$(_AsmRunLauncherTools)kernel32.lib&quot;"
+          StandardOutputImportance="low" />
+    <!-- Every NASM warning an error, but the two the SDK's x64 sources always turn off (32-bit
+         RIP-relative and 64-bit absolute relocations, which this code does not have, and which
+         -w+all would otherwise report for kernel32's import thunks): a launcher that assembles
+         with a warning is a bug in the SDK, not something to run. Assembled by file name in the
+         SDK's stubs folder, as the SDK's other sources are. -->
+    <Exec Command="$(_AsmNasm) -Xvc -f win64 -w+all -w-reloc-rel-dword -w-reloc-abs-qword -w+error -o &quot;$(_AsmRunLauncherTools)run-launcher.obj&quot; run-launcher-x64.asm"
+          WorkingDirectory="$(AsmFoundationSdkDirectory)stubs" />
+    <Exec Command="&quot;$(_AsmLldPath.Replace('\','/'))&quot; -flavor link -nologo -subsystem:console -entry:asm_run_launcher -nodefaultlib -machine:x64 -out:&quot;$(_AsmRunLauncherFile.Replace('\','/'))&quot; &quot;$(_AsmRunLauncherTools)run-launcher.obj&quot; &quot;$(_AsmRunLauncherTools)kernel32.lib&quot;"
+          StandardOutputImportance="low" />
+    <!-- The steps' own files go once the launcher exists (the import library alone is ~400 KB,
+         in every folder that has a launcher): a change of source or tools rebuilds all of them. -->
+    <Delete Files="$(_AsmRunLauncherDirectory)kernel32.def;$(_AsmRunLauncherDirectory)kernel32.lib;$(_AsmRunLauncherDirectory)run-launcher.obj" />
+  </Target>
+
+  <!--
+    _AsmWriteRunLauncherStamp: the launcher's tools and source as text, rewritten only when they
+    change (WriteOnlyWhenDifferent), an input of _AsmBuildRunLauncher: a new SDK or toolchain
+    version lives in another NuGet folder, and the files NuGet extracts there may carry older
+    times than a launcher built with the last version, so times alone would keep a stale one.
+  -->
+  <Target Name="_AsmWriteRunLauncherStamp" DependsOnTargets="_AsmResolveToolchain">
+    <MakeDir Directories="$(_AsmRunLauncherDirectory)" />
+    <WriteLinesToFile File="$(_AsmRunLauncherDirectory)launcher-tools.txt"
+                      Lines="$(AsmFoundationSdkDirectory)stubs/run-launcher-x64.asm;$(_AsmNasmPath);$(_AsmLldPath)"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true" />
+  </Target>
+
+  <!--
+    _AsmMakeRunLauncherExecutable: the launcher script on Linux and macOS, which the task wrote as a
+    plain file, gets its execute bit: the CLI starts it as a program (its "#!/bin/sh" line names
+    the shell). Every time it is used: the task rewrites it on every dotnet run, and chmod costs
+    one process start.
+  -->
+  <Target Name="_AsmMakeRunLauncherExecutable"
+          AfterTargets="_AsmComputeRunArguments"
+          Condition="'$(_AsmRunLauncherUsed)' == 'true' and !$([MSBuild]::IsOSPlatform('Windows'))">
+    <Exec Command="chmod +x &quot;$(_AsmRunLauncherFile)&quot;" StandardOutputImportance="low" />
   </Target>
 
   <!--

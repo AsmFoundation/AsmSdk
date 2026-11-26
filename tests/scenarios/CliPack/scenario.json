@@ -4,8 +4,9 @@
   "steps": [
     {
       "run": "dotnet pack Lib",
-      "description": "The library's package, into the local feed the scenarios' nuget.config maps Scenario.* to.",
-      "files": ["../../packages/Scenario.CliPackLib.1.0.0.nupkg"]
+      "description": "The library's package, into the local feed the scenarios' nuget.config maps Scenario.* to; it covers the eight native RIDs, so the pack gives no ASM0013 (a warning, which TreatWarningsAsErrors leaves a warning).",
+      "files": ["../../packages/Scenario.CliPackLib.1.0.0.nupkg"],
+      "absent": ["ASM0013"]
     },
     {
       "run": "dotnet pack Lib -o pk/version --version 2.3.4",

@@ -305,20 +305,63 @@ public sealed class ProgramTests(SdkUnderTest sdk)
         Assert.Contains("through-wsl", run.StdOut, StringComparison.Ordinal);
     }
 
+    /// <summary>The lines a run printed, without line ends.</summary>
+    /// <param name="run">The dotnet run result.</param>
+    /// <returns>The lines of standard output.</returns>
+    private static string[] Lines(CommandResult run) => run.StdOut.Split('\n').Select(line => line.TrimEnd('\r')).ToArray();
+
     /// <summary>
-    /// A launch profile's variable never reaches a program run through WSL, not even as an empty
-    /// one: WSL passes a name WSLENV lists but its environment lacks as an EMPTY variable
-    /// (measured), and a profile that does not run sets none, so the SDK lists only -e's names.
-    /// EchoProgram's profile sets ASM_PROBE: through WSL the program must print "(unset)", which
-    /// it prints for a variable that is absent, never for an empty one.
+    /// A launch profile's arguments and variable reach a program run through WSL, through the
+    /// launcher the SDK puts between dotnet run and wsl.exe (the CLI applies a profile's
+    /// arguments only to a command without arguments of its own; WSL passes a Windows variable
+    /// only when WSLENV names it, and the launcher names those that are set when it starts).
+    /// A variable another profile sets is not set by the one that runs (Bare), and must stay
+    /// absent, never empty: EchoProgram prints "(unset)" only for an absent variable, and WSL
+    /// would pass a listed name the environment lacks as an EMPTY one (measured). Any SDK.
     /// </summary>
     [Fact]
-    public void A_launch_profiles_variable_does_not_reach_WSL_as_an_empty_one()
+    public void A_launch_profiles_arguments_and_variable_reach_WSL_and_another_profiles_stays_unset()
     {
         RequireWsl();
-        CommandResult run = sdk.DotnetRun(EchoProgram, ["-c", "Release", "-r", LinuxRidOfThisCpu, "-p:AsmRunIn=Wsl"], "y");
+        CommandResult run = sdk.DotnetRun(EchoProgram, ["-c", "Release", "-r", LinuxRidOfThisCpu, "-p:AsmRunIn=Wsl"]);
+        Assert.True(run.ExitCode == 2, $"exit {run.ExitCode}, want 2 (the profile's two arguments): {run.Tail()}");
+        Assert.Contains("from-profile", Lines(run));
+        Assert.Contains("two words", Lines(run));
+        Assert.Contains("profile-value", Lines(run));
+
+        CommandResult bare = sdk.DotnetRun(EchoProgram, ["-c", "Release", "-r", LinuxRidOfThisCpu, "-p:AsmRunIn=Wsl", "--launch-profile", "Bare"]);
+        Assert.True(bare.ExitCode == 1, $"exit {bare.ExitCode}, want 1 (the profile's one argument): {bare.Tail()}");
+        Assert.Contains("bare-profile", Lines(bare));
+        Assert.Contains("(unset)", Lines(bare));
+    }
+
+    /// <summary>
+    /// Without the launch profile a variable stays out of WSL even though a profile names it:
+    /// dotnet run --no-launch-profile sets none, and the launcher lists only variables that are set.
+    /// </summary>
+    [Fact]
+    public void Without_the_launch_profile_its_variable_stays_unset_in_WSL()
+    {
+        RequireWsl();
+        CommandResult run = sdk.DotnetRun(EchoProgram, ["-c", "Release", "-r", LinuxRidOfThisCpu, "-p:AsmRunIn=Wsl", "--no-launch-profile"], "y");
         Assert.True(run.ExitCode == 1, $"exit {run.ExitCode}, want 1 (one argument): {run.Tail()}");
-        Assert.Contains("(unset)", run.StdOut, StringComparison.Ordinal);
+        Assert.Contains("(unset)", Lines(run));
+    }
+
+    /// <summary>
+    /// A launch profile's arguments reach a Linux program in a Docker container, through the
+    /// launcher (docker run always has arguments of its own, so the CLI would apply none), with
+    /// the profile's variable (docker run -e NAME). Any SDK.
+    /// </summary>
+    [Fact]
+    public void A_launch_profiles_arguments_reach_a_program_in_docker()
+    {
+        RequireLinuxDocker();
+        CommandResult run = sdk.DotnetRun(EchoProgram, ["-c", "Release", "-r", LinuxRidOfThisCpu, "-p:AsmRunIn=Docker"]);
+        Assert.True(run.ExitCode == 2, $"exit {run.ExitCode}, want 2 (the profile's two arguments): {run.Tail()}");
+        Assert.Contains("from-profile", Lines(run));
+        Assert.Contains("two words", Lines(run));
+        Assert.Contains("profile-value", Lines(run));
     }
 
     /// <summary>

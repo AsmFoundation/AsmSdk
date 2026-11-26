@@ -1,8 +1,9 @@
 <Project Sdk="AsmFoundation.Sdk">
   <!--
     CliPack's library: add_ints from the asmlib template, with its PROTO line, packed as
-    Scenario.CliPackLib for the eight native RIDs (so no pack of it warns ASM0013, which these
-    scenarios' warnings-as-errors would make a failure). VersionPrefix rather than Version, so
+    Scenario.CliPackLib for the eight native RIDs, so no pack of it warns ASM0013 (a package of
+    fewer RIDs; an MSBuild warning, which TreatWarningsAsErrors leaves a warning, so the first
+    step checks that it is absent). VersionPrefix rather than Version, so
     that dotnet pack's version-suffix switch can add a suffix, and its version switch can replace
     the whole version, as for a .NET library.
   -->

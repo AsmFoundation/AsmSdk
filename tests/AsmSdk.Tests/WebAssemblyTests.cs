@@ -400,6 +400,123 @@ public sealed class WebAssemblyTests(SdkUnderTest sdk)
         Assert.Contains("ASM_PROBE=from-e", run.StdOut, StringComparison.Ordinal);
     }
 
+    /// <summary>The lines a WasiEcho run printed (its arguments, then its environment), without line ends.</summary>
+    /// <param name="run">The dotnet run result.</param>
+    /// <returns>The lines of standard output.</returns>
+    private static string[] Lines(CommandResult run) => run.StdOut.Split('\n').Select(line => line.TrimEnd('\r')).ToArray();
+
+    /// <summary>
+    /// A launch profile's commandLineArgs reach a WASI program dotnet run starts in wasmtime. The
+    /// CLI applies them only to a run command without arguments of its own, and wasmtime's always
+    /// has some, so the SDK starts a launcher instead (obj/&lt;Configuration&gt;/&lt;tfm&gt;/asm-run/: an
+    /// x64 program it builds on Windows, a shell script elsewhere), which runs wasmtime with what
+    /// the CLI hands it. Arguments after the double dash replace the profile's, as the CLI does
+    /// for every project; --no-launch-profile passes neither. Any SDK.
+    /// </summary>
+    [Fact]
+    public void A_launch_profiles_arguments_reach_a_wasi_program()
+    {
+        RequireWasmtime();
+        CommandResult profile = sdk.DotnetRun(Repo.TestProject("WasiEcho"), ["-c", "Release"]);
+        Assert.True(profile.ExitCode == 0, $"exit {profile.ExitCode}: {profile.Tail()}");
+        string[] lines = Lines(profile);
+        Assert.Contains("profile-arg", lines);
+        Assert.Contains("two words", lines);
+        Assert.Contains("ASM_PROBE=from-profile", lines);
+        string launcher = Repo.TestProjectPath("WasiEcho", "obj", "Release", "freestanding", "asm-run", OperatingSystem.IsWindows() ? "WasiEcho-run.exe" : "WasiEcho-run.sh");
+        Assert.True(File.Exists(launcher), $"no launcher at {launcher}");
+
+        CommandResult replaced = sdk.DotnetRun(Repo.TestProject("WasiEcho"), ["-c", "Release"], "after the dash");
+        Assert.True(replaced.ExitCode == 0, $"exit {replaced.ExitCode}: {replaced.Tail()}");
+        Assert.Contains("after the dash", Lines(replaced));
+        Assert.DoesNotContain("profile-arg", Lines(replaced));
+
+        CommandResult none = sdk.DotnetRun(Repo.TestProject("WasiEcho"), ["-c", "Release", "--no-launch-profile"]);
+        Assert.True(none.ExitCode == 0, $"exit {none.ExitCode}: {none.Tail()}");
+        Assert.DoesNotContain("profile-arg", Lines(none));
+    }
+
+    /// <summary>
+    /// A project's own RunArguments reach the WASI program through the launcher as .NET splits
+    /// them, a single quote, a dollar sign and a backslash included (the shell script must not
+    /// read them), and keep a profile's arguments out, as the CLI does for any project that sets
+    /// them; arguments after the double dash follow them (WasiEcho with EchoCase=RunArguments).
+    /// </summary>
+    [Fact]
+    public void A_projects_RunArguments_reach_a_wasi_program_and_keep_a_profiles_out()
+    {
+        RequireWasmtime();
+        CommandResult run = sdk.DotnetRun(Repo.TestProject("WasiEcho"), ["-c", "Release", "-p:EchoCase=RunArguments"]);
+        Assert.True(run.ExitCode == 0, $"exit {run.ExitCode}: {run.Tail()}");
+        string[] lines = Lines(run);
+        int first = Array.IndexOf(lines, "run arg");
+        Assert.True(first >= 0, $"no \"run arg\" line: {run.Tail()}");
+        Assert.Equal(["run arg", "'single'", "$HOME", "back\\slash"], lines.Skip(first).Take(4).ToArray());
+        Assert.DoesNotContain("profile-arg", lines);
+        Assert.Contains("ASM_PROBE=from-profile", lines);
+
+        CommandResult appended = sdk.DotnetRun(Repo.TestProject("WasiEcho"), ["-c", "Release", "-p:EchoCase=RunArguments"], "extra");
+        Assert.True(appended.ExitCode == 0, $"exit {appended.ExitCode}: {appended.Tail()}");
+        string[] appendedLines = Lines(appended);
+        int start = Array.IndexOf(appendedLines, "run arg");
+        Assert.True(start >= 0, $"no \"run arg\" line: {appended.Tail()}");
+        Assert.Equal(["run arg", "'single'", "$HOME", "back\\slash", "extra"], appendedLines.Skip(start).Take(5).ToArray());
+    }
+
+    /// <summary>
+    /// Stopping dotnet run's Windows launcher stops the program it started, the three ways a run
+    /// is stopped: Ctrl+C in the console (a user), Ctrl+C to a new process group (dotnet watch,
+    /// which starts the app in a group of its own: Windows then sets the inherited "ignore
+    /// Ctrl+C" flag, which the launcher turns off again), and the launcher killed (dotnet watch
+    /// when its Ctrl+C times out, an IDE when it stops a run: the program runs in the launcher's
+    /// kill-on-close job). With Ctrl+C the launcher passes on the program's exit code
+    /// (STATUS_CONTROL_C_EXIT). The launcher survives Ctrl+C by a handler routine of its own:
+    /// the ignore flag of SetConsoleCtrlHandler(NULL, TRUE), which its first version set, is
+    /// inherited by child processes, and wasmtime, WSL or Docker then ignored Ctrl+C (measured
+    /// with ping -t: it ran on; and without the job, a killed launcher left it running).
+    /// tests/projects/CtrlC/ctrlc.cs stops the run from a process of its own (it joins the
+    /// launcher's console), on a copy of the launcher dotnet run built for WasiEcho, whose
+    /// launch file runs ping -t instead. Windows only: elsewhere the launcher is a shell script
+    /// that execs the command, which then gets the signals itself.
+    /// </summary>
+    /// <param name="mode">ctrl-c, group-ctrl-c or kill (see ctrlc.cs).</param>
+    [Theory]
+    [InlineData("ctrl-c")]
+    [InlineData("group-ctrl-c")]
+    [InlineData("kill")]
+    public void Stopping_the_launcher_stops_the_program(string mode)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Skip("The launcher is a program on Windows only; elsewhere a shell script execs the command");
+        }
+
+        RequireWasmtime();
+        CommandResult run = sdk.DotnetRun(Repo.TestProject("WasiEcho"), ["-c", "Release"]);
+        Assert.True(run.ExitCode == 0, $"exit {run.ExitCode}: {run.Tail()}");
+
+        // A copy, so that the probe's launch file never replaces the one dotnet run wrote.
+        string folder = Path.Combine(Path.GetTempPath(), "asmsdk-ctrlc-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            string launcher = Path.Combine(folder, "ctrlc-run.exe");
+            File.Copy(Repo.TestProjectPath("WasiEcho", "obj", "Release", "freestanding", "asm-run", "WasiEcho-run.exe"), launcher);
+            // The test environment (no MSBuild variables of the test host's own dotnet test);
+            // started in the copy's folder, which no global.json pins.
+            CommandResult probe = Command.Run("dotnet", ["run", Repo.TestProjectPath("CtrlC", "ctrlc.cs"), "--", mode, launcher], folder, sdk.TestEnvironment);
+            Assert.True(probe.ExitCode == 0, $"probe exit {probe.ExitCode} (1: the program ran on; 2: the probe could not run): {probe.Tail()}");
+            if (mode != "kill")
+            {
+                Assert.Contains("exited 0xC000013A", probe.StdOut, StringComparison.Ordinal);
+            }
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
     /// <summary>
     /// What cannot work stops the build with the fix: a NASM file for WebAssembly (ASM0021), a wasm
     /// RID no source builds (ASM0023, with the wasm qualifiers), an assembler constant the wasm

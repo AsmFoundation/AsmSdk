@@ -53,26 +53,35 @@ namespace AsmFoundation.Sdk.Tasks;
 /// which this task sets on wsl.exe through the CLI (<see cref="EnvironmentVariablesToSet"/>).
 /// wasmtime and Docker get the names of -e (<see cref="EnvironmentVariables"/>) and of every
 /// profile in the launch settings file (<see cref="LaunchSettingsFile"/>), whichever profile
-/// runs. WSL gets -e's alone: a name WSLENV lists that the environment lacks reaches the Linux
-/// program as an EMPTY variable (measured, WSL 2), and the names of a profile that does not run
-/// would be just that. PATH is never passed: the host's would replace the program's own.
-/// Footguns: a launch profile's variables never reach a program run through WSL; and the .NET 10
-/// SDK's CLI passes -e to no build and applies no item, so there only launch profiles' variables
-/// reach Docker and wasmtime, and nothing reaches WSL unless WSLENV already names it.
+/// runs. WSL, without the launcher, gets -e's alone: a name WSLENV lists that the environment
+/// lacks reaches the Linux program as an EMPTY variable (measured, WSL 2), and the names of a
+/// profile that does not run would be just that; with the launcher (below) it gets a profile's
+/// too, because the launcher lists only those really set when it starts. PATH is never passed:
+/// the host's would replace the program's own. Footgun: the .NET 10 SDK's CLI passes -e to no
+/// build and applies no item, so there -e reaches none of the three (a launch profile's
+/// variables still do).
+/// </para>
+/// <para>
+/// Launch profile arguments: the CLI applies a profile's commandLineArgs only to a command with
+/// no arguments of its own (RunCommand.cs and CommonRunHelpers.CombineRunArguments, .NET 10 and
+/// 11 SDKs), and wasmtime's, wsl.exe's and docker's command lines always have some: the profile's
+/// arguments never reached the program. When the project has launch settings, the run command is
+/// therefore a launcher whose only arguments are the project's own RunArguments
+/// (<see cref="UseLauncher"/>), which runs the chosen command with what the CLI hands it
+/// appended. A project that sets RunArguments gets no profile's arguments, as any .NET project.
 /// </para>
 /// <para>
 /// Footguns: a program run through Docker sees its own folder as /app and works there, not in
 /// the folder dotnet run was started from. Through WSL the working directory is the current one,
 /// as WSL maps it. A Linux machine needs binfmt_misc emulation (QEMU) for Docker to run another
-/// CPU's build; Docker Desktop has it. A launch profile's commandLineArgs never reach a program
-/// run through wasmtime, WSL or Docker: the CLI applies them only to a command with no arguments
-/// of its own (RunCommand.cs and CommonRunHelpers.CombineRunArguments, .NET 10 and 11 SDKs), and
-/// these three have theirs; arguments after "--" do reach it.
+/// CPU's build; Docker Desktop has it. On Windows with AsmToolchain=System no launcher is built
+/// (it needs the bundled toolchain), so a profile's arguments do not reach those three there.
 /// </para>
 /// <para>
 /// Errors: ASM0091 (no build this machine can run, with what was
 /// tried), ASM0092 (nothing was built: dotnet run --no-build before a build), ASM0093 (unknown
-/// AsmRunIn). ASM0090, a project that builds no program, is the targets' own check.
+/// AsmRunIn). ASM0090, a project that builds no program, is the targets' own check. Warning:
+/// ASM0094 (the launcher could not be written; the program runs without a profile's arguments).
 /// </para>
 /// </remarks>
 public sealed class AsmSelectRunTarget : Task
@@ -120,9 +129,11 @@ public sealed class AsmSelectRunTarget : Task
     /// &lt;project&gt;.run.json, as the CLI looks for them); empty when there is none. The names
     /// of every profile's environmentVariables are passed on to wasmtime and Docker, whichever
     /// profile runs: a name the running profile does not set has no value, and both then pass
-    /// nothing (WSL would pass an empty variable, so it gets none of these). A file this task cannot read (not JSON
-    /// even with comments and trailing commas removed) only stops that, with a low-importance
-    /// message: dotnet run itself reports a broken launch settings file.
+    /// nothing. WSL would pass such a name as an empty variable, so it gets them only through the
+    /// launcher, which lists those that are set (<see cref="UseLauncher"/>). A file this task
+    /// cannot read (not JSON even with comments and trailing commas removed) only stops that,
+    /// with a low-importance message: dotnet run itself reports a broken launch settings file.
+    /// Its presence also decides whether the launcher is used at all.
     /// </summary>
     public string LaunchSettingsFile { get; set; } = "";
 
@@ -137,8 +148,28 @@ public sealed class AsmSelectRunTarget : Task
     public ITaskItem[] EnvironmentVariablesToSet { get; set; } = Array.Empty<ITaskItem>();
 
     /// <summary>
+    /// Where the launcher goes (see <see cref="UseLauncher"/>): the program the targets build on
+    /// Windows (an .exe), or the shell script this task writes elsewhere (a .sh). Empty for no
+    /// launcher: the targets name one only when the project has launch settings and, on Windows,
+    /// the bundled toolchain can build it.
+    /// </summary>
+    public string LauncherFile { get; set; } = "";
+
+    /// <summary>Whether RunCommand is the launcher: the targets then build it (Windows) or make it executable.</summary>
+    [Output]
+    public bool LauncherUsed { get; set; }
+
+    /// <summary>
+    /// The arguments chosen for wasmtime, wsl.exe or docker, each as one argument, without the
+    /// project's own (set by their steps): what the launcher runs (<see cref="UseLauncher"/>),
+    /// quoted for the shell in the script, for the Windows command line in the launch file.
+    /// </summary>
+    private List<string> _fixedArguments = new();
+
+    /// <summary>
     /// The names to pass on to wasmtime or Docker: -e's and every launch profile's (set by
-    /// <see cref="Execute"/>). Both pass nothing for a name their environment lacks.
+    /// <see cref="Execute"/>). Both pass nothing for a name their environment lacks. Also the
+    /// candidates the Windows launcher checks for WSL, listing in WSLENV only those that are set.
     /// </summary>
     private List<string> _forwarded = new();
 
@@ -214,14 +245,20 @@ public sealed class AsmSelectRunTarget : Task
         {
             if (TryHost(built, hostOs, hostArch, hostRid, tried))
             {
+                Announce();
                 return true;
             }
         }
 
+        // The three ways that start the program through another command may go through the
+        // launcher instead (UseLauncher): this machine's own builds never need it. Announced
+        // after that choice, so the message names what really starts the program.
         if (known == "Auto" || known == "Wasi")
         {
             if (TryWasi(built, tried))
             {
+                UseLauncher();
+                Announce();
                 return true;
             }
         }
@@ -230,6 +267,8 @@ public sealed class AsmSelectRunTarget : Task
         {
             if (TryWsl(built, hostArch, tried))
             {
+                UseLauncher();
+                Announce();
                 return true;
             }
         }
@@ -242,6 +281,8 @@ public sealed class AsmSelectRunTarget : Task
         {
             if (TryDocker(built, hostArch, tried))
             {
+                UseLauncher();
+                Announce();
                 return true;
             }
         }
@@ -288,7 +329,11 @@ public sealed class AsmSelectRunTarget : Task
 
         // wasmtime's options come before the module: "--env NAME" inherits NAME from wasmtime's
         // own environment (wasmtime 39's help), where the CLI put it.
-        Select(program, "Wasi", wasmtime, "run --dir . " + ForwardArguments("--env") + Quote(program.ItemSpec) + Append(Arguments));
+        var arguments = new List<string> { "run", "--dir", "." };
+        arguments.AddRange(ForwardOptions("--env"));
+        arguments.Add(program.ItemSpec);
+        _fixedArguments = arguments;
+        Select(program, "Wasi", wasmtime, string.Join(" ", arguments.Select(Quote)) + Append(Arguments));
         return true;
     }
 
@@ -395,7 +440,19 @@ public sealed class AsmSelectRunTarget : Task
                 return false;
             }
 
-            Select(program, "Wsl", wsl, distribution + "--exec " + Quote(linuxPath) + Append(Arguments));
+            // The same command line as "-d <distribution> --exec <path>", kept as a list for the
+            // launcher (UseLauncher), which writes it again in its own form.
+            var arguments = new List<string>();
+            if (WslDistribution.Trim().Length != 0)
+            {
+                arguments.Add("-d");
+                arguments.Add(WslDistribution.Trim());
+            }
+
+            arguments.Add("--exec");
+            arguments.Add(linuxPath);
+            _fixedArguments = arguments;
+            Select(program, "Wsl", wsl, string.Join(" ", arguments.Select(Quote)) + Append(Arguments));
             SetWslEnvironment();
             return true;
         }
@@ -446,12 +503,19 @@ public sealed class AsmSelectRunTarget : Task
         string folder = Path.GetDirectoryName(program.ItemSpec)!;
         // docker run's options come before the image: "-e NAME" without a value passes NAME from
         // docker's own environment, where the CLI put it, and skips a NAME that is not set.
-        string arguments = $"run --rm -i --platform {platform} -v {Quote(folder + ":/app")} -w /app {ForwardArguments("-e")}{Quote(image)} {Quote("/app/" + Path.GetFileName(program.ItemSpec))}{Append(Arguments)}";
-        Select(program, "Docker", docker, arguments);
+        var arguments = new List<string> { "run", "--rm", "-i", "--platform", platform, "-v", folder + ":/app", "-w", "/app" };
+        arguments.AddRange(ForwardOptions("-e"));
+        arguments.Add(image);
+        arguments.Add("/app/" + Path.GetFileName(program.ItemSpec));
+        _fixedArguments = arguments;
+        Select(program, "Docker", docker, string.Join(" ", arguments.Select(Quote)) + Append(Arguments));
         return true;
     }
 
-    /// <summary>Sets the outputs and says, at high importance, what runs and how.</summary>
+    /// <summary>
+    /// Sets the outputs for the selected build (<see cref="Announce"/> says what runs, once
+    /// <see cref="UseLauncher"/> has had its say).
+    /// </summary>
     /// <param name="program">The selected build.</param>
     /// <param name="how">Host, Emulation, Wasi, Wsl or Docker.</param>
     /// <param name="command">RunCommand.</param>
@@ -462,7 +526,26 @@ public sealed class AsmSelectRunTarget : Task
         RunArguments = arguments;
         SelectedRuntimeIdentifier = program.GetMetadata("RuntimeIdentifier");
         RunsIn = how;
-        string where = how switch
+        _selectedProgram = program.ItemSpec;
+    }
+
+    /// <summary>The selected build's program file, for <see cref="Announce"/> (set by <see cref="Select"/>).</summary>
+    private string _selectedProgram = "";
+
+    /// <summary>
+    /// Says, at high importance, which build runs, how, which environment variables are passed
+    /// on, and whether the launcher starts it: one line, for a binary log of dotnet run (-bl) and
+    /// for IDEs. The .NET 11 SDK's CLI logs ComputeRunArguments to the console at quiet
+    /// verbosity (RunCommand.cs, InvokeRunArgumentsTarget), which shows warnings and errors only.
+    /// </summary>
+    /// <remarks>
+    /// Through WSL the launcher lists every candidate name (-e's and every launch profile's)
+    /// and passes those that are set when it starts, so the line says "when set" there; without
+    /// it, WSL gets -e's names alone (see the class remarks).
+    /// </remarks>
+    private void Announce()
+    {
+        string where = RunsIn switch
         {
             "Emulation" => " under this machine's x64 emulation",
             "Wasi" => " in wasmtime",
@@ -472,14 +555,17 @@ public sealed class AsmSelectRunTarget : Task
         };
         // The variables matter only where they must be passed on: on this machine the program
         // gets the CLI's environment as it is.
-        List<string> passed = how switch
+        List<string> passed = RunsIn switch
         {
             "Wasi" or "Docker" => _forwarded,
-            "Wsl" => _forwardedToWsl,
+            "Wsl" => LauncherUsed ? _forwarded : _forwardedToWsl,
             _ => new List<string>(),
         };
-        string variables = passed.Count != 0 ? " (environment variables passed on: " + string.Join(", ", passed) + ")" : "";
-        Log.LogMessage(MessageImportance.High, "{0}: running the {1} build{2}: {3}{4}", ProjectName, SelectedRuntimeIdentifier, where, program.ItemSpec, variables);
+        string variables = passed.Count == 0 ? ""
+            : RunsIn == "Wsl" && LauncherUsed ? " (environment variables passed on when set: " + string.Join(", ", passed) + ")"
+            : " (environment variables passed on: " + string.Join(", ", passed) + ")";
+        string launcher = LauncherUsed ? " (started by " + RunCommand + ", which hands it a launch profile's arguments)" : "";
+        Log.LogMessage(MessageImportance.High, "{0}: running the {1} build{2}: {3}{4}{5}", ProjectName, SelectedRuntimeIdentifier, where, _selectedProgram, variables, launcher);
     }
 
     /// <summary>The project's arguments with a leading space, or nothing.</summary>
@@ -662,10 +748,136 @@ public sealed class AsmSelectRunTarget : Task
         return strict.ToString();
     }
 
-    /// <summary>One "option NAME" pair per passed-on variable, each followed by a space.</summary>
+    /// <summary>The arguments that name each passed-on variable: the option, then the name, per variable.</summary>
     /// <param name="option">"--env" for wasmtime, "-e" for docker.</param>
-    /// <returns>The options, or "" when no variable is passed on.</returns>
-    private string ForwardArguments(string option) => string.Concat(_forwarded.Select(name => option + " " + Quote(name) + " "));
+    /// <returns>The arguments, in pairs; none when no variable is passed on.</returns>
+    private IEnumerable<string> ForwardOptions(string option) => _forwarded.SelectMany(name => new[] { option, name });
+
+    /// <summary>
+    /// When the project has launch settings, starts the program through the launcher instead of
+    /// the command chosen above (wasmtime, wsl.exe or docker with their arguments): RunCommand
+    /// becomes <see cref="LauncherFile"/>, and RunArguments only the project's own, so that the
+    /// .NET CLI hands it a launch profile's commandLineArgs, which it applies only to a command
+    /// without arguments (the owner's choice for AsmSdk, 2026-11-26). The launcher then runs the
+    /// chosen command (<see cref="RunCommand"/> and <see cref="_fixedArguments"/>) with what it
+    /// was given appended.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The project's own RunArguments stay with the CLI, as for any program: the CLI then applies
+    /// them, appends the arguments after the double dash to them, and leaves a profile's arguments
+    /// out when they are set (RunCommand.cs and RunProperties.WithApplicationArguments, .NET 11
+    /// SDK), exactly as it does for a .csproj and for this machine's own build.
+    /// </para>
+    /// <para>
+    /// On Windows the launcher is a small program the targets build with the bundled toolchain
+    /// (stubs/run-launcher-x64.asm); this writes what it runs into "&lt;launcher&gt;.run" (UTF-16):
+    /// the command line, then, for WSL, the names of every variable a program may need (-e's and
+    /// every launch profile's), of which the launcher lists in WSLENV those that are set when it
+    /// starts. That is how a launch profile's variables reach WSL, which an earlier choice could
+    /// not do (a name that is not set would reach the program as an empty variable). On Linux and
+    /// macOS the launcher is a shell script that execs the command with "$@" appended, every
+    /// argument quoted for the shell; the targets make it executable. WSL exists on Windows only.
+    /// </para>
+    /// <para>
+    /// Nothing changes when the targets name no launcher: a project without launch settings has
+    /// no profile arguments to pass, and on Windows only the bundled toolchain builds the launcher.
+    /// A launcher that cannot be written leaves the chosen command as it is, with a warning
+    /// (ASM0094): the program still runs, without a profile's arguments.
+    /// </para>
+    /// </remarks>
+    private void UseLauncher()
+    {
+        if (LauncherFile.Trim().Length == 0 || LaunchSettingsFile.Trim().Length == 0)
+        {
+            return;
+        }
+
+        string launcher = Path.GetFullPath(LauncherFile.Trim());
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(launcher)!);
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                // Line 1: the command line the launcher starts, which the CLI's arguments follow.
+                // Line 2 (WSL): the candidate names; wasmtime's and docker's are in their own
+                // options already (_fixedArguments).
+                string commandLine = string.Join(" ", new[] { RunCommand }.Concat(_fixedArguments).Select(Quote));
+                string names = RunsIn == "Wsl" ? string.Join(":", _forwarded) : "";
+                WriteIfChanged(launcher + ".run", commandLine + "\r\n" + names + "\r\n", Encoding.Unicode);
+            }
+            else
+            {
+                // Every argument goes in quoted for the shell, so the command gets exactly the
+                // SDK's arguments, then "$@": what the CLI gave the script (the project's
+                // RunArguments, then a profile's or those after the double dash), already split
+                // by .NET as it would have split them for the command itself.
+                var script = new StringBuilder();
+                script.Append("#!/bin/sh\n");
+                string through = RunsIn == "Wasi" ? "wasmtime" : RunsIn;
+                script.Append("# Written by AsmFoundation.Sdk for dotnet run of ").Append(ProjectName)
+                      .Append(": runs the program through ").Append(through)
+                      .Append(" with the arguments dotnet run gives this script (the project's RunArguments, then a launch profile's or those after the double dash).\n");
+                script.Append("exec ").Append(PosixQuote(RunCommand));
+                foreach (string argument in _fixedArguments)
+                {
+                    script.Append(' ').Append(PosixQuote(argument));
+                }
+
+                script.Append(" \"$@\"\n");
+                WriteIfChanged(launcher, script.ToString(), new UTF8Encoding(false));
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Log.LogWarning(null, "ASM0094", null, ProjectFile, 0, 0, 0, 0,
+                "{0}: the launcher that passes a launch profile's arguments to a program run through {1} could not be written ({2}): the program runs without them.",
+                ProjectName, RunsIn, ex.Message);
+            return;
+        }
+
+        // The launcher sets WSLENV itself, from the variables that are really set when it starts.
+        EnvironmentVariablesToSet = Array.Empty<ITaskItem>();
+        RunCommand = launcher;
+        RunArguments = Arguments.Trim();
+        LauncherUsed = true;
+    }
+
+    /// <summary>
+    /// Writes a launcher file only when it does not already hold exactly these bytes (the
+    /// encoding's preamble, then the text): the next dotnet run of the same project, settings
+    /// and variables finds it as it is and leaves it alone, so a launcher another dotnet run (a
+    /// second terminal, an IDE) is starting at that moment never reads a file half rewritten.
+    /// </summary>
+    /// <param name="path">The file.</param>
+    /// <param name="text">Its text.</param>
+    /// <param name="encoding">Its encoding: UTF-16 with a byte-order mark for the launch file, UTF-8 without one for the script.</param>
+    /// <exception cref="IOException">The file could not be read or written (UseLauncher reports ASM0094).</exception>
+    /// <exception cref="UnauthorizedAccessException">The file or its folder may not be written (ASM0094 too).</exception>
+    /// <remarks>
+    /// Runs that differ (another -e name, another profile's variables in the file) still write
+    /// in turn, and one may then start with the other's variable list: rare, and only those
+    /// variables differ, never the command.
+    /// </remarks>
+    private static void WriteIfChanged(string path, string text, Encoding encoding)
+    {
+        byte[] preamble = encoding.GetPreamble();
+        byte[] body = encoding.GetBytes(text);
+        var bytes = new byte[preamble.Length + body.Length];
+        Buffer.BlockCopy(preamble, 0, bytes, 0, preamble.Length);
+        Buffer.BlockCopy(body, 0, bytes, preamble.Length, body.Length);
+        if (File.Exists(path) && File.ReadAllBytes(path).SequenceEqual(bytes))
+        {
+            return;
+        }
+
+        File.WriteAllBytes(path, bytes);
+    }
+
+    /// <summary>One argument quoted for a POSIX shell: in single quotes, a single quote written as '\''.</summary>
+    /// <param name="argument">The argument.</param>
+    /// <returns>The quoted argument, which the shell reads back exactly.</returns>
+    internal static string PosixQuote(string argument) => "'" + argument.Replace("'", "'\\''") + "'";
 
     /// <summary>
     /// For a program run through WSL: WSLENV for wsl.exe, listing the passed-on names

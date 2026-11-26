@@ -2,9 +2,14 @@
   "profiles": {
     "EchoProgram": {
       "commandName": "Project",
+      "commandLineArgs": "from-profile \"two words\"",
       "environmentVariables": {
         "ASM_PROBE": "profile-value"
       }
+    },
+    "Bare": {
+      "commandName": "Project",
+      "commandLineArgs": "bare-profile"
     }
   }
 }

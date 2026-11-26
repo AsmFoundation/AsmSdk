@@ -4,11 +4,18 @@
     (echo.wasi.s) (WebAssemblyTests). dotnet run starts it in wasmtime, which passes a program
     only the variables it is told to: the SDK names those of dotnet run -e and of every profile of
     Properties/launchSettings.json, which holds a comment and trailing commas on purpose (the
-    .NET CLI reads launch settings that way, so the SDK must too).
+    .NET CLI reads launch settings that way, so the SDK must too). The profile's arguments reach
+    it through the launcher the SDK puts between dotnet run and wasmtime.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <AssemblyName>wasiecho</AssemblyName>
     <RuntimeIdentifiers>wasi-wasm</RuntimeIdentifiers>
+  </PropertyGroup>
+  <!-- RunArguments of the project's own, with what a shell would read otherwise (a single quote,
+       a dollar sign, a backslash): they must reach the program as .NET splits them, and keep a
+       profile's arguments out, as for any project. Only with EchoCase=RunArguments. -->
+  <PropertyGroup Condition="'$(EchoCase)' == 'RunArguments'">
+    <RunArguments>"run arg" 'single' $HOME back\slash</RunArguments>
   </PropertyGroup>
 </Project>

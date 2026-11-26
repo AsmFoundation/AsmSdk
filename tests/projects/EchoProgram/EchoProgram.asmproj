@@ -3,9 +3,11 @@
     A libc program that prints each argument, then ASM_PROBE ("(unset)" without it), then its
     current directory, and exits with the number of arguments (echo.asm for x64, echo.s for
     ARM64) (ProgramTests). Built for the Linux RIDs that WSL and Docker run, to show which
-    environment variables reach a program dotnet run starts through them: those of dotnet run
-    -e, and in Docker also those of a launch profile (Properties/launchSettings.json), while
-    a launch profile's variable that is not set never reaches WSL as an empty one.
+    arguments and environment variables reach a program dotnet run starts through them: those
+    of dotnet run -e and of a launch profile (Properties/launchSettings.json: EchoProgram, with
+    two arguments and ASM_PROBE; Bare, with one argument and no variable), the profile's
+    through the launcher the SDK puts in between, while a variable the running profile does not
+    set never reaches WSL as an empty one.
   -->
   <PropertyGroup>
     <TargetFramework>libc</TargetFramework>

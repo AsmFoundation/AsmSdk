@@ -47,10 +47,34 @@ Each SDK release names the one it was tested with.
   and the SDK names them to the runtime, never their values: `wasmtime run --env NAME`,
   `docker run -e NAME`, and `NAME/u` entries added to `WSLENV` (after the user's own). A launch
   profile's variables, read from `Properties/launchSettings.json` (comments and trailing commas
-  allowed, as the CLI allows them), reach wasmtime and Docker with any SDK; WSL gets only `-e`'s,
-  because it passes a name `WSLENV` lists but its environment lacks as an empty variable.
-  `PATH` is never passed. A profile's `commandLineArgs` still do not reach those three: the CLI
-  applies them only to a command without arguments of its own.
+  allowed, as the CLI allows them), reach wasmtime and Docker with any SDK, and WSL through the
+  launcher below. `PATH` is never passed.
+- **A launch profile's `commandLineArgs` reach a program `dotnet run` starts through wasmtime,
+  WSL or Docker** (the owner's choice, "Build the launcher"). The CLI applies a profile's
+  arguments only to a run command without arguments of its own, and those three always have
+  some, so the arguments never arrived. When the project has launch settings, `dotnet run` now
+  starts a launcher in `obj/<Configuration>/<tfm>/[<rid>/]asm-run/`, with only the project's own
+  `RunArguments`, and the launcher starts the runtime with what the CLI hands it: on Windows a
+  small x64 program (`stubs/run-launcher-x64.asm`) the SDK assembles and links with the bundled
+  toolchain on first use, which also lists in `WSLENV` the `-e` and profile variables that are
+  set when it starts (a name another profile sets stays out: WSL would pass it as an empty
+  variable); on Linux and macOS a shell script that `exec`s the runtime with every argument
+  quoted. The CLI's rules hold as for any project: arguments after `--` replace a profile's, and
+  a project's `RunArguments` keep a profile's out. Stopping the run stops the program: the Windows
+  launcher keeps itself alive through Ctrl+C with a handler of its own (the inherited "ignore
+  Ctrl+C" flag would have made the program ignore it too), turns Ctrl+C processing back on for
+  the new process group `dotnet watch` starts it in, and runs the program in a kill-on-close job,
+  so a killed launcher (`dotnet watch` after its Ctrl+C times out, an IDE) leaves nothing
+  running. `ASM0094` (warning): the launcher could not be written, and the program runs without
+  them. With `AsmToolchain=System`, Windows gets no launcher.
+- **NASM's warnings carry their names as MSBuild codes** (the owner's choice, "Codes = NASM
+  names"): `orphan.asm(9): warning label-orphan: …`. The command line's `-nowarn:label-orphan`,
+  `-warnaserror:label-orphan` and `-warnnotaserror:label-orphan` now act on them, as the
+  `NoWarn`, `WarningsAsErrors` and `WarningsNotAsErrors` properties always did, and IDE error
+  lists show the code. A warning raised inside a macro names, in the same message, where the
+  macro is defined. NASM writes its messages to `<object>.messages` (`-Z`), which the new
+  `AsmLogNasmMessages` task logs; `fatal:` messages are errors now (they were plain output).
+  `ASM0008` (warning): the messages file could not be read.
 - **`docs/guide/dotnet-cli.md`:** every `dotnet` command with asm projects, the switches the
   suite runs against them, and where the .NET CLI draws the line.
 - **Tests of the dotnet CLI.** Scenarios `CliBuild` (build, clean, publish and restore switches:
@@ -63,9 +87,10 @@ Each SDK release names the one it was tested with.
   `remove`; `dotnet format`; a file-based app's `#:project`; the templates' `list`, `details` and
   dry run) and `CliRun` (`dotnet run`'s arguments, launch profiles, `-e`, a run from the
   project's folder, `--no-build`, an artifacts path, `-f`). `WatchTests` runs `dotnet watch` and
-  edits an include file; ProgramTests and WebAssemblyTests check the environment through
-  wasmtime, WSL and Docker. The scenario format gained a step's `cwd`, `missing` files, and the
-  `{os}`, `{arch}` and `{otherarch}` placeholders.
+  edits an include file; ProgramTests and WebAssemblyTests check the environment and a launch
+  profile's arguments through wasmtime, WSL and Docker; WarningSwitchTests the command line's
+  warning switches by NASM name. The scenario format gained a step's `cwd`, `missing` files, and
+  the `{os}`, `{arch}` and `{otherarch}` placeholders.
 
 ### Fixed
 

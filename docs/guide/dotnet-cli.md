@@ -7,9 +7,10 @@
 > `RuntimeIdentifier` is ignored; a project that names its one `RuntimeIdentifier` itself (or
 > gets it from a profile) builds its asm references for their default RIDs, so a program fails
 > to link a static library of another RID; `dotnet watch` ignores `.inc` edits; `-e` and launch
-> profile variables never reach wasmtime, WSL or Docker; a tool packed with `-p:PackageId=` on
-> the command line fails; and `--include-symbols` with `snupkg` writes an empty `.snupkg`. The
-> [changelog](changelog.md) lists every change.
+> profile variables, and a profile's arguments, never reach wasmtime, WSL or Docker; NASM's
+> warnings have no code, so `-nowarn:` and `-warnaserror:` cannot name them; a tool packed with
+> `-p:PackageId=` on the command line fails; and `--include-symbols` with `snupkg` writes an
+> empty `.snupkg`. The [changelog](changelog.md) lists every change.
 
 An `.asmproj` works with the `dotnet` commands the way a `.csproj` does. This page lists each
 command, what it does with asm projects, and the switches the test suite runs against them on
@@ -21,10 +22,10 @@ line are at the end.
 
 | Command | With asm projects | Checked by |
 |---|---|---|
-| `dotnet build` | Builds each RID the project or its users ask for. `-c`, `-f`, `-r`, the arch switch (`-a arm64`: this OS, that CPU), the os switch (`--os linux`), the use-current-runtime switch (`--ucr`: this machine's RID, as `-r` would), `-o` (one folder per RID inside it), an artifacts path (`--artifacts-path`, or `UseArtifactsOutput`), `--no-incremental`, `--no-dependencies`, `--no-restore`, `-graph`, `-p:`, `-bl`, `-tl` | CliBuild, PlugAndPlay |
+| `dotnet build` | Builds each RID the project or its users ask for. `-c`, `-f`, `-r`, the arch switch (`-a arm64`: this OS, that CPU), the os switch (`--os linux`), the use-current-runtime switch (`--ucr`: this machine's RID, as `-r` would), `-o` (one folder per RID inside it), an artifacts path (`--artifacts-path`, or `UseArtifactsOutput`), `--no-incremental`, `--no-dependencies`, `--no-restore`, `-graph`, `-p:`, `-bl`, `-tl`; `-nowarn:`, `-warnaserror:` and `-warnnotaserror:` with NASM's warning names (`label-orphan`), which are its warnings' codes | CliBuild, PlugAndPlay, WarningSwitchTests |
 | `dotnet clean` | Deletes every RID build and the library's own `<name>.h` and `<name>.api.json`, with the same `-c`, `-o` or artifacts path the build had | CliBuild |
 | `dotnet restore` | Lock files (`--use-lock-file`, `--locked-mode`, `RestoreLockedMode`), `--packages`, `-r`, `--force`, `--no-cache`; the toolchain download is a `PackageDownload`, which lock files do not list | CliBuild |
-| `dotnet run` | Runs a program: on this machine, its emulation, wasmtime, WSL or Docker ([Programs](programs.md#dotnet-run)). Arguments after `--`, launch profiles (`-lp`, `--no-launch-profile`), `-e`, `--no-build`, `-c`, `-f`, an artifacts path, a run from the project's folder | CliRun, ProgramTests, WebAssemblyTests |
+| `dotnet run` | Runs a program: on this machine, its emulation, wasmtime, WSL or Docker ([Programs](programs.md#dotnet-run)). Arguments after `--`, launch profiles (`-lp`, `--no-launch-profile`; through wasmtime, WSL and Docker a profile's arguments reach the program through a launcher the SDK starts in between), `-e`, `--no-build`, `-c`, `-f`, an artifacts path, a run from the project's folder | CliRun, ProgramTests, WebAssemblyTests |
 | `dotnet test` | Tests asm code from C# tests, with Microsoft.Testing.Platform or VSTest (`--filter`, `--logger`, `-r` on the test project, `--no-build`). `dotnet test` of an `.asmproj` itself finds no test project, as for any library | PlugAndPlay, PlugAndPlayVSTest, AsmUnitTests |
 | `dotnet pack` | Packs the libraries and programs of every RID ([References and packages](references-and-packages.md)). `--version`, `--version-suffix`, `--no-build`, `--include-source`. `--include-symbols` with `SymbolPackageFormat=snupkg` makes no `.snupkg`: that format holds portable PDBs, and an asm package has none | CliPack |
 | `dotnet publish` | Publishes a program for each RID, or the one of `-r`, `--ucr` or a publish profile (`-p:PublishProfile=<name>`: its `RuntimeIdentifier` and `PublishDir`); `-o`, `--no-build`, an artifacts path | CliBuild, ProgramTests |
@@ -44,14 +45,16 @@ line are at the end.
   `TargetFramework` text and does not know the asm names (`freestanding`, `libc`), so it refuses
   the reference ("incompatible targeted frameworks"), although NuGet and the build accept it
   (dotnet/sdk#57317). Write the `ProjectReference` line yourself.
-- **A launch profile's `commandLineArgs`** do not reach a program run through wasmtime, WSL or
-  Docker: the CLI applies a profile's arguments only to a command that has none of its own. Pass
-  them after `--`. A profile's variables reach wasmtime and Docker but not WSL; `-e` reaches all
-  three with the .NET 11 SDK ([Programs](programs.md#dotnet-run)).
-- **`-nowarn:<name>` and `-warnaserror:<name>`** on the command line act on MSBuild warning codes,
-  and the assemblers' warnings have none: use the `NoWarn`, `WarningsAsErrors` and
-  `WarningsNotAsErrors` properties, which AsmSdk passes to NASM by warning name
-  ([Projects](projects.md)). A plain `-warnaserror` covers them.
+- **A launch profile's `commandLineArgs`** reach a program run through wasmtime, WSL or Docker
+  only through the SDK's launcher, because the CLI applies a profile's arguments only to a command
+  that has none of its own ([Programs](programs.md#dotnet-run)). On Windows the launcher is built
+  with the bundled toolchain: with `AsmToolchain=System` there is none, so pass the arguments
+  after `--` there. `-e` reaches all three with the .NET 11 SDK only, which is the first to tell a
+  build its `-e` variables.
+- **llvm-mc's warnings** (GNU-syntax `.s` sources: ARM64, WebAssembly) have no names, so they
+  reach MSBuild without a code, and `-nowarn:` or `-warnaserror:` cannot pick one out; a plain
+  `-warnaserror` covers them. NASM's warnings carry their names as codes
+  ([Projects](projects.md)).
 - **`dotnet build -graph -isolate`** (MSBuild's isolated graph builds) stops a .NET project that
   references an asm project with `MSB4252`: the SDK asks an asm project for its outputs with the
   RID of the consumer, which the static graph does not predict. `-graph` alone works.

@@ -14,19 +14,25 @@ namespace AsmSdk.Tests;
 /// <param name="sdk">The SDK under test (assembly fixture).</param>
 /// <remarks>
 /// Each case is a build of the same project with other global properties, into the same obj/
-/// folder: each must assemble again, which the assemble options file (an input of the assemble
-/// step) makes it do, so the cases also prove that an option from the command line is not
-/// served from an object assembled without it.
+/// folder, and each assembles again: a NASM warning shows only in a build that runs NASM. A
+/// property that changes NASM's options would make it do so by itself (the assemble options
+/// file is an input of the assemble step), but the command line's -nowarn:, -warnaserror: and
+/// -warnnotaserror: act on MSBuild's side and leave NASM's options as they are, so after
+/// another case with the same options the object was up to date and the warning did not show
+/// (the order of the cases decided it). Every case therefore builds with --no-incremental.
 /// </remarks>
 public sealed class WarningSwitchTests(SdkUnderTest sdk)
 {
     /// <summary>NASM's text for the warning, the same as a warning and as an error.</summary>
     private const string OrphanText = "label `lonely_label' alone on a line without a colon might be in error";
 
-    /// <summary>Builds WarningSwitches in Release with the given properties, once per list.</summary>
-    /// <param name="properties">The -p: arguments.</param>
+    /// <summary>
+    /// Builds WarningSwitches in Release with the given arguments, once per list, always with
+    /// --no-incremental, so NASM runs and reports whatever the arguments make of the warning.
+    /// </summary>
+    /// <param name="properties">The -p: arguments and the command line's warning switches.</param>
     /// <returns>The build's result.</returns>
-    private CommandResult Build(params string[] properties) => sdk.BuildTestProject("WarningSwitches", properties);
+    private CommandResult Build(params string[] properties) => sdk.BuildTestProject("WarningSwitches", ["--no-incremental", .. properties]);
 
     /// <summary>Under TreatWarningsAsErrors the NASM warning is an error at its line, and the build fails.</summary>
     [Fact]
@@ -58,9 +64,7 @@ public sealed class WarningSwitchTests(SdkUnderTest sdk)
     /// <summary>
     /// A NoWarn list that also holds .NET's and NuGet's codes (CS1591, NU5128, 1701) passes only
     /// NASM's name on: the build succeeds, and NASM gets no switch for the other codes. Read from
-    /// the assemble options file, which holds NASM's arguments whether or not this build ran
-    /// NASM: after NoWarn=label-orphan alone, the options are the same, and the up-to-date object
-    /// is kept (as it must be).
+    /// the assemble options file, which holds the NASM arguments of the build that wrote it.
     /// </summary>
     [Fact]
     public void A_mixed_NoWarn_list_passes_only_nasm_names()
