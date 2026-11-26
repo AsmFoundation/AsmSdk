@@ -17,17 +17,21 @@ You can also call it by name: `/asmsdk:asmsdk`.
 
 ## What it knows
 
-Plugin 0.3.0 documents AsmFoundation.Sdk 0.3.0: seven runtime identifiers, NASM for the x64
-ones and GNU syntax for ARM64, the C library of every OS, and .NET consumers by RID. Each
-behavior it states was reproduced by building with an AsmSdk release and its bundled tools,
-or is verified by AsmSdk's own tests on five build machines; what each output format's NASM
-accepts was measured directive by directive. For a 0.1.0 or 0.2.0 project, it names each
-removed setting's replacement. The same knowledge is on this site:
+Plugin 0.4.0 documents AsmFoundation.Sdk 0.4.0: ten runtime identifiers, NASM for the x64
+ones, GNU syntax for ARM64 and LLVM's WebAssembly assembly for `browser-wasm` and `wasi-wasm`,
+the C library of every OS, .NET consumers by RID with the C# bindings the SDK writes from
+`PROTO` and `STRUCT` lines, the C header, programs (`dotnet run`, `dotnet publish`,
+`PackAsTool`) and the `dotnet new` templates. Each behavior it states was reproduced by building
+with an AsmSdk release and its bundled tools, or is verified by AsmSdk's own tests on five build
+machines; what each output format's NASM accepts was measured directive by directive. For a
+0.1.0, 0.2.0 or 0.3.0 project, it names each removed or renamed setting's replacement. The same
+knowledge is on this site:
 
-- the project model, and the platforms and runtime identifiers;
+- the project model, the templates, and the platforms and runtime identifiers;
 - the complete property, item and target reference;
 - the linking rules, with the exact error each prevents;
-- .NET, Python and C interop;
+- .NET (the generated bindings), Python and C interop, and programs;
+- WebAssembly;
 - the toolchain, CI and troubleshooting.
 
 ## The scripts
@@ -46,18 +50,21 @@ python new_asmproj.py Crc --kind static --package-id Acme.Crc --version 1.2.0 --
 ```
 
 - **What it writes:**
-  - the `.asmproj`, with `RuntimeIdentifiers`: by default every RID the kind can build
-    (all seven; a freestanding program all but macOS, which has none);
+  - the `.asmproj`, with `RuntimeIdentifiers`: by default every native RID the kind can build
+    (all eight; a freestanding program all but macOS, which has none); `--rids
+    "browser-wasm;wasi-wasm"` writes a WebAssembly library, and `--kind exe --rids wasi-wasm` a
+    WASI command;
   - a public include file in `include/`;
   - starter sources that follow every linking rule on every OS: a NASM file for the x64 RIDs
-    through `asmsdk.inc`, and a GNU-syntax file for the ARM64 RIDs through `asmsdk-gnu.inc`.
-    A freestanding program makes Linux system calls and calls kernel32 on Windows; a libc
-    one calls `puts`, which takes no variadic arguments (Apple's ARM64 passes those on the
-    stack);
+    and a GNU-syntax file for the ARM64 RIDs, whose platform layer (`asmsdk.inc`,
+    `asmsdk-gnu.inc`) `ImplicitUsings` puts in front. A library's functions carry the same
+    `PROTO` lines in every source, so the C# bindings and the C header come out. A freestanding
+    program makes Linux system calls and calls kernel32 on Windows; a libc one calls `puts`,
+    which takes no variadic arguments (Apple's ARM64 passes those on the stack);
   - the `global.json` entry, when missing;
   - the `.slnx` line with the project type GUID.
-- **Verified:** every kind and framework built for all its RIDs with 0.3.0, and the programs
-  ran on Windows x64, Ubuntu, Alpine and Linux ARM64.
+- **Verified:** every kind and framework built for all its RIDs with 0.4.0, and the Windows
+  programs ran (with 0.3.0, the programs ran on Windows x64, Ubuntu, Alpine and Linux ARM64).
 - **It never overwrites a file.** An existing `global.json` gains only the `msbuild-sdks`
   entry, and an existing `.slnx` gains only the new line.
 
@@ -66,7 +73,10 @@ python new_asmproj.py Crc --kind static --package-id Acme.Crc --version 1.2.0 --
 Lints projects and sources for the mistakes that break builds or outputs, with the file,
 line and fix for each. It exits 1 when it finds an error.
 
-It judges each source for the platforms it is built for: the project's `RuntimeIdentifiers`
+It judges each project by the rules of the SDK version it pins: on 0.4.0, `ImplicitUsings`
+(no missing `default rel` or `.note.GNU-stack` is reported, as the SDK writes them), the
+renamed items, and the build machine's RID as the default. It judges each source for the
+platforms it is built for: the project's `RuntimeIdentifiers`
 (a project that lists none takes the RIDs of the asm projects that reference it), the
 source's file-name qualifier, chosen the way the SDK chooses, and the `%ifdef WINDOWS` /
 `LINUX` / `MACOS` guards around each line. A directive that is right on Linux and stops
@@ -82,12 +92,13 @@ python check_asmproj.py App.slnx --json
 |---|---|
 | `ASMPIC001`–`005` | per OS: absolute addressing without `default rel` (Linux `.so`/PIE, macOS's NASM, Windows' `ASM0080`); calls and data of *another* library from a Linux `.so` without `PLT` / `wrt ..got` (within one library, `-Bsymbolic` binds them); absolute addresses in `.text` (Linux, macOS's `ASM0081`); `dd label` and `dq label` in read-only sections |
 | `ASMSRC005`–`022` | an unwritable `.data.rel.ro`; a missing `.note.GNU-stack` on Linux; untyped exports in Linux-only files; keyword symbol names; `%include` paths NASM won't find; an `.asm` included and assembled twice; a missing entry symbol; symbols nothing defines (including C library functions outside each OS's list); `hidden` written after the size; the source selection's errors (`ASM0020`, `ASM0021`, `ASM0023`, `ASM0024`); sections, symbol types and `wrt` forms a platform's NASM output rejects (`.note.GNU-stack` on macOS, `:function` on macOS, `hidden` on Windows and macOS, `wrt ..plt` off Linux); a plain `global` that a Windows DLL does not export, unless the other OSes hide it (then it is internal, as meant); a symbol internal on one OS and exported on another |
-| `ASMPRJ000`–`018` | a setting that 0.2.0 or 0.3.0 removed, with its replacement; no `RuntimeIdentifiers` (`ASM0010`); a RID AsmSdk does not build (`ASM0011`); a freestanding macOS program (`ASM0015`); a target framework other than `freestanding` or `libc` (`ASM0003`); two projects of one restore graph with the same `PackageId` ("Ambiguous project name"); include folders outside the project that don't rebuild; packages without include files; `$ORIGIN` that `/bin/sh` empties; a bad `AsmToolchain`; recommendations (`-z defs`; `-Xvc` is now the SDK's own) |
+| `ASMPRJ000`–`024` | a setting that 0.2.0, 0.3.0 or 0.4.0 removed or renamed, with its replacement (`AsmSource`, `AsmInclude`, `EnableDefaultAsmItems`, `AsmLinkLibrary`: `ASM0109`–`ASM0112`); no `RuntimeIdentifiers` (0.4.0: one RID shipped, `ASM0013`; 0.3.0: `ASM0010`); a RID AsmSdk does not build (`ASM0011`); WebAssembly's project rules (a wasm RID before 0.4.0, a browser program, a libc module, a define with a value, an export pattern); a freestanding macOS program (`ASM0015`); a target framework other than `freestanding` or `libc` (`ASM0003`); two projects of one restore graph with the same `PackageId` ("Ambiguous project name"); include folders outside the project that don't rebuild; packages without include files; `$ORIGIN` that `/bin/sh` empties; a bad `AsmToolchain`; recommendations (`-z defs`; `-Xvc` is now the SDK's own) |
 | `ASMREF000`–`003` | missing references; a freestanding Linux executable referencing a shared-only library; a freestanding project referencing libc-only code (`NU1201`) |
 | `ASMSLN001`–`003` | no `msbuild-sdks` entry; `.slnx` entries without the type GUID; an SDK version other than the one the checks encode |
+| `ASMWASM001`–`016` | llvm-mc's measured traps in a `.wasm.s` source: an assembler constant, a data label without `ENDDATA`, a bare `.text`, `PROTO` or a function macro inside a function, a function without `ENDFUNCTION`, an untyped `select`, `return_call` where .NET links the code, `STRUCT`, a call to a function llvm-mc has not seen, unaligned WASI data, a `PROTO` that lowers to another wasm type or names no exported function, a float constant llvm-mc refuses or rounds to f32 unannounced (with the literal to write instead) |
 
-On AsmSdk's own samples it reports no error and no warning, and each of AsmSdk's test projects
-that must fail is reported with the SDK's own error.
+On AsmSdk's own samples it reports no error and no warning (checked with 0.4.0), and each of
+AsmSdk's test projects that must fail is reported with the SDK's own error.
 
 ### inspect_output.py
 
@@ -101,6 +112,8 @@ finds in the NuGet cache by itself. It reports:
   `ExportsFile` gives a DLL; the imported DLLs and functions; ASLR and DEP;
 - Mach-O (macOS): dylib or program; the install name and needed libraries; the exported and
   imported symbols, by their C names;
+- WebAssembly, read in Python: module, WASI command, object or archive; exports, imports,
+  memory, custom sections and the `asmapi` records the SDK's bindings come from;
 - for a static library of any OS, its members and the symbols each defines.
 
 ```sh
@@ -129,7 +142,9 @@ since):
 The full results, including what every run wrote, are in the marketplace's
 [benchmarks](https://github.com/AsmFoundation/AsmClaudeMarketplace/tree/main/plugins/asmsdk/evals/benchmarks).
 
-Plugin 0.3.0's tasks name this SDK version, and one of them ports a Linux-only library to
-Windows and macOS. Its build check builds every RID a task names, reads the exports of each
-library (ELF, PE and Mach-O), and runs the Linux outputs. A right answer and wrong ones per
-task, kept with the suite, prove the graders and the build check before they judge a run.
+Plugin 0.4.0's tasks name this SDK version: one ports a Linux-only library to Windows and
+macOS, and one writes a WebAssembly library with its `PROTO` line. Its build check builds every
+RID a task names, reads the exports of each library (ELF, PE, Mach-O and WebAssembly), runs the
+Linux outputs, and runs the wasm module in Node. A right answer and wrong ones per task, kept
+with the suite, prove the graders and the build check before they judge a run: with the 0.4.0
+packages, all 12 passed or failed as their names say.
